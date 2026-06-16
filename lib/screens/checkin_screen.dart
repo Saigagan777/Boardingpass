@@ -137,11 +137,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
-
-    return ListenableBuilder(
-      listenable: _state,
-      builder: (context, child) {
-        final selectedTab = _state.selectedCheckinType;
+    final selectedTab = _state.selectedCheckinType;
 
         String nameLabel = '';
         String locLabel = '';
@@ -746,8 +742,6 @@ class _CheckinScreenState extends State<CheckinScreen> {
             ),
           ),
         );
-      },
-    );
   }
 
   Widget _buildTabButton(CheckinType type, String label, IconData icon) {

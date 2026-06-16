@@ -7,6 +7,11 @@ class Event {
   final String location;
   final String time;
   final String attendees;
+  final String category;
+  final String price;
+  final String? mapUrl;
+  final double? latitude;
+  final double? longitude;
   bool isJoined;
 
   Event({
@@ -18,6 +23,11 @@ class Event {
     required this.location,
     required this.time,
     required this.attendees,
+    this.category = 'Meetups',
+    this.price = 'Free',
+    this.mapUrl,
+    this.latitude,
+    this.longitude,
     this.isJoined = false,
   });
 }

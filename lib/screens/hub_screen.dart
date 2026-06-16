@@ -1,6 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../state_manager.dart';
+import '../utils/image_helper.dart';
+import '../services/sponsor_service.dart';
+import '../services/meeting_service.dart';
+import '../services/user_service.dart';
+import '../models/user_profile.dart';
+import '../utils/app_logo.dart';
 
 class HexagonClipper extends CustomClipper<Path> {
   @override
@@ -30,8 +39,19 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   final AppStateManager _state = AppStateManager();
   int? _hoveredIndex;
+  int _hoverSequence = 0;
   int _tickerIndex = 0;
   Timer? _tickerTimer;
+  int _carouselItemCount = 2;
+
+  void _updateHoveredIndex(int? index) {
+    if (_hoveredIndex != index) {
+      setState(() {
+        _hoveredIndex = index;
+        _hoverSequence++;
+      });
+    }
+  }
 
   // 6 Honeycomb activities
   final List<Map<String, dynamic>> _activities = [
@@ -85,55 +105,13 @@ class _HubScreenState extends State<HubScreen> {
     },
   ];
 
-  // Ad/Notification Slots
-  final List<Map<String, dynamic>> _slots = [
-    {
-      'kind': 'ad',
-      'brand': 'Plaza Premium',
-      'title': '20% off lounge upgrade — today only',
-      'cta': 'Claim',
-      'color': const Color(0xFFFAF7F5),
-      'icon': Icons.auto_awesome_outlined,
-    },
-    {
-      'kind': 'notif',
-      'title': 'Ananya wants to meet',
-      'body': 'Replied to your coffee intent · 2m ago',
-      'color': const Color(0xFFFAF7F5),
-      'icon': Icons.chat_bubble_outline_rounded,
-    },
-    {
-      'kind': 'ad',
-      'brand': 'Amex Platinum',
-      'title': 'Free lounge access at 1,400+ airports',
-      'cta': 'Learn',
-      'color': const Color(0xFFFAF7F5),
-      'icon': Icons.star_outline_rounded,
-    },
-    {
-      'kind': 'notif',
-      'title': 'Fintech Mixer · 6 PM',
-      'body': '3 of your connections registered',
-      'color': const Color(0xFFFAF7F5),
-      'icon': Icons.notifications_none_outlined,
-    },
-    {
-      'kind': 'ad',
-      'brand': 'Starbucks Reserve',
-      'title': 'Buy 1 get 1 — flash 30 min near Gate 14',
-      'cta': 'Show',
-      'color': const Color(0xFFFAF7F5),
-      'icon': Icons.coffee,
-    },
-  ];
-
   @override
   void initState() {
     super.initState();
     _tickerTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
-      if (mounted) {
+      if (mounted && _carouselItemCount > 0) {
         setState(() {
-          _tickerIndex = (_tickerIndex + 1) % _slots.length;
+          _tickerIndex = (_tickerIndex + 1) % _carouselItemCount;
         });
       }
     });
@@ -145,6 +123,305 @@ class _HubScreenState extends State<HubScreen> {
     super.dispose();
   }
 
+  String _timeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  void _showNotificationSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) return const SizedBox();
+        return StreamBuilder<UserProfile?>(
+          stream: UserService().streamUserProfile(uid),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const AlertDialog(
+                backgroundColor: Color(0xFFFAF7F5),
+                content: SizedBox(height: 50, child: Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)))),
+              );
+            }
+            final profile = snapshot.data!;
+            final settings = profile.notificationSettings;
+            final muteAll = settings['muteAll'] as bool? ?? false;
+            final muteReminders = settings['muteReminders'] as bool? ?? false;
+            final muteMentions = settings['muteMentions'] as bool? ?? false;
+            final muteMeetings = settings['muteMeetings'] as bool? ?? false;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFFFAF7F5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text(
+                'Notification Preferences',
+                style: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('Mute All Notifications', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.bold)),
+                    value: muteAll,
+                    activeThumbColor: const Color(0xFF7A432D),
+                    onChanged: (val) {
+                      final updated = Map<String, dynamic>.from(settings);
+                      updated['muteAll'] = val;
+                      UserService().updateUserProfile(userId: uid, notificationSettings: updated);
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Mute Reminders', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13)),
+                    value: muteReminders,
+                    activeThumbColor: const Color(0xFF7A432D),
+                    onChanged: muteAll ? null : (val) {
+                      final updated = Map<String, dynamic>.from(settings);
+                      updated['muteReminders'] = val;
+                      UserService().updateUserProfile(userId: uid, notificationSettings: updated);
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Mute Mentions', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13)),
+                    value: muteMentions,
+                    activeThumbColor: const Color(0xFF7A432D),
+                    onChanged: muteAll ? null : (val) {
+                      final updated = Map<String, dynamic>.from(settings);
+                      updated['muteMentions'] = val;
+                      UserService().updateUserProfile(userId: uid, notificationSettings: updated);
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Mute Meetings', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13)),
+                    value: muteMeetings,
+                    activeThumbColor: const Color(0xFF7A432D),
+                    onChanged: muteAll ? null : (val) {
+                      final updated = Map<String, dynamic>.from(settings);
+                      updated['muteMeetings'] = val;
+                      UserService().updateUserProfile(userId: uid, notificationSettings: updated);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showNotificationsBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8E2DD),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontFamily: 'PlayfairDisplay',
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF3E1F11),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.done_all, color: Color(0xFF7A432D), size: 20),
+                            tooltip: 'Mark all as read',
+                            onPressed: () async {
+                              if (uid == null) return;
+                              final snap = await FirebaseFirestore.instance
+                                  .collection('notifications')
+                                  .where('userId', isEqualTo: uid)
+                                  .where('isRead', isEqualTo: false)
+                                  .get();
+                              final batch = FirebaseFirestore.instance.batch();
+                              for (final doc in snap.docs) {
+                                batch.update(doc.reference, {'isRead': true});
+                              }
+                              await batch.commit();
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.settings_outlined, color: Color(0xFF7A432D), size: 20),
+                            onPressed: () => _showNotificationSettingsDialog(context),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Color(0xFFE8E2DD)),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('notifications')
+                          .where('userId', isEqualTo: uid)
+                          .orderBy('timestamp', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
+                        }
+                        final docs = snapshot.data?.docs ?? [];
+                        if (docs.isEmpty) {
+                          return const Center(
+                            child: Text(
+                              'No notifications yet.',
+                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                            ),
+                          );
+                        }
+                        return ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: docs.length,
+                          separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE8E2DD)),
+                          itemBuilder: (context, index) {
+                            final doc = docs[index];
+                            final data = doc.data();
+                            final isRead = data['isRead'] as bool? ?? false;
+                            final title = data['title'] as String? ?? 'Alert';
+                            final body = data['body'] as String? ?? '';
+                            final type = data['type'] as String? ?? '';
+                            final Timestamp? timestamp = data['timestamp'] as Timestamp?;
+                            
+                            IconData iconData = Icons.notifications_outlined;
+                            Color iconColor = const Color(0xFF7A432D);
+                            if (type.contains('meeting')) {
+                              iconData = Icons.event;
+                              iconColor = const Color(0xFFEF6C00);
+                            } else if (type.contains('group') || type.contains('chat')) {
+                              iconData = Icons.chat_bubble_outline_rounded;
+                              iconColor = const Color(0xFF1E3A5F);
+                            }
+
+                            return ListTile(
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: iconColor.withValues(alpha: 0.1),
+                                ),
+                                child: Icon(iconData, color: iconColor, size: 20),
+                              ),
+                              title: Text(
+                                title,
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13,
+                                  fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                                  color: const Color(0xFF3E1F11),
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    body,
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      color: isRead ? const Color(0xFF8C736B) : const Color(0xFF3E1F11),
+                                    ),
+                                  ),
+                                  if (timestamp != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _timeAgo(timestamp.toDate()),
+                                      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, color: Color(0xFF8C736B)),
+                                    ),
+                                  ]
+                                ],
+                              ),
+                              trailing: !isRead
+                                  ? Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Color(0xFFB06F4D),
+                                      ),
+                                    )
+                                  : null,
+                              onTap: () async {
+                                await doc.reference.update({'isRead': true});
+                                
+                                if (context.mounted) Navigator.pop(context);
+                                
+                                if (type.contains('meeting')) {
+                                  _state.currentScreen = AppScreen.meeting;
+                                } else if (type.contains('group') || type.contains('chat')) {
+                                  final chatId = data['metadata']?['chatId'] as String?;
+                                  if (chatId != null) {
+                                    final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+                                    if (chatDoc.exists) {
+                                      final chatData = chatDoc.data()!;
+                                      if (chatData['isGroup'] == true) {
+                                        _state.activeChatContact = chatData['groupName'] as String?;
+                                      } else {
+                                        final participants = List<String>.from(chatData['participants'] ?? []);
+                                        final otherUid = participants.firstWhere((p) => p != uid, orElse: () => '');
+                                        if (otherUid.isNotEmpty) {
+                                          final user = await UserService().getUserProfile(otherUid);
+                                          _state.activeChatContact = user?.name;
+                                        }
+                                      }
+                                      _state.currentScreen = AppScreen.chat;
+                                    }
+                                  }
+                                }
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
@@ -153,7 +430,8 @@ class _HubScreenState extends State<HubScreen> {
     final Map<String, dynamic>? focusedActivity =
         _hoveredIndex != null ? _activities[_hoveredIndex!] : null;
 
-    final String userName = _state.profileData?['given_name'] ?? 'Rohan';
+    final String fullName = _state.profileData?['name'] ?? 'Rohan';
+    final String userName = fullName.trim().split(' ').first;
 
     return Container(
       decoration: const BoxDecoration(
@@ -185,6 +463,8 @@ class _HubScreenState extends State<HubScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const AppLogo(size: 22),
+                        const SizedBox(height: 10),
                         const Text(
                           'ACTIVITY HUB',
                           style: TextStyle(
@@ -217,35 +497,74 @@ class _HubScreenState extends State<HubScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // Profile Avatar
-                  GestureDetector(
-                    onTap: () {
-                      _state.currentScreen = AppScreen.profile;
-                    },
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFFE8E2DD),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          )
-                        ],
-                        border: Border.all(color: Colors.white, width: 2),
+                  Row(
+                    children: [
+                      // Streamed Notifications Bell Icon with badge
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance
+                            .collection('notifications')
+                            .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                            .where('isRead', isEqualTo: false)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          final unreadCount = snapshot.data?.docs.length ?? 0;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                icon: const Icon(Icons.notifications_none_outlined, color: Color(0xFF7A432D), size: 22),
+                                onPressed: () => _showNotificationsBottomSheet(context),
+                              ),
+                              if (unreadCount > 0)
+                                Positioned(
+                                  top: -2,
+                                  right: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFC62828)),
+                                    constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '$unreadCount',
+                                      style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
-                      clipBehavior: Clip.antiAlias,
-                      child: _state.profileData?['picture'] != null
-                          ? Image.network(
-                              _state.profileData!['picture']!,
+                      const SizedBox(width: 14),
+                      GestureDetector(
+                        onTap: () {
+                          _state.currentScreen = AppScreen.profile;
+                        },
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFE8E2DD),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              )
+                            ],
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: ClipOval(
+                            child: buildProfileImage(
+                              _state.profileData?['picture'] ?? '',
+                              width: 44,
+                              height: 44,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
+                              fallback: Center(
                                 child: Text(
-                                  userName.substring(0, 1).toUpperCase(),
+                                  userName.isNotEmpty ? userName.substring(0, 1).toUpperCase() : 'U',
                                   style: const TextStyle(
                                     fontFamily: 'PlayfairDisplay',
                                     fontWeight: FontWeight.bold,
@@ -254,19 +573,35 @@ class _HubScreenState extends State<HubScreen> {
                                   ),
                                 ),
                               ),
-                            )
-                          : Center(
-                              child: Text(
-                                userName.substring(0, 1).toUpperCase(),
-                                style: const TextStyle(
-                                  fontFamily: 'PlayfairDisplay',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: Color(0xFF7A432D),
-                                ),
-                              ),
                             ),
-                    ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _state.logOut();
+                        },
+                        icon: const Icon(Icons.logout, size: 14, color: Color(0xFF7A432D)),
+                        label: const Text(
+                          'Log Out',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          side: const BorderSide(color: Color(0xFF7A432D), width: 1.2),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -276,7 +611,6 @@ class _HubScreenState extends State<HubScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Compute scaling factor based on the available space inside Expanded
                   final double scale = (constraints.maxHeight < 340 || constraints.maxWidth < 320)
                       ? (constraints.maxHeight / 340 < constraints.maxWidth / 320
                           ? constraints.maxHeight / 340
@@ -285,16 +619,15 @@ class _HubScreenState extends State<HubScreen> {
 
                   final double stageWidth = 320 * scale;
                   final double stageHeight = 340 * scale;
-                  final double R = 96.0 * scale;
+                  final double R = 106.0 * scale;
 
-                  // Angle positions around the center
                   final List<Offset> positions = [
-                    Offset(0, -R), // top (Profile)
-                    Offset(R * 0.866, -R * 0.5), // top-right (Check in)
-                    Offset(R * 0.866, R * 0.5), // bottom-right (Events)
-                    Offset(0, R), // bottom (Discover)
-                    Offset(-R * 0.866, R * 0.5), // bottom-left (Chat)
-                    Offset(-R * 0.866, -R * 0.5), // top-left (Meet)
+                    Offset(0, -R),
+                    Offset(R * 0.866, -R * 0.5),
+                    Offset(R * 0.866, R * 0.5),
+                    Offset(0, R),
+                    Offset(-R * 0.866, R * 0.5),
+                    Offset(-R * 0.866, -R * 0.5),
                   ];
 
                   return Center(
@@ -304,31 +637,21 @@ class _HubScreenState extends State<HubScreen> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Concentric decorative rings
                           Container(
-                            width: 260 * scale,
-                            height: 260 * scale,
+                            width: 280 * scale,
+                            height: 280 * scale,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFFE8E2DD),
-                                width: 1.2 * scale,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            width: 180 * scale,
-                            height: 180 * scale,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFFE8E2DD),
-                                width: 1.2 * scale,
+                              gradient: RadialGradient(
+                                colors: [
+                                  const Color(0xFF7A432D).withValues(alpha: 0.08),
+                                  const Color(0xFF7A432D).withValues(alpha: 0.02),
+                                  Colors.transparent,
+                                ],
                               ),
                             ),
                           ),
 
-                          // Center dynamic text/icon container
                           SizedBox(
                             width: 110 * scale,
                             height: 110 * scale,
@@ -336,8 +659,8 @@ class _HubScreenState extends State<HubScreen> {
                               duration: const Duration(milliseconds: 200),
                               child: focusedActivity != null
                                   ? Column(
+                                      key: ValueKey('hub_center_$_hoverSequence'),
                                       mainAxisAlignment: MainAxisAlignment.center,
-                                      key: ValueKey('focused_$_hoveredIndex'),
                                       children: [
                                         Text(
                                           'ACTIVITY',
@@ -371,20 +694,20 @@ class _HubScreenState extends State<HubScreen> {
                                       ],
                                     )
                                   : Column(
+                                      key: ValueKey('hub_center_$_hoverSequence'),
                                       mainAxisAlignment: MainAxisAlignment.center,
-                                      key: const ValueKey('idle_hub'),
                                       children: [
                                         Container(
                                           width: 60 * scale,
                                           height: 60 * scale,
-                                          decoration: const BoxDecoration(
+                                          decoration: BoxDecoration(
                                             shape: BoxShape.circle,
-                                            color: Color(0xFF9E5738),
+                                            color: const Color(0xFF7A432D),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: Colors.black12,
-                                                blurRadius: 6,
-                                                offset: Offset(0, 3),
+                                                color: const Color(0xFF7A432D).withValues(alpha: 0.22),
+                                                blurRadius: 10 * scale,
+                                                offset: Offset(0, 4 * scale),
                                               )
                                             ],
                                           ),
@@ -402,7 +725,7 @@ class _HubScreenState extends State<HubScreen> {
                                             fontSize: 10 * scale,
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 2.5 * scale,
-                                            color: const Color(0xFF9E5738),
+                                            color: const Color(0xFF7A432D),
                                           ),
                                         ),
                                       ],
@@ -410,7 +733,6 @@ class _HubScreenState extends State<HubScreen> {
                             ),
                           ),
 
-                          // Build the 6 hex cells
                           ...List.generate(6, (index) {
                             final act = _activities[index];
                             final pos = positions[index];
@@ -421,17 +743,17 @@ class _HubScreenState extends State<HubScreen> {
                               left: (stageWidth / 2) + pos.dx - (36 * scale),
                               top: (stageHeight / 2) + pos.dy - (40 * scale),
                               child: GestureDetector(
-                                onPanDown: (_) => setState(() => _hoveredIndex = index),
-                                onPanCancel: () => setState(() => _hoveredIndex = null),
-                                onPanEnd: (_) => setState(() => _hoveredIndex = null),
-                                onTapDown: (_) => setState(() => _hoveredIndex = index),
-                                onTapUp: (_) => setState(() => _hoveredIndex = null),
+                                onPanDown: (_) => _updateHoveredIndex(index),
+                                onPanCancel: () => _updateHoveredIndex(null),
+                                onPanEnd: (_) => _updateHoveredIndex(null),
+                                onTapDown: (_) => _updateHoveredIndex(index),
+                                onTapUp: (_) => _updateHoveredIndex(null),
                                 onTap: () {
                                   _state.currentScreen = act['screen'];
                                 },
                                 child: MouseRegion(
-                                  onEnter: (_) => setState(() => _hoveredIndex = index),
-                                  onExit: (_) => setState(() => _hoveredIndex = null),
+                                  onEnter: (_) => _updateHoveredIndex(index),
+                                  onExit: (_) => _updateHoveredIndex(null),
                                   child: AnimatedScale(
                                     duration: const Duration(milliseconds: 200),
                                     scale: isFocused
@@ -440,36 +762,75 @@ class _HubScreenState extends State<HubScreen> {
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        ClipPath(
-                                          clipper: HexagonClipper(),
-                                          child: Container(
-                                            width: 72 * scale,
-                                            height: 80 * scale,
-                                            color: act['color'],
-                                            alignment: Alignment.center,
-                                            child: Icon(
-                                              act['icon'],
-                                              color: act['textColor'],
-                                              size: 26 * scale,
+                                        if (pos.dy < 0) ...[
+                                          AnimatedOpacity(
+                                            duration: const Duration(milliseconds: 200),
+                                            opacity: isFocused ? 1.0 : 0.6,
+                                            child: Text(
+                                              act['label'],
+                                              style: TextStyle(
+                                                fontFamily: 'PlusJakartaSans',
+                                                fontSize: 10 * scale,
+                                                fontWeight: FontWeight.bold,
+                                                color: isFocused
+                                                    ? const Color(0xFF3E1F11)
+                                                    : const Color(0xFF8C736B),
+                                              ),
                                             ),
                                           ),
+                                          SizedBox(height: 4 * scale),
+                                        ],
+                                        Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            Container(
+                                              width: 58 * scale,
+                                              height: 58 * scale,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: const Color(0xFF7A432D).withValues(alpha: isFocused ? 0.14 : 0.06),
+                                                    blurRadius: isFocused ? 12 * scale : 6 * scale,
+                                                    offset: Offset(0, isFocused ? 4 * scale : 2 * scale),
+                                                  )
+                                                ],
+                                              ),
+                                            ),
+                                            ClipPath(
+                                              clipper: HexagonClipper(),
+                                              child: Container(
+                                                width: 72 * scale,
+                                                height: 80 * scale,
+                                                color: act['color'],
+                                                alignment: Alignment.center,
+                                                child: Icon(
+                                                  act['icon'],
+                                                  color: act['textColor'],
+                                                  size: 26 * scale,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        SizedBox(height: 4 * scale),
-                                        AnimatedOpacity(
-                                          duration: const Duration(milliseconds: 200),
-                                          opacity: isFocused ? 1.0 : 0.6,
-                                          child: Text(
-                                            act['label'],
-                                            style: TextStyle(
-                                              fontFamily: 'PlusJakartaSans',
-                                              fontSize: 10 * scale,
-                                              fontWeight: FontWeight.bold,
-                                              color: isFocused
-                                                  ? const Color(0xFF3E1F11)
-                                                  : const Color(0xFF8C736B),
+                                        if (pos.dy >= 0) ...[
+                                          SizedBox(height: 4 * scale),
+                                          AnimatedOpacity(
+                                            duration: const Duration(milliseconds: 200),
+                                            opacity: isFocused ? 1.0 : 0.6,
+                                            child: Text(
+                                              act['label'],
+                                              style: TextStyle(
+                                                fontFamily: 'PlusJakartaSans',
+                                                fontSize: 10 * scale,
+                                                fontWeight: FontWeight.bold,
+                                                color: isFocused
+                                                    ? const Color(0xFF3E1F11)
+                                                    : const Color(0xFF8C736B),
+                                              ),
                                             ),
                                           ),
-                                        ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -575,14 +936,191 @@ class _HubScreenState extends State<HubScreen> {
   }
 
   Widget _buildAdNotifCarousel() {
-    final slot = _slots[_tickerIndex];
-    final isAd = slot['kind'] == 'ad';
-    final IconData icon = slot['icon'] ?? Icons.notifications;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: MeetingService().streamUserMeetings(),
+      builder: (context, meetingSnapshot) {
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: SponsorService().streamSponsors(),
+          builder: (context, sponsorSnapshot) {
+            final currentUid = FirebaseAuth.instance.currentUser?.uid;
+            final List<Map<String, dynamic>> carouselItems = [];
 
+            if (meetingSnapshot.hasData) {
+              for (final doc in meetingSnapshot.data!.docs) {
+                final data = doc.data();
+                final status = data['status'] as String? ?? 'pending';
+                final requesterId = data['requesterId'] as String? ?? '';
+                final receiverId = data['receiverId'] as String? ?? '';
+                final location = data['location'] as String? ?? 'Venue';
+                final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
+                final scheduledAt = scheduledTimestamp?.toDate();
+
+                if (status == 'confirmed') {
+                  if (scheduledAt != null && scheduledAt.isAfter(DateTime.now())) {
+                    final otherUserId = currentUid == receiverId ? requesterId : receiverId;
+                    carouselItems.add({
+                      'kind': 'meeting',
+                      'meetingId': doc.id,
+                      'otherUserId': otherUserId,
+                      'title': 'Upcoming Meeting',
+                      'body': 'At $location on ${_formatDateTime(scheduledAt)}',
+                      'icon': Icons.calendar_month_outlined,
+                      'scheduledAt': scheduledAt,
+                    });
+                  }
+                } else if (status == 'pending' && receiverId == currentUid) {
+                  carouselItems.add({
+                    'kind': 'notif',
+                    'meetingId': doc.id,
+                    'otherUserId': requesterId,
+                    'title': 'Meeting Request',
+                    'body': 'Wants to meet at $location',
+                    'icon': Icons.chat_bubble_outline_rounded,
+                    'scheduledAt': scheduledAt,
+                  });
+                }
+              }
+            }
+
+            carouselItems.sort((a, b) {
+              final aTime = a['scheduledAt'] as DateTime?;
+              final bTime = b['scheduledAt'] as DateTime?;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
+              return aTime.compareTo(bTime);
+            });
+
+            if (sponsorSnapshot.hasData) {
+              for (final doc in sponsorSnapshot.data!.docs) {
+                final data = doc.data();
+                final brand = data['brand'] ?? 'Sponsor';
+                final title = data['title'] ?? '';
+                final cta = data['cta'] ?? 'Learn';
+                final url = data['url'] ?? '';
+                final iconName = data['icon'] ?? 'star';
+
+                IconData iconData = Icons.star_outline_rounded;
+                if (iconName == 'coffee') iconData = Icons.coffee;
+                if (iconName == 'flight') iconData = Icons.flight_outlined;
+                if (iconName == 'percent') iconData = Icons.percent;
+                if (iconName == 'business') iconData = Icons.business_outlined;
+
+                carouselItems.add({
+                  'kind': 'ad',
+                  'brand': brand,
+                  'title': title,
+                  'cta': cta,
+                  'url': url,
+                  'icon': iconData,
+                });
+              }
+            }
+
+            if (carouselItems.isEmpty) {
+              carouselItems.addAll([
+                {
+                  'kind': 'ad',
+                  'brand': 'Plaza Premium',
+                  'title': '20% off lounge upgrade — today only',
+                  'cta': 'Claim',
+                  'icon': Icons.auto_awesome_outlined,
+                  'url': '',
+                },
+                {
+                  'kind': 'ad',
+                  'brand': 'Amex Platinum',
+                  'title': 'Free lounge access at 1,400+ airports',
+                  'cta': 'Learn',
+                  'icon': Icons.star_outline_rounded,
+                  'url': '',
+                },
+              ]);
+            }
+
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _carouselItemCount != carouselItems.length) {
+                setState(() {
+                  _carouselItemCount = carouselItems.length;
+                });
+              }
+            });
+
+            final index = _tickerIndex >= carouselItems.length ? 0 : _tickerIndex;
+            final item = carouselItems[index];
+            final isAd = item['kind'] == 'ad';
+            final IconData icon = item['icon'] ?? Icons.notifications;
+
+            if (!isAd) {
+              final String otherUserId = item['otherUserId'] ?? '';
+              return FutureBuilder<UserProfile?>(
+                future: UserService().getUserProfile(otherUserId),
+                builder: (context, profileSnapshot) {
+                  final name = profileSnapshot.data?.name ?? 'Someone';
+                  final titleText = item['kind'] == 'meeting'
+                      ? 'Meeting with $name'
+                      : 'Meeting request from $name';
+
+                  return _buildCarouselCard(
+                    keyVal: 'carousel_slot_$index',
+                    tagText: item['kind'] == 'meeting' ? 'UPCOMING MEETING' : 'NOTIFICATION',
+                    titleText: titleText,
+                    bodyText: item['body'],
+                    icon: icon,
+                    isAd: false,
+                    ctaText: 'View',
+                    onCtaPressed: () {
+                      _state.currentScreen = AppScreen.meeting;
+                    },
+                    dotsCount: carouselItems.length,
+                    activeIndex: index,
+                  );
+                },
+              );
+            } else {
+              return _buildCarouselCard(
+                keyVal: 'carousel_slot_$index',
+                tagText: 'SPONSORED · ${item['brand']}'.toUpperCase(),
+                titleText: item['title'],
+                bodyText: null,
+                icon: icon,
+                isAd: true,
+                ctaText: item['cta'],
+                onCtaPressed: () {
+                  final url = item['url'] as String? ?? '';
+                  if (url.isNotEmpty) {
+                    _launchURL(url);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Details for ${item['brand']}')),
+                    );
+                  }
+                },
+                dotsCount: carouselItems.length,
+                activeIndex: index,
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCarouselCard({
+    required String keyVal,
+    required String tagText,
+    required String titleText,
+    required String? bodyText,
+    required IconData icon,
+    required bool isAd,
+    required String ctaText,
+    required VoidCallback onCtaPressed,
+    required int dotsCount,
+    required int activeIndex,
+  }) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       child: Container(
-        key: ValueKey('carousel_slot_$_tickerIndex'),
+        key: ValueKey(keyVal),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
@@ -600,7 +1138,6 @@ class _HubScreenState extends State<HubScreen> {
           children: [
             Row(
               children: [
-                // Icon Avatar
                 Container(
                   width: 44,
                   height: 44,
@@ -635,16 +1172,12 @@ class _HubScreenState extends State<HubScreen> {
                 ),
                 const SizedBox(width: 12),
 
-                // Text Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Tag header
                       Text(
-                        isAd
-                            ? 'SPONSORED · ${slot['brand']}'.toUpperCase()
-                            : 'NOTIFICATION',
+                        tagText,
                         style: TextStyle(
                           fontFamily: 'PlusJakartaSans',
                           fontSize: 9,
@@ -657,7 +1190,7 @@ class _HubScreenState extends State<HubScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        slot['title'],
+                        titleText,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -667,9 +1200,9 @@ class _HubScreenState extends State<HubScreen> {
                           color: Color(0xFF3E1F11),
                         ),
                       ),
-                      if (!isAd && slot['body'] != null)
+                      if (bodyText != null)
                         Text(
-                          slot['body'],
+                          bodyText,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -683,46 +1216,37 @@ class _HubScreenState extends State<HubScreen> {
                 ),
                 const SizedBox(width: 8),
 
-                // Action
-                if (isAd)
-                  Container(
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3E1F11),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: TextButton(
-                      onPressed: () {},
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        slot['cta'],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  const Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 18,
-                    color: Color(0xFF8C736B),
+                Container(
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7A432D),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: TextButton(
+                    onPressed: onCtaPressed,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      ctaText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 10),
 
-            // Progress Indicators
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_slots.length, (i) {
-                final isActive = i == _tickerIndex;
+              children: List.generate(dotsCount, (i) {
+                final isActive = i == activeIndex;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -741,5 +1265,20 @@ class _HubScreenState extends State<HubScreen> {
         ),
       ),
     );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final hourStr = dt.hour.toString().padLeft(2, '0');
+    final minStr = dt.minute.toString().padLeft(2, '0');
+    return "${dt.day} ${months[dt.month - 1]} at $hourStr:$minStr";
+  }
+
+  void _launchURL(String urlString) async {
+    if (urlString.isEmpty) return;
+    final uri = Uri.tryParse(urlString);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }

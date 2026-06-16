@@ -75,7 +75,6 @@ class CheckinService {
 
     return _checkinsRef
         .where('userId', isEqualTo: uid)
-        .orderBy('createdAt', descending: true)
         .snapshots();
   }
 

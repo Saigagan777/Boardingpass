@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "514349178076",
+    "project_id": "fir-p-57bdc",
+    "storage_bucket": "fir-p-57bdc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:514349178076:android:3880d52b0a46bc7fba6819",
+        "android_client_info": {
+          "package_name": "com.example.expense_tracker_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyTPvqF1fDHoyQ6ZYOFRAVkfj9X09onlI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:514349178076:android:94a46f73440a99e2ba6819",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyTPvqF1fDHoyQ6ZYOFRAVkfj9X09onlI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:514349178076:android:a9e1568ef3cc35ceba6819",
+        "android_client_info": {
+          "package_name": "com.gg.amaging1__"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyTPvqF1fDHoyQ6ZYOFRAVkfj9X09onlI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

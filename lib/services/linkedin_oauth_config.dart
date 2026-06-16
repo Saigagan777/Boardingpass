@@ -1,0 +1,34 @@
+import 'package:flutter/foundation.dart';
+
+class LinkedInOAuthConfig {
+  static const String clientId = '';
+  static const String state = '';
+  static const String mobileRedirectUri = '';
+
+  static String get redirectUri {
+    if (!kIsWeb) {
+      return mobileRedirectUri;
+    }
+
+    final baseUri = Uri.base;
+    // Force the exact registered redirect URI when running locally/debug to avoid 127.0.0.1 vs localhost mismatch
+    if (kDebugMode || baseUri.host == 'localhost' || baseUri.host == '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+
+    if (baseUri.hasScheme && baseUri.hasAuthority) {
+      return '${baseUri.scheme}://${baseUri.authority}';
+    }
+
+    return 'http://localhost:5000';
+  }
+
+  static String authorizationUrl({required String redirectUri}) {
+    return 'https://www.linkedin.com/oauth/v2/authorization?'
+        'response_type=code'
+        '&client_id=$clientId'
+        '&redirect_uri=${Uri.encodeComponent(redirectUri)}'
+        '&state=$state'
+        '&scope=openid%20profile%20email';
+  }
+}

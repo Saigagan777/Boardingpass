@@ -31,6 +31,11 @@ class EventService {
     required String month,
     required String day,
     String? illustrationPath,
+    String category = 'Meetups',
+    String price = 'Free',
+    String? mapUrl,
+    double? latitude,
+    double? longitude,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -43,6 +48,11 @@ class EventService {
         'month': month,
         'day': day,
         'illustrationPath': illustrationPath ?? '',
+        'category': category,
+        'price': price,
+        if (mapUrl != null && mapUrl.isNotEmpty) 'mapUrl': mapUrl,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
         'organiserId': uid,
         'attendees': <String>[],
         'attendeeCount': 0,
@@ -71,7 +81,6 @@ class EventService {
       String userId) {
     return _eventsRef
         .where('organiserId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
         .snapshots();
   }
 

@@ -36,15 +36,14 @@ class ChatService {
   // Chat CRUD
   // ---------------------------------------------------------------------------
 
-  /// Creates a new chat document between [userId1] and [userId2].
-  ///
-  /// Returns the new chat document's ID.
+  /// Creates a new 1-to-1 chat document between [userId1] and [userId2].
   Future<String> createChat({
     required String userId1,
     required String userId2,
   }) async {
     try {
       final chatDoc = await _chatsRef.add({
+        'isGroup': false,
         'participants': [userId1, userId2],
         'lastMessage': null,
         'unreadCount': {userId1: 0, userId2: 0},
@@ -58,15 +57,192 @@ class ChatService {
     }
   }
 
-  /// Returns the existing chat ID between two users, or creates a new one
-  /// if none exists.
+  /// Creates a new group chat document.
+  Future<String> createGroupChat({
+    required String groupName,
+    required String imageUrl,
+    required List<String> participants,
+  }) async {
+    final uid = _currentUid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final allParticipants = {uid, ...participants}.toList();
+      final unreadMap = <String, int>{};
+      final typingMap = <String, bool>{};
+
+      for (final p in allParticipants) {
+        unreadMap[p] = 0;
+        typingMap[p] = false;
+      }
+
+      final chatDoc = await _chatsRef.add({
+        'isGroup': true,
+        'groupName': groupName,
+        'groupImageUrl': imageUrl,
+        'createdBy': uid,
+        'admins': [uid],
+        'participants': allParticipants,
+        'mutedBy': [],
+        'pinnedMessages': [],
+        'lastMessage': {
+          'text': 'Group created by ${imageUrl.isEmpty ? "Organizer" : "Admin"}',
+          'senderId': uid,
+          'timestamp': FieldValue.serverTimestamp(),
+        },
+        'unreadCount': unreadMap,
+        'typingStatus': typingMap,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // Write activity message
+      await _chatsRef.doc(chatDoc.id).collection('messages').add({
+        'senderId': 'system',
+        'senderName': 'System',
+        'type': MessageKind.text.name,
+        'text': '📢 Group "$groupName" was created.',
+        'createdAt': FieldValue.serverTimestamp(),
+        'readBy': [uid],
+      });
+
+      return chatDoc.id;
+    } catch (e) {
+      throw Exception('Failed to create group chat: $e');
+    }
+  }
+
+  /// Updates group metadata, admins, or participants.
+  Future<void> updateGroupSettings({
+    required String chatId,
+    String? name,
+    String? imageUrl,
+    List<String>? participants,
+    List<String>? admins,
+  }) async {
+    try {
+      final updates = <String, dynamic>{
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (name != null) updates['groupName'] = name;
+      if (imageUrl != null) updates['groupImageUrl'] = imageUrl;
+      if (participants != null) {
+        updates['participants'] = participants;
+        // Clean unread / typing status maps to align with current participants
+        final doc = await _chatsRef.doc(chatId).get();
+        final data = doc.data() ?? {};
+        final unread = Map<String, dynamic>.from(data['unreadCount'] ?? {});
+        final typing = Map<String, dynamic>.from(data['typingStatus'] ?? {});
+        final newUnread = <String, int>{};
+        final newTyping = <String, bool>{};
+        for (final p in participants) {
+          newUnread[p] = unread[p] ?? 0;
+          newTyping[p] = typing[p] ?? false;
+        }
+        updates['unreadCount'] = newUnread;
+        updates['typingStatus'] = newTyping;
+      }
+      if (admins != null) updates['admins'] = admins;
+
+      await _chatsRef.doc(chatId).update(updates);
+    } catch (e) {
+      throw Exception('Failed to update group settings: $e');
+    }
+  }
+
+  /// Mutes or unmutes notifications for a specific group/chat.
+  Future<void> muteGroup({
+    required String chatId,
+    required bool mute,
+  }) async {
+    final uid = _currentUid;
+    if (uid == null) return;
+    try {
+      await _chatsRef.doc(chatId).update({
+        'mutedBy': mute
+            ? FieldValue.arrayUnion([uid])
+            : FieldValue.arrayRemove([uid])
+      });
+    } catch (e) {
+      throw Exception('Failed to update group mute status: $e');
+    }
+  }
+
+  /// Pins a message to the chat header.
+  Future<void> pinMessage({
+    required String chatId,
+    required String messageId,
+    required String text,
+    required String senderName,
+  }) async {
+    try {
+      await _chatsRef.doc(chatId).update({
+        'pinnedMessages': FieldValue.arrayUnion([
+          {
+            'id': messageId,
+            'text': text,
+            'senderName': senderName,
+            'timestamp': Timestamp.now(),
+          }
+        ])
+      });
+    } catch (e) {
+      throw Exception('Failed to pin message: $e');
+    }
+  }
+
+  /// Unpins a message.
+  Future<void> unpinMessage({
+    required String chatId,
+    required String messageId,
+  }) async {
+    try {
+      final doc = await _chatsRef.doc(chatId).get();
+      final pinned = List<Map<String, dynamic>>.from(
+        (doc.data()?['pinnedMessages'] as List?)?.map((e) => Map<String, dynamic>.from(e)) ?? []
+      );
+      pinned.removeWhere((item) => item['id'] == messageId);
+      await _chatsRef.doc(chatId).update({'pinnedMessages': pinned});
+    } catch (e) {
+      throw Exception('Failed to unpin message: $e');
+    }
+  }
+
+  /// Toggles emoji reaction on a message.
+  Future<void> toggleReaction({
+    required String chatId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final uid = _currentUid;
+    if (uid == null) return;
+    try {
+      final msgRef = _chatsRef.doc(chatId).collection('messages').doc(messageId);
+      final doc = await msgRef.get();
+      final currentReactions = Map<String, dynamic>.from(doc.data()?['reactionsMap'] ?? {});
+      
+      if (currentReactions[uid] == emoji) {
+        // Remove reaction
+        currentReactions.remove(uid);
+      } else {
+        // Set/Change reaction
+        currentReactions[uid] = emoji;
+      }
+      
+      await msgRef.update({'reactionsMap': currentReactions});
+    } catch (e) {
+      throw Exception('Failed to toggle reaction: $e');
+    }
+  }
+
+  /// Returns the existing chat ID between two users, or creates a new one.
   Future<String> getOrCreateChat({
     required String userId1,
     required String userId2,
   }) async {
     try {
-      // Look for a chat that contains both participants
       final query = await _chatsRef
+          .where('isGroup', isEqualTo: false)
           .where('participants', arrayContains: userId1)
           .get();
 
@@ -77,7 +253,6 @@ class ChatService {
         }
       }
 
-      // No existing chat – create one
       return createChat(userId1: userId1, userId2: userId2);
     } catch (e) {
       throw Exception('Failed to get or create chat: $e');
@@ -88,14 +263,12 @@ class ChatService {
   // Chat list stream
   // ---------------------------------------------------------------------------
 
-  /// Streams the current user's chat list, ordered by most-recently updated.
   Stream<QuerySnapshot<Map<String, dynamic>>> streamUserChats() {
     final uid = _currentUid;
     if (uid == null) return const Stream.empty();
 
     return _chatsRef
         .where('participants', arrayContains: uid)
-        .orderBy('updatedAt', descending: true)
         .snapshots();
   }
 
@@ -103,7 +276,6 @@ class ChatService {
   // Messages
   // ---------------------------------------------------------------------------
 
-  /// Streams all messages in [chatId], ordered oldest-first.
   Stream<QuerySnapshot<Map<String, dynamic>>> streamMessages(String chatId) {
     return _chatsRef
         .doc(chatId)
@@ -112,55 +284,71 @@ class ChatService {
         .snapshots();
   }
 
-  /// Sends a **text** message to the given [chatId].
+  /// Sends a **text** message.
   Future<void> sendTextMessage({
     required String chatId,
     required String text,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
   }) async {
     await _sendMessage(
       chatId: chatId,
       type: MessageKind.text,
-      data: {'text': text},
+      data: {
+        'text': text,
+        'replyTo':? replyTo,
+        'mentions': mentions,
+      },
     );
   }
 
-  /// Sends a **voice** message to the given [chatId].
+  /// Sends a **voice** message.
   Future<void> sendVoiceMessage({
     required String chatId,
     required int voiceDuration,
     String? audioUrl,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
   }) async {
     await _sendMessage(
       chatId: chatId,
       type: MessageKind.voice,
       data: {
         'voiceDuration': voiceDuration,
-        'audioUrl': ?audioUrl,
+        'audioUrl': audioUrl,
+        'replyTo':? replyTo,
+        'mentions': mentions,
       },
     );
   }
 
-  /// Sends a **pin** (location share) message to the given [chatId].
+  /// Sends a **pin** message.
   Future<void> sendPinMessage({
     required String chatId,
     required String place,
     String? meta,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
   }) async {
     await _sendMessage(
       chatId: chatId,
       type: MessageKind.pin,
       data: {
         'place': place,
-        'meta': ?meta,
+        'meta': meta,
+        'replyTo':? replyTo,
+        'mentions': mentions,
       },
     );
   }
 
-  /// Sends a **poll** message to the given [chatId].
+  /// Sends a **poll** message.
   Future<void> sendPollMessage({
     required String chatId,
     required String question,
     required List<String> options,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
   }) async {
     await _sendMessage(
       chatId: chatId,
@@ -169,12 +357,75 @@ class ChatService {
         'question': question,
         'options': options,
         'picked': null,
+        'replyTo':? replyTo,
+        'mentions': mentions,
       },
     );
   }
 
-  /// Internal helper that writes a message sub-document and updates the
-  /// parent chat's `lastMessage`, `unreadCount`, and `updatedAt`.
+  /// Sends an **image** message.
+  Future<void> sendImageMessage({
+    required String chatId,
+    required String imageUrl,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
+  }) async {
+    await _sendMessage(
+      chatId: chatId,
+      type: MessageKind.image,
+      data: {
+        'imageUrl': imageUrl,
+        'replyTo':? replyTo,
+        'mentions': mentions,
+      },
+    );
+  }
+
+  /// Sends a **file** message.
+  Future<void> sendFileMessage({
+    required String chatId,
+    required String fileUrl,
+    required String fileName,
+    required int fileSize,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
+  }) async {
+    await _sendMessage(
+      chatId: chatId,
+      type: MessageKind.file,
+      data: {
+        'fileUrl': fileUrl,
+        'fileName': fileName,
+        'fileSize': fileSize,
+        'replyTo':? replyTo,
+        'mentions': mentions,
+      },
+    );
+  }
+
+  /// Sends a **link** message.
+  Future<void> sendLinkMessage({
+    required String chatId,
+    required String url,
+    String? title,
+    String? description,
+    Map<String, dynamic>? replyTo,
+    List<String> mentions = const [],
+  }) async {
+    await _sendMessage(
+      chatId: chatId,
+      type: MessageKind.link,
+      data: {
+        'linkUrl': url,
+        'linkTitle':? title,
+        'linkDescription':? description,
+        'replyTo':? replyTo,
+        'mentions': mentions,
+      },
+    );
+  }
+
+  /// Internal helper that writes a message sub-document and updates the parent chat.
   Future<void> _sendMessage({
     required String chatId,
     required MessageKind type,
@@ -186,12 +437,15 @@ class ChatService {
     try {
       final messageRef = _chatsRef.doc(chatId).collection('messages').doc();
       final now = FieldValue.serverTimestamp();
+      final senderName = _auth.currentUser?.displayName ?? 'User';
 
       final messageData = {
         'senderId': uid,
+        'senderName': senderName,
         'type': type.name,
         'createdAt': now,
         'readBy': [uid],
+        'reactionsMap': {},
         ...data,
       };
 
@@ -213,25 +467,33 @@ class ChatService {
         case MessageKind.card:
           previewText = '📇 Card';
           break;
+        case MessageKind.image:
+          previewText = '📷 Image shared';
+          break;
+        case MessageKind.file:
+          previewText = '📄 File: ${data['fileName'] ?? 'Document'}';
+          break;
+        case MessageKind.link:
+          previewText = '🔗 Link shared';
+          break;
       }
 
       // Fetch participants to update unread counts
       final chatDoc = await _chatsRef.doc(chatId).get();
-      final participants =
-          List<String>.from(chatDoc.data()?['participants'] ?? []);
-      final otherUid = participants.firstWhere(
-        (p) => p != uid,
-        orElse: () => '',
-      );
+      final chatMap = chatDoc.data() ?? {};
+      final participants = List<String>.from(chatMap['participants'] ?? []);
 
-      // Build unread count updates – increment for the other user
+      // Build unread count updates – increment for all other users
       final unreadUpdates = <String, dynamic>{};
-      if (otherUid.isNotEmpty) {
-        final currentUnread =
-            (chatDoc.data()?['unreadCount'] as Map<String, dynamic>?)?[otherUid];
-        unreadUpdates[otherUid] = (currentUnread ?? 0) + 1;
+      final currentUnreadMap = Map<String, dynamic>.from(chatMap['unreadCount'] ?? {});
+      for (final p in participants) {
+        if (p == uid) {
+          unreadUpdates[p] = 0;
+        } else {
+          final currentUnread = currentUnreadMap[p] ?? 0;
+          unreadUpdates[p] = currentUnread + 1;
+        }
       }
-      unreadUpdates[uid] = 0;
 
       // Batch write: message + chat metadata
       final batch = _firestore.batch();
@@ -240,6 +502,7 @@ class ChatService {
         'lastMessage': {
           'text': previewText,
           'senderId': uid,
+          'senderName': senderName,
           'timestamp': now,
         },
         'unreadCount': unreadUpdates,
@@ -247,6 +510,40 @@ class ChatService {
       });
 
       await batch.commit();
+
+      // Trigger push notification triggers / database alerts
+      final isGroup = chatMap['isGroup'] == true;
+      final groupName = chatMap['groupName'] ?? 'Group';
+      final muted = List<String>.from(chatMap['mutedBy'] ?? []);
+      final mentionsList = List<String>.from(data['mentions'] ?? []);
+
+      for (final p in participants) {
+        if (p == uid) continue;
+        final isMuted = muted.contains(p);
+        final isMentioned = mentionsList.contains(p);
+        
+        // Skip notify if group is muted, UNLESS the user is explicitly @mentioned!
+        if (isMuted && !isMentioned) continue;
+
+        final alertTitle = isGroup ? groupName : senderName;
+        final alertBody = isMentioned 
+            ? '@$senderName mentioned you: $previewText'
+            : '$senderName: $previewText';
+
+        // Write directly to root notifications collection for the recipient
+        await _firestore.collection('notifications').add({
+          'userId': p,
+          'title': alertTitle,
+          'body': alertBody,
+          'type': 'group_activity',
+          'isRead': false,
+          'metadata': {
+            'chatId': chatId,
+            'senderId': uid,
+          },
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
     } catch (e) {
       throw Exception('Failed to send message: $e');
     }
@@ -315,6 +612,23 @@ class ChatService {
     } catch (e) {
       // Non-critical – swallow in production to avoid UX disruption.
       throw Exception('Failed to update typing status: $e');
+    }
+  }
+
+  /// Updates a poll message's `picked` field in Firestore.
+  Future<void> answerPoll({
+    required String chatId,
+    required String messageId,
+    required int optionIndex,
+  }) async {
+    try {
+      await _chatsRef
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'picked': optionIndex});
+    } catch (e) {
+      throw Exception('Failed to answer poll: $e');
     }
   }
 }

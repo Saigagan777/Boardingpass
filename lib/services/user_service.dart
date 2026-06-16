@@ -1,6 +1,11 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:http/http.dart' as http;
 import '../models/user_profile.dart';
+import 'linkedin_oauth_config.dart';
+import 'linkedin_secret.dart';
 
 /// Singleton service for Firestore `users` collection operations.
 ///
@@ -83,9 +88,32 @@ class UserService {
     String? headline,
     String? company,
     String? role,
+    String? industry,
+    String? experience,
+    String? homeBase,
+    String? currentLocationName,
+    String? travelFrequency,
+    String? cardImageUrl,
+    String? profileImageUrl,
+    List<String>? cardImages,
+    List<CustomCard>? customCards,
+    int? connectionsCount,
+    int? eventsJoinedCount,
+    int? eventsHostedCount,
     List<String>? expertise,
     List<String>? intents,
     bool? isDiscoverable,
+    String? coverImageUrl,
+    String? linkedinProfileUrl,
+    int? connectionCount,
+    int? followerCount,
+    List<String>? skills,
+    List<String>? interests,
+    List<String>? followedTopics,
+    List<String>? professionalInterests,
+    List<Map<String, dynamic>>? careerTimeline,
+    List<Map<String, dynamic>>? educationTimeline,
+    Map<String, dynamic>? notificationSettings,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -97,9 +125,36 @@ class UserService {
       if (headline != null) updates['headline'] = headline;
       if (company != null) updates['company'] = company;
       if (role != null) updates['role'] = role;
+      if (industry != null) updates['industry'] = industry;
+      if (experience != null) updates['experience'] = experience;
+      if (homeBase != null) updates['homeBase'] = homeBase;
+      if (currentLocationName != null) updates['currentLocationName'] = currentLocationName;
+      if (travelFrequency != null) updates['travelFrequency'] = travelFrequency;
+      if (cardImageUrl != null) updates['cardImageUrl'] = cardImageUrl;
+      if (profileImageUrl != null) updates['profileImageUrl'] = profileImageUrl;
+      if (cardImages != null) updates['cardImages'] = cardImages;
+      if (customCards != null) {
+        updates['customCards'] = customCards.map((c) => c.toMap()).toList();
+      }
+      if (connectionsCount != null) updates['connectionsCount'] = connectionsCount;
+      if (eventsJoinedCount != null) updates['eventsJoinedCount'] = eventsJoinedCount;
+      if (eventsHostedCount != null) updates['eventsHostedCount'] = eventsHostedCount;
       if (expertise != null) updates['expertise'] = expertise;
       if (intents != null) updates['intents'] = intents;
       if (isDiscoverable != null) updates['isDiscoverable'] = isDiscoverable;
+      
+      // New LinkedIn and Notification Fields
+      if (coverImageUrl != null) updates['coverImageUrl'] = coverImageUrl;
+      if (linkedinProfileUrl != null) updates['linkedinProfileUrl'] = linkedinProfileUrl;
+      if (connectionCount != null) updates['connectionCount'] = connectionCount;
+      if (followerCount != null) updates['followerCount'] = followerCount;
+      if (skills != null) updates['skills'] = skills;
+      if (interests != null) updates['interests'] = interests;
+      if (followedTopics != null) updates['followedTopics'] = followedTopics;
+      if (professionalInterests != null) updates['professionalInterests'] = professionalInterests;
+      if (careerTimeline != null) updates['careerTimeline'] = careerTimeline;
+      if (educationTimeline != null) updates['educationTimeline'] = educationTimeline;
+      if (notificationSettings != null) updates['notificationSettings'] = notificationSettings;
 
       await _usersRef.doc(userId).update(updates);
     } catch (e) {
@@ -230,5 +285,100 @@ class UserService {
       // Non-critical; swallow silently in production.
       throw Exception('Failed to update lastSeen: $e');
     }
+  }
+
+  /// Exchanges a LinkedIn authorization code for an access token, fetches
+  /// real profile data from LinkedIn's OpenID Connect endpoint, and updates
+  /// the user's Firestore document with ONLY the data LinkedIn actually provides.
+  Future<void> syncLinkedInProfile(String userId, String authCode, {String? redirectUri}) async {
+    try {
+      final String clientId = LinkedInOAuthConfig.clientId;
+      final String clientSecret = linkedinClientSecret;
+      final String finalRedirectUri = redirectUri ?? LinkedInOAuthConfig.redirectUri;
+
+      // 1. Exchange authorization code for access token
+      final String tokenUri = kIsWeb
+          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
+          : 'https://www.linkedin.com/oauth/v2/accessToken';
+
+      final tokenResponse = await http
+          .post(
+            Uri.parse(tokenUri),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'grant_type=authorization_code'
+                '&code=${Uri.encodeComponent(authCode)}'
+                '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
+                '&client_id=${Uri.encodeComponent(clientId)}'
+                '&client_secret=${Uri.encodeComponent(clientSecret)}',
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (tokenResponse.statusCode != 200) {
+        throw Exception(
+          'Failed to exchange LinkedIn token: ${tokenResponse.body}',
+        );
+      }
+
+      final tokenData = jsonDecode(tokenResponse.body);
+      final String accessToken = tokenData['access_token'];
+
+      // 2. Fetch real user info from LinkedIn OpenID Connect endpoint
+      final String userInfoUri = kIsWeb
+          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
+          : 'https://api.linkedin.com/v2/userinfo';
+
+      final userInfoResponse = await http
+          .get(
+            Uri.parse(userInfoUri),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (userInfoResponse.statusCode != 200) {
+        throw Exception(
+          'Failed to fetch LinkedIn user info: ${userInfoResponse.body}',
+        );
+      }
+
+      final userInfo = jsonDecode(userInfoResponse.body);
+      final String email = userInfo['email'] ?? '';
+      final String name = userInfo['name'] ??
+          '${userInfo['given_name'] ?? ''} ${userInfo['family_name'] ?? ''}'.trim();
+      final String picture = userInfo['picture'] ?? '';
+      final String sub = userInfo['sub'] ?? '';
+      final String profileUrl = userInfo['profile'] ?? '';
+
+      // 3. Build update map with ONLY real LinkedIn data
+      final updates = <String, dynamic>{
+        'linkedinSynced': true,
+        'linkedinSyncedAt': FieldValue.serverTimestamp(),
+        'lastSeen': FieldValue.serverTimestamp(),
+      };
+
+      if (name.isNotEmpty) updates['name'] = name;
+      if (email.isNotEmpty) updates['email'] = email;
+      if (picture.isNotEmpty) updates['profileImageUrl'] = picture;
+      if (profileUrl.isNotEmpty) updates['linkedinProfileUrl'] = profileUrl;
+      if (sub.isNotEmpty) {
+        updates['linkedinId'] = sub;
+      }
+
+      // 4. Update Firestore profile with real data
+      await _usersRef.doc(userId).update(updates);
+
+      debugPrint('LinkedIn profile synced successfully for user $userId');
+    } catch (e) {
+      throw Exception('Failed to sync LinkedIn profile: $e');
+    }
+  }
+
+  /// Legacy compatibility wrapper — redirects to the profile screen
+  /// to trigger the real OAuth flow.
+  @Deprecated('Use syncLinkedInProfile with a real auth code instead')
+  Future<void> enrichUserProfileWithLinkedIn(String userId) async {
+    throw UnimplementedError(
+      'Mock LinkedIn enrichment has been removed. '
+      'Use syncLinkedInProfile() with a real LinkedIn authorization code.',
+    );
   }
 }
