@@ -12,7 +12,6 @@ import '../state_manager.dart';
 import '../models/message.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
-import '../services/user_service.dart';
 import '../services/meeting_service.dart';
 import '../utils/image_helper.dart';
 
@@ -574,6 +573,418 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _showProposeOtherTimeDialog(String meetingId, String location) {
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
+    TimeOfDay selectedTime = TimeOfDay.now();
+    final noteController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 30,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8E2DD),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Propose Another Time',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                  const Divider(color: Color(0xFFE8E2DD)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE8E2DD)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.calendar_today, size: 16, color: Color(0xFF7A432D)),
+                          label: Text(
+                            '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
+                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                          ),
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) {
+                              setSheetState(() => selectedDate = picked);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE8E2DD)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.access_time, size: 16, color: Color(0xFF7A432D)),
+                          label: Text(
+                            selectedTime.format(context),
+                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                          ),
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: selectedTime,
+                            );
+                            if (picked != null) {
+                              setSheetState(() => selectedTime = picked);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    decoration: InputDecoration(
+                      hintText: 'Add a note (optional)',
+                      hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7A432D),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        final proposedDateTime = DateTime(
+                          selectedDate.year,
+                          selectedDate.month,
+                          selectedDate.day,
+                          selectedTime.hour,
+                          selectedTime.minute,
+                        );
+                        try {
+                          await MeetingService().proposeOtherTime(
+                            meetingId: meetingId,
+                            proposedTime: proposedDateTime,
+                            note: noteController.text.trim(),
+                          );
+                          if (_chatId != null) {
+                            final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
+                            final msg = '🔄 Proposed New Time: $timeStr for meeting at $location [meetingId:$meetingId]';
+                            await ChatService().sendTextMessage(chatId: _chatId!, text: msg);
+                          }
+                          if (context.mounted) Navigator.pop(context);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('New time proposed!'),
+                                backgroundColor: Color(0xFF7A432D),
+                              ),
+                            );
+                            setState(() {});
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to propose time: $e'),
+                                backgroundColor: const Color(0xFFC62828),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text(
+                        'Send Proposal',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showQuickMeetingRequestSheet() {
+    if (_otherUid == null || _chatId == null) return;
+    
+    DateTime selectedDate = DateTime.now().add(const Duration(hours: 1));
+    TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
+    String selectedLocation = 'Plaza Premium Lounge';
+    final noteController = TextEditingController();
+
+    final locations = [
+      'Plaza Premium Lounge',
+      'Gate 12 Lounge',
+      'Starbucks Reserve (Gate 14)',
+      'Transit Hotel Lobby',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  topRight: Radius.circular(24),
+                ),
+              ),
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 30,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8E2DD),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Request Meeting',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                  const Divider(color: Color(0xFFE8E2DD)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'LOCATION',
+                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: locations.map((loc) {
+                      final isSelected = selectedLocation == loc;
+                      return ChoiceChip(
+                        label: Text(loc),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setSheetState(() => selectedLocation = loc);
+                        },
+                        selectedColor: const Color(0xFF7A432D),
+                        checkmarkColor: Colors.white,
+                        backgroundColor: Colors.transparent,
+                        labelStyle: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD)),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE8E2DD)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.calendar_today, size: 16, color: Color(0xFF7A432D)),
+                          label: Text(
+                            '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}',
+                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                          ),
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) {
+                              setSheetState(() => selectedDate = picked);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE8E2DD)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.access_time, size: 16, color: Color(0xFF7A432D)),
+                          label: Text(
+                            selectedTime.format(context),
+                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                          ),
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: selectedTime,
+                            );
+                            if (picked != null) {
+                              setSheetState(() => selectedTime = picked);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    decoration: InputDecoration(
+                      hintText: 'Add a note (optional)',
+                      hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF7A432D),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        try {
+                          final scheduledAt = DateTime(
+                            selectedDate.year,
+                            selectedDate.month,
+                            selectedDate.day,
+                            selectedTime.hour,
+                            selectedTime.minute,
+                          );
+
+                          final meetingId = await MeetingService().createMeeting(
+                            attendeeIds: [_otherUid!],
+                            scheduledAt: scheduledAt,
+                            location: selectedLocation,
+                            note: noteController.text.trim(),
+                          );
+
+                          final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
+                          final msg = "📅 Meeting Request: Let's meet at $selectedLocation on $timeStr [meetingId:$meetingId]";
+                          await ChatService().sendTextMessage(chatId: _chatId!, text: msg);
+
+                          if (context.mounted) Navigator.pop(context);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Meeting request sent!'),
+                                backgroundColor: Color(0xFF2E7D32),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to send meeting request: $e'),
+                                backgroundColor: const Color(0xFFC62828),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text(
+                        'Send Meeting Request',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   bool _isSameDay(DateTime d1, DateTime d2) {
     return d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
   }
@@ -747,6 +1158,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         } else if (myStatus == 'cancelled') {
                           messageText = '✗ Cancelled';
                           textColor = const Color(0xFFC62828);
+                        } else if (myStatus == 'proposed_other_time') {
+                          messageText = '🔄 Other Time Proposed';
+                          textColor = const Color(0xFF7A432D);
                         } else {
                           messageText = 'Responded';
                           textColor = Colors.grey;
@@ -765,49 +1179,77 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }
 
-                      return Row(
+                      return Column(
                         children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFFC62828)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Color(0xFFC62828)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                  onPressed: () => _handleMeetingActionFromChat(meetingId, false, location, timeDetails),
+                                  child: const Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFC62828),
+                                    ),
+                                  ),
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 4),
                               ),
-                              onPressed: () => _handleMeetingActionFromChat(meetingId, false, location, timeDetails),
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFC62828),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2E7D32),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                  onPressed: () => _handleMeetingActionFromChat(meetingId, true, location, timeDetails),
+                                  child: const Text(
+                                    'Approve',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2E7D32),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF7A432D)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                               ),
-                              onPressed: () => _handleMeetingActionFromChat(meetingId, true, location, timeDetails),
-                              child: const Text(
-                                'Approve',
+                              icon: const Icon(Icons.schedule, size: 14, color: Color(0xFF7A432D)),
+                              label: const Text(
+                                'Propose Other Time',
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: Color(0xFF7A432D),
                                 ),
                               ),
+                              onPressed: () => _showProposeOtherTimeDialog(meetingId, location),
                             ),
                           ),
                         ],
@@ -836,49 +1278,77 @@ class _ChatScreenState extends State<ChatScreen> {
                       final meetingId = meeting['meetingId'] as String;
                       final location = meeting['location'] as String? ?? venue;
 
-                      return Row(
+                      return Column(
                         children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFFC62828)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Color(0xFFC62828)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                  onPressed: () => _handleMeetingActionFromChat(meetingId, false, location, timeDetails),
+                                  child: const Text(
+                                    'Cancel',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFC62828),
+                                    ),
+                                  ),
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 4),
                               ),
-                              onPressed: () => _handleMeetingActionFromChat(meetingId, false, location, timeDetails),
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFFC62828),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2E7D32),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                  onPressed: () => _handleMeetingActionFromChat(meetingId, true, location, timeDetails),
+                                  child: const Text(
+                                    'Approve',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2E7D32),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF7A432D)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                               ),
-                              onPressed: () => _handleMeetingActionFromChat(meetingId, true, location, timeDetails),
-                              child: const Text(
-                                'Approve',
+                              icon: const Icon(Icons.schedule, size: 14, color: Color(0xFF7A432D)),
+                              label: const Text(
+                                'Propose Other Time',
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                                  color: Color(0xFF7A432D),
                                 ),
                               ),
+                              onPressed: () => _showProposeOtherTimeDialog(meetingId, location),
                             ),
                           ),
                         ],
@@ -919,19 +1389,107 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
-            body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: ChatService().streamUserChats(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
-                    ),
-                  );
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }                final chatDocs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
+            body: Column(
+              children: [
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: ChatService().streamUserGroupInvitations(),
+                  builder: (context, inviteSnapshot) {
+                    if (!inviteSnapshot.hasData || inviteSnapshot.data!.docs.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    final invites = inviteSnapshot.data!.docs;
+                    return Container(
+                      width: double.infinity,
+                      color: const Color(0xFFFAF2EE),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'PENDING GROUP INVITATIONS',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                              color: Color(0xFF7A432D),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: invites.length,
+                            separatorBuilder: (context, idx) => const SizedBox(height: 8),
+                            itemBuilder: (context, idx) {
+                              final doc = invites[idx];
+                              final data = doc.data();
+                              final groupName = data['groupName'] ?? 'Group Chat';
+                              return Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFE8E2DD)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            groupName,
+                                            style: const TextStyle(
+                                              fontFamily: 'PlusJakartaSans',
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF3E1F11),
+                                            ),
+                                          ),
+                                          const Text(
+                                            'Invited you to join.',
+                                            style: TextStyle(
+                                              fontFamily: 'PlusJakartaSans',
+                                              fontSize: 12,
+                                              color: Color(0xFF8C736B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => ChatService().acceptGroupInvitation(doc.id),
+                                      child: const Text('Accept', style: TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold)),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => ChatService().declineGroupInvitation(doc.id),
+                                      child: const Text('Decline', style: TextStyle(color: Color(0xFFC62828))),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: ChatService().streamUserChats(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                          ),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      }                final chatDocs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
                 chatDocs.sort((a, b) {
                   final aTime = a.data()['updatedAt'] as Timestamp?;
                   final bTime = b.data()['updatedAt'] as Timestamp?;
@@ -1125,12 +1683,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     final participants = List<String>.from(chatData['participants'] ?? []);
                     final otherUid = participants.firstWhere((uid) => uid != currentUid, orElse: () => '');
 
-                    return FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance.collection('users').doc(otherUid).get(),
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance.collection('users').doc(otherUid).snapshots(),
                       builder: (context, userSnapshot) {
                         if (!userSnapshot.hasData) {
                           return const SizedBox(height: 72);
-                        }                        final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                        }
+                        final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
                         final String name = userData?['name'] ?? 'Professional';
                         final String role = userData?['role'] ?? 'Founder';
                         final String org = userData?['company'] ?? 'Startup';
@@ -1139,6 +1698,9 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
                             : 'P';
                         
+                        final DateTime? lastSeen = (userData?['lastSeen'] as Timestamp?)?.toDate();
+                        final bool isOnline = lastSeen != null && DateTime.now().difference(lastSeen).inMinutes < 5;
+
                         final lastMsgInfo = chatData['lastMessage'] as Map<String, dynamic>?;
                         final String lastText = lastMsgInfo?['text'] ?? 'Say hello to start the conversation!';
                         
@@ -1164,30 +1726,48 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Row(
-                              children: [                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0xFFE5A475),
-                                  ),
-                                  child: ClipOval(
-                                    child: buildProfileImage(
-                                      profileImageUrl,
-                                      fit: BoxFit.cover,
-                                      fallback: Center(
-                                        child: Text(
-                                          initials,
-                                          style: const TextStyle(
-                                            fontFamily: 'PlayfairDisplay',
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                              children: [
+                                Stack(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Color(0xFFE5A475),
+                                      ),
+                                      child: ClipOval(
+                                        child: buildProfileImage(
+                                          profileImageUrl,
+                                          fit: BoxFit.cover,
+                                          fallback: Center(
+                                            child: Text(
+                                              initials,
+                                              style: const TextStyle(
+                                                fontFamily: 'PlayfairDisplay',
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
+                                    Positioned(
+                                      bottom: 1,
+                                      right: 1,
+                                      child: Container(
+                                        width: 12,
+                                        height: 12,
+                                        decoration: BoxDecoration(
+                                          color: isOnline ? const Color(0xFF2E7D32) : const Color(0xFF9E9E9E),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white, width: 2),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(width: 14),
                                 Expanded(
@@ -1251,8 +1831,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 );
               },
             ),
-          );
-        }        return Scaffold(
+          ),
+        ],
+      ),
+    );
+  }
+  return Scaffold(
           backgroundColor: const Color(0xFFFAF7F5),
           appBar: AppBar(
             backgroundColor: const Color(0xFFFAF7F5),
@@ -1363,12 +1947,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }
 
-                      return FutureBuilder<QuerySnapshot>(
-                        future: FirebaseFirestore.instance
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
                             .collection('users')
                             .where('name', isEqualTo: _selectedContactName)
                             .limit(1)
-                            .get(),
+                            .snapshots(),
                         builder: (context, userSnapshot) {
                           final Map<String, dynamic> userData = (userSnapshot.data?.docs.isNotEmpty == true)
                               ? userSnapshot.data!.docs.first.data() as Map<String, dynamic>
@@ -1386,32 +1970,52 @@ class _ChatScreenState extends State<ChatScreen> {
                               ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
                               : 'P';
 
+                          final DateTime? lastSeen = (userData['lastSeen'] as Timestamp?)?.toDate();
+                          final bool isOnline = lastSeen != null && DateTime.now().difference(lastSeen).inMinutes < 5;
+
                           return Row(
                             children: [
-                              Container(
-                                width: 38,
-                                height: 38,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFE5A475),
-                                ),
-                                child: ClipOval(
-                                  child: buildProfileImage(
-                                    profileImageUrl,
-                                    fit: BoxFit.cover,
-                                    fallback: Center(
-                                      child: Text(
-                                        initials,
-                                        style: const TextStyle(
-                                          fontFamily: 'PlayfairDisplay',
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                              Stack(
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xFFE5A475),
+                                    ),
+                                    child: ClipOval(
+                                      child: buildProfileImage(
+                                        profileImageUrl,
+                                        fit: BoxFit.cover,
+                                        fallback: Center(
+                                          child: Text(
+                                            initials,
+                                            style: const TextStyle(
+                                              fontFamily: 'PlayfairDisplay',
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: isOnline ? const Color(0xFF2E7D32) : const Color(0xFF9E9E9E),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 1.5),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(width: 10),
                               Expanded(
@@ -1427,13 +2031,33 @@ class _ChatScreenState extends State<ChatScreen> {
                                         color: Color(0xFF3E1F11),
                                       ),
                                     ),
-                                    Text(
-                                      "$role · $org",
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 10,
-                                        color: Color(0xFF8C736B),
-                                      ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "$role · $org",
+                                          style: const TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 10,
+                                            color: Color(0xFF8C736B),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          width: 3,
+                                          height: 3,
+                                          decoration: const BoxDecoration(color: Color(0xFF8C736B), shape: BoxShape.circle),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isOnline ? "Online" : "Offline",
+                                          style: TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 10,
+                                            color: isOnline ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -1558,7 +2182,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   final typingStatus = chatData?['typingStatus'] as Map<String, dynamic>?;
                   
                   // Resolve group typing status
-                  String typingUserText = '';
                   bool isAnyOtherTyping = false;
                   if (typingStatus != null) {
                     final typingUids = typingStatus.entries
@@ -1567,11 +2190,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         .toList();
                     if (typingUids.isNotEmpty) {
                       isAnyOtherTyping = true;
-                      if (typingUids.length == 1) {
-                        typingUserText = 'Someone is typing...';
-                      } else {
-                        typingUserText = 'Multiple people are typing...';
-                      }
                     }
                   }
 
@@ -2266,6 +2884,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   onPressed: _startRecording,
                 ),
 
+                // Meeting request button
+                IconButton(
+                  icon: const Icon(Icons.calendar_month_outlined, color: Color(0xFF7A432D)),
+                  onPressed: _otherUid != null ? () => _showQuickMeetingRequestSheet() : null,
+                ),
+
                 // Input field
                 Expanded(
                   child: Container(
@@ -2868,10 +3492,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _showAddMemberDialogFromAppBar(BuildContext context, Map<String, dynamic> chatData) async {
     final List<String> participants = List<String>.from(chatData['participants'] ?? []);
+    final docSnapshot = await FirebaseFirestore.instance.collection('chats').doc(_chatId!).get();
+    final List<String> pending = List<String>.from(docSnapshot.data()?['pendingInvitations'] ?? []);
     final allUsers = await FirebaseFirestore.instance.collection('users').get();
     final addable = allUsers.docs
         .map((doc) => UserProfile.fromFirestore(doc))
-        .where((user) => !participants.contains(user.uid))
+        .where((user) => !participants.contains(user.uid) && !pending.contains(user.uid))
         .toList();
     if (!context.mounted) return;
     
@@ -2881,12 +3507,12 @@ class _ChatScreenState extends State<ChatScreen> {
         return AlertDialog(
           backgroundColor: const Color(0xFFFAF7F5),
           title: const Text(
-            'Add Member',
+            'Invite Member',
             style: TextStyle(fontFamily: 'PlayfairDisplay', color: Color(0xFF3E1F11)),
           ),
           content: addable.isEmpty
               ? const Text(
-                  'No addable members found.',
+                  'No inviteable members found.',
                   style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B)),
                 )
               : SizedBox(
@@ -2910,14 +3536,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         subtitle: Text(u.role ?? 'Professional', style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11)),
                         onTap: () async {
                           Navigator.pop(context);
-                          final newList = [...participants, u.uid];
-                          await ChatService().updateGroupSettings(
-                            chatId: _chatId!,
-                            participants: newList,
-                          );
+                          await ChatService().inviteUserToGroupChat(_chatId!, u.uid);
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('${u.name} added to group!'), backgroundColor: const Color(0xFF2E7D32)),
+                            SnackBar(content: Text('Invitation sent to ${u.name}!'), backgroundColor: const Color(0xFF7A432D)),
                           );
                         },
                       );
@@ -3024,7 +3646,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         subtitle: const Text('Suppress layout pop-ups for this group'),
                         value: isMuted,
-                        activeColor: const Color(0xFF7A432D),
+                        activeThumbColor: const Color(0xFF7A432D),
                         onChanged: (val) async {
                           await ChatService().muteGroup(chatId: _chatId!, mute: val);
                           Navigator.pop(context);
@@ -3087,16 +3709,18 @@ class _ChatScreenState extends State<ChatScreen> {
                               onPressed: () async {
                                 // Add members flow
                                 final allUsers = await FirebaseFirestore.instance.collection('users').get();
+                                final docSnapshot = await FirebaseFirestore.instance.collection('chats').doc(_chatId!).get();
+                                final List<String> pending = List<String>.from(docSnapshot.data()?['pendingInvitations'] ?? []);
                                 final addable = allUsers.docs
                                     .map((doc) => UserProfile.fromFirestore(doc))
-                                    .where((user) => !participants.contains(user.uid))
+                                    .where((user) => !participants.contains(user.uid) && !pending.contains(user.uid))
                                     .toList();
                                 if (!context.mounted) return;
                                 showDialog(
                                   context: context,
                                   builder: (context) {
                                     return AlertDialog(
-                                      title: const Text('Add Member'),
+                                      title: const Text('Invite Member'),
                                       content: SizedBox(
                                         width: double.maxFinite,
                                         child: ListView.builder(
@@ -3108,10 +3732,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                               title: Text(u.name),
                                               onTap: () async {
                                                 Navigator.pop(context);
-                                                final newList = [...participants, u.uid];
-                                                await ChatService().updateGroupSettings(
-                                                  chatId: _chatId!,
-                                                  participants: newList,
+                                                await ChatService().inviteUserToGroupChat(_chatId!, u.uid);
+                                                if (!context.mounted) return;
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(content: Text('Invitation sent to ${u.name}!'), backgroundColor: const Color(0xFF7A432D)),
                                                 );
                                                 // Refresh sheet
                                                 if (!mounted) return;
@@ -3347,7 +3971,7 @@ class _ChatScreenState extends State<ChatScreen> {
               final text = _inputController.text;
               final lastAt = text.lastIndexOf('@');
               if (lastAt != -1) {
-                final newText = text.substring(0, lastAt) + '@${user.name} ';
+                final newText = '${text.substring(0, lastAt)}@${user.name} ';
                 _inputController.text = newText;
                 _inputController.selection = TextSelection.fromPosition(
                   TextPosition(offset: newText.length),

@@ -57,7 +57,6 @@ class ChatService {
     }
   }
 
-  /// Creates a new group chat document.
   Future<String> createGroupChat({
     required String groupName,
     required String imageUrl,
@@ -67,14 +66,10 @@ class ChatService {
     if (uid == null) throw Exception('User not signed in');
 
     try {
-      final allParticipants = {uid, ...participants}.toList();
-      final unreadMap = <String, int>{};
-      final typingMap = <String, bool>{};
-
-      for (final p in allParticipants) {
-        unreadMap[p] = 0;
-        typingMap[p] = false;
-      }
+      final allParticipants = [uid];
+      final invitedParticipants = List<String>.from(participants)..remove(uid);
+      final unreadMap = <String, int>{uid: 0};
+      final typingMap = <String, bool>{uid: false};
 
       final chatDoc = await _chatsRef.add({
         'isGroup': true,
@@ -83,6 +78,7 @@ class ChatService {
         'createdBy': uid,
         'admins': [uid],
         'participants': allParticipants,
+        'pendingInvitations': invitedParticipants,
         'mutedBy': [],
         'pinnedMessages': [],
         'lastMessage': {
@@ -270,6 +266,126 @@ class ChatService {
     return _chatsRef
         .where('participants', arrayContains: uid)
         .snapshots();
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> streamUserGroupInvitations() {
+    final uid = _currentUid;
+    if (uid == null) return const Stream.empty();
+    return _chatsRef
+        .where('isGroup', isEqualTo: true)
+        .where('pendingInvitations', arrayContains: uid)
+        .snapshots();
+  }
+
+  Future<void> acceptGroupInvitation(String chatId) async {
+    final uid = _currentUid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final docRef = _chatsRef.doc(chatId);
+      final doc = await docRef.get();
+      if (!doc.exists) return;
+
+      final data = doc.data() ?? {};
+      final participants = List<String>.from(data['participants'] ?? []);
+      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+
+      if (pendingInvitations.contains(uid)) {
+        pendingInvitations.remove(uid);
+        if (!participants.contains(uid)) {
+          participants.add(uid);
+        }
+
+        final unreadMap = Map<String, dynamic>.from(data['unreadCount'] ?? {});
+        unreadMap[uid] = 0;
+        final typingMap = Map<String, dynamic>.from(data['typingStatus'] ?? {});
+        typingMap[uid] = false;
+
+        await docRef.update({
+          'participants': participants,
+          'pendingInvitations': pendingInvitations,
+          'unreadCount': unreadMap,
+          'typingStatus': typingMap,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Get user's name
+        final userDoc = await _firestore.collection('users').doc(uid).get();
+        final userName = userDoc.data()?['name'] ?? 'Someone';
+
+        // Write activity message
+        await docRef.collection('messages').add({
+          'senderId': 'system',
+          'senderName': 'System',
+          'type': MessageKind.text.name,
+          'text': '📢 $userName has accepted the invitation and joined the group.',
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': [uid],
+        });
+      }
+    } catch (e) {
+      throw Exception('Failed to accept group invitation: $e');
+    }
+  }
+
+  Future<void> declineGroupInvitation(String chatId) async {
+    final uid = _currentUid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final docRef = _chatsRef.doc(chatId);
+      final doc = await docRef.get();
+      if (!doc.exists) return;
+
+      final data = doc.data() ?? {};
+      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+
+      if (pendingInvitations.contains(uid)) {
+        pendingInvitations.remove(uid);
+        await docRef.update({
+          'pendingInvitations': pendingInvitations,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Get user's name
+        final userDoc = await _firestore.collection('users').doc(uid).get();
+        final userName = userDoc.data()?['name'] ?? 'Someone';
+
+        // Write activity message
+        await docRef.collection('messages').add({
+          'senderId': 'system',
+          'senderName': 'System',
+          'type': MessageKind.text.name,
+          'text': '📢 $userName declined the invitation.',
+          'createdAt': FieldValue.serverTimestamp(),
+          'readBy': [uid],
+        });
+      }
+    } catch (e) {
+      throw Exception('Failed to decline group invitation: $e');
+    }
+  }
+
+  Future<void> inviteUserToGroupChat(String chatId, String userId) async {
+    try {
+      final docRef = _chatsRef.doc(chatId);
+      final doc = await docRef.get();
+      if (!doc.exists) return;
+
+      final data = doc.data() ?? {};
+      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+      final participants = List<String>.from(data['participants'] ?? []);
+
+      if (!participants.contains(userId) && !pendingInvitations.contains(userId)) {
+        pendingInvitations.add(userId);
+        await docRef.update({
+          'pendingInvitations': pendingInvitations,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      throw Exception('Failed to invite user: $e');
+    }
   }
 
   // ---------------------------------------------------------------------------

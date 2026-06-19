@@ -22,6 +22,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
   String _selectedRole = 'All';
   String _selectedIntent = 'All';
   double _minMatchScore = 0.0;
+  List<String> _selectedInterests = [];
+  List<String> _selectedExpertise = [];
+  String? _selectedLocation;
 
   // Swiping state variables
   double _dragDx = 0.0;
@@ -111,6 +114,28 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
       // 4. Minimum Match Score filter
       if (c.match < _minMatchScore) {
         return false;
+      }
+
+      // 5. Interest filter
+      if (_selectedInterests.isNotEmpty) {
+        if (!c.interests.any((i) => _selectedInterests.contains(i))) {
+          return false;
+        }
+      }
+
+      // 6. Expertise filter
+      if (_selectedExpertise.isNotEmpty) {
+        if (!c.skills.any((s) => _selectedExpertise.contains(s)) &&
+            !c.tags.any((t) => _selectedExpertise.contains(t))) {
+          return false;
+        }
+      }
+
+      // 7. Location filter
+      if (_selectedLocation != null) {
+        if (c.loc != _selectedLocation && c.homeBase != _selectedLocation) {
+          return false;
+        }
       }
 
       return true;
@@ -405,6 +430,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
                             _selectedRole = 'All';
                             _selectedIntent = 'All';
                             _minMatchScore = 0.0;
+                            _selectedInterests = [];
+                            _selectedExpertise = [];
+                            _selectedLocation = null;
                           });
                           setState(() {});
                         },
@@ -422,153 +450,374 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
                   const Divider(color: Color(0xFFE8E2DD)),
                   const SizedBox(height: 16),
 
-                  // Role Selection
-                  const Text(
-                    'Role / Profession',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF3E1F11),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      'All',
-                      'Founders / CEOs',
-                      'Investors / VCs',
-                      'Tech / Engineering',
-                      'Sales / Marketing'
-                    ].map((role) {
-                      final isSelected = _selectedRole == role;
-                      return ChoiceChip(
-                        label: Text(role),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setModalState(() {
-                            _selectedRole = role;
-                          });
-                          setState(() {});
-                        },
-                        selectedColor: const Color(0xFF7A432D),
-                        disabledColor: Colors.transparent,
-                        backgroundColor: Colors.transparent,
-                        checkmarkColor: Colors.white,
-                        labelStyle: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? Colors.white : const Color(0xFF5C473E),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Role Selection
+                          const Text(
+                            'Role / Profession',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Intent Selection
-                  const Text(
-                    'Intent / Objective',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF3E1F11),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      'All',
-                      'Raising Seed',
-                      'Hiring Team',
-                      'Open to Coffee',
-                      'B2B Partnerships'
-                    ].map((intent) {
-                      final isSelected = _selectedIntent == intent;
-                      return ChoiceChip(
-                        label: Text(intent),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setModalState(() {
-                            _selectedIntent = intent;
-                          });
-                          setState(() {});
-                        },
-                        selectedColor: const Color(0xFF7A432D),
-                        disabledColor: Colors.transparent,
-                        backgroundColor: Colors.transparent,
-                        checkmarkColor: Colors.white,
-                        labelStyle: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? Colors.white : const Color(0xFF5C473E),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              'All',
+                              'Founders / CEOs',
+                              'Investors / VCs',
+                              'Tech / Engineering',
+                              'Sales / Marketing'
+                            ].map((role) {
+                              final isSelected = _selectedRole == role;
+                              return ChoiceChip(
+                                label: Text(role),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  setModalState(() {
+                                    _selectedRole = role;
+                                  });
+                                  setState(() {});
+                                },
+                                selectedColor: const Color(0xFF7A432D),
+                                disabledColor: Colors.transparent,
+                                backgroundColor: Colors.transparent,
+                                checkmarkColor: Colors.white,
+                                labelStyle: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(
+                                    color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
+                          const SizedBox(height: 20),
 
-                  // Match Score Slider
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Minimum Match Score',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: Color(0xFF3E1F11),
-                        ),
+                          // Intent Selection
+                          const Text(
+                            'Intent / Objective',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              'All',
+                              'Raising Seed',
+                              'Hiring Team',
+                              'Open to Coffee',
+                              'B2B Partnerships'
+                            ].map((intent) {
+                              final isSelected = _selectedIntent == intent;
+                              return ChoiceChip(
+                                label: Text(intent),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  setModalState(() {
+                                    _selectedIntent = intent;
+                                  });
+                                  setState(() {});
+                                },
+                                selectedColor: const Color(0xFF7A432D),
+                                disabledColor: Colors.transparent,
+                                backgroundColor: Colors.transparent,
+                                checkmarkColor: Colors.white,
+                                labelStyle: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(
+                                    color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Interests Multi-Select
+                          const Text(
+                            'Interests',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(builder: (context) {
+                            final allInterests = _state.candidates
+                                .expand((c) => c.interests)
+                                .toSet()
+                                .toList()
+                              ..sort();
+                            if (allInterests.isEmpty) {
+                              return const Text(
+                                'No interest data available',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              );
+                            }
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: allInterests.map((interest) {
+                                final isSelected = _selectedInterests.contains(interest);
+                                return FilterChip(
+                                  label: Text(interest),
+                                  selected: isSelected,
+                                  onSelected: (selected) {
+                                    setModalState(() {
+                                      if (selected) {
+                                        _selectedInterests.add(interest);
+                                      } else {
+                                        _selectedInterests.remove(interest);
+                                      }
+                                    });
+                                    setState(() {});
+                                  },
+                                  selectedColor: const Color(0xFF7A432D),
+                                  checkmarkColor: Colors.white,
+                                  backgroundColor: Colors.transparent,
+                                  labelStyle: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(
+                                      color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          }),
+                          const SizedBox(height: 20),
+
+                          // Expertise Multi-Select
+                          const Text(
+                            'Expertise / Skills',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(builder: (context) {
+                            final allExpertise = _state.candidates
+                                .expand((c) => [...c.tags, ...c.skills])
+                                .toSet()
+                                .toList()
+                              ..sort();
+                            if (allExpertise.isEmpty) {
+                              return const Text(
+                                'No expertise data available',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              );
+                            }
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: allExpertise.map((skill) {
+                                final isSelected = _selectedExpertise.contains(skill);
+                                return FilterChip(
+                                  label: Text(skill),
+                                  selected: isSelected,
+                                  onSelected: (selected) {
+                                    setModalState(() {
+                                      if (selected) {
+                                        _selectedExpertise.add(skill);
+                                      } else {
+                                        _selectedExpertise.remove(skill);
+                                      }
+                                    });
+                                    setState(() {});
+                                  },
+                                  selectedColor: const Color(0xFF7A432D),
+                                  checkmarkColor: Colors.white,
+                                  backgroundColor: Colors.transparent,
+                                  labelStyle: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(
+                                      color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          }),
+                          const SizedBox(height: 20),
+
+                          // Location Filter
+                          const Text(
+                            'Location',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(builder: (context) {
+                            final allLocations = _state.candidates
+                                .map((c) => c.loc)
+                                .where((l) => l.isNotEmpty)
+                                .toSet()
+                                .toList()
+                              ..sort();
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('All'),
+                                  selected: _selectedLocation == null,
+                                  onSelected: (selected) {
+                                    setModalState(() {
+                                      _selectedLocation = null;
+                                    });
+                                    setState(() {});
+                                  },
+                                  selectedColor: const Color(0xFF7A432D),
+                                  checkmarkColor: Colors.white,
+                                  backgroundColor: Colors.transparent,
+                                  labelStyle: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: _selectedLocation == null ? FontWeight.bold : FontWeight.normal,
+                                    color: _selectedLocation == null ? Colors.white : const Color(0xFF5C473E),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(
+                                      color: _selectedLocation == null ? Colors.transparent : const Color(0xFFE8E2DD),
+                                    ),
+                                  ),
+                                ),
+                                ...allLocations.map((loc) {
+                                  final isSelected = _selectedLocation == loc;
+                                  return ChoiceChip(
+                                    label: Text(loc),
+                                    selected: isSelected,
+                                    onSelected: (selected) {
+                                      setModalState(() {
+                                        _selectedLocation = selected ? loc : null;
+                                      });
+                                      setState(() {});
+                                    },
+                                    selectedColor: const Color(0xFF7A432D),
+                                    checkmarkColor: Colors.white,
+                                    backgroundColor: Colors.transparent,
+                                    labelStyle: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      side: BorderSide(
+                                        color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
+                            );
+                          }),
+                          const SizedBox(height: 20),
+
+                          // Match Score Slider
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Minimum Match Score',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              Text(
+                                '${_minMatchScore.round()}%',
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Color(0xFF7A432D),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              activeTrackColor: const Color(0xFF7A432D),
+                              inactiveTrackColor: const Color(0xFFE8E2DD),
+                              thumbColor: const Color(0xFF7A432D),
+                              overlayColor: const Color(0xFF7A432D).withValues(alpha: 0.12),
+                              valueIndicatorColor: const Color(0xFF7A432D),
+                            ),
+                            child: Slider(
+                              value: _minMatchScore,
+                              min: 0,
+                              max: 100,
+                              divisions: 10,
+                              onChanged: (val) {
+                                setModalState(() {
+                                  _minMatchScore = val;
+                                });
+                                setState(() {});
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        '${_minMatchScore.round()}%',
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Color(0xFF7A432D),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: const Color(0xFF7A432D),
-                      inactiveTrackColor: const Color(0xFFE8E2DD),
-                      thumbColor: const Color(0xFF7A432D),
-                      overlayColor: const Color(0xFF7A432D).withValues(alpha: 0.12),
-                      valueIndicatorColor: const Color(0xFF7A432D),
-                    ),
-                    child: Slider(
-                      value: _minMatchScore,
-                      min: 0,
-                      max: 100,
-                      divisions: 10,
-                      onChanged: (val) {
-                        setModalState(() {
-                          _minMatchScore = val;
-                        });
-                        setState(() {});
-                      },
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -654,6 +903,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
                   _selectedRole = 'All';
                   _selectedIntent = 'All';
                   _minMatchScore = 0.0;
+                  _selectedInterests = [];
+                  _selectedExpertise = [];
+                  _selectedLocation = null;
                 });
               },
               icon: const Icon(Icons.refresh_rounded, size: 16),
@@ -724,7 +976,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
             icon: Stack(
               children: [
                 const Icon(Icons.tune_rounded, color: Color(0xFF3E1F11)),
-                if (_selectedRole != 'All' || _selectedIntent != 'All' || _minMatchScore > 0)
+                if (_selectedRole != 'All' ||
+                    _selectedIntent != 'All' ||
+                    _minMatchScore > 0 ||
+                    _selectedInterests.isNotEmpty ||
+                    _selectedExpertise.isNotEmpty ||
+                    _selectedLocation != null)
                   Positioned(
                     right: 0,
                     top: 0,
@@ -794,7 +1051,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
                 ),
 
                 // Active Filter Chips
-                if (_selectedRole != 'All' || _selectedIntent != 'All' || _minMatchScore > 0)
+                if (_selectedRole != 'All' ||
+                    _selectedIntent != 'All' ||
+                    _minMatchScore > 0 ||
+                    _selectedInterests.isNotEmpty ||
+                    _selectedExpertise.isNotEmpty ||
+                    _selectedLocation != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SizedBox(
@@ -829,12 +1091,42 @@ class _DiscoverScreenState extends State<DiscoverScreen> with SingleTickerProvid
                                 });
                               },
                             ),
+                          if (_selectedInterests.isNotEmpty)
+                            _buildFilterChip(
+                              label: 'Interests: ${_selectedInterests.length}',
+                              onClear: () {
+                                setState(() {
+                                  _selectedInterests = [];
+                                });
+                              },
+                            ),
+                          if (_selectedExpertise.isNotEmpty)
+                            _buildFilterChip(
+                              label: 'Expertise: ${_selectedExpertise.length}',
+                              onClear: () {
+                                setState(() {
+                                  _selectedExpertise = [];
+                                });
+                              },
+                            ),
+                          if (_selectedLocation != null)
+                            _buildFilterChip(
+                              label: 'Location: $_selectedLocation',
+                              onClear: () {
+                                setState(() {
+                                  _selectedLocation = null;
+                                });
+                              },
+                            ),
                           TextButton(
                             onPressed: () {
                               setState(() {
                                 _selectedRole = 'All';
                                 _selectedIntent = 'All';
                                 _minMatchScore = 0.0;
+                                _selectedInterests = [];
+                                _selectedExpertise = [];
+                                _selectedLocation = null;
                               });
                             },
                             child: const Text(

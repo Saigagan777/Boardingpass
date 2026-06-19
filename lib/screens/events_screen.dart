@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
 import '../models/event.dart';
+import '../services/event_service.dart';
 import 'map_webview.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -103,6 +106,8 @@ class _EventsScreenState extends State<EventsScreen> {
         List<Map<String, dynamic>> searchResults = [];
         Timer? debounceTimer;
         bool isSelectingVenue = false;
+        File? selectedImage;
+        bool isUploadingImage = false;
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -128,6 +133,89 @@ class _EventsScreenState extends State<EventsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Text(
+                        'EVENT FLYER / IMAGE',
+                        style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
+                      ),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: () async {
+                          final picker = ImagePicker();
+                          final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                          if (image != null) {
+                            setDialogState(() {
+                              selectedImage = File(image.path);
+                            });
+                          }
+                        },
+                        child: Container(
+                          height: 120,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8E2DD).withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE8E2DD)),
+                          ),
+                          child: selectedImage != null
+                              ? Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Image.file(
+                                        selectedImage!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 8,
+                                      right: 8,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            selectedImage = null;
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.add_photo_alternate_outlined, color: Color(0xFF7A432D), size: 36),
+                                    SizedBox(height: 6),
+                                    Text(
+                                      'Upload Event Flyer',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF7A432D),
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Optional (Default category image will be used)',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 10,
+                                        color: Color(0xFF8C736B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       const Text(
                         'EVENT TITLE',
                         style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
@@ -441,50 +529,89 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: isUploadingImage ? null : () => Navigator.pop(context),
                   child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C736B))),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
-                  onPressed: () {
-                    if (titleController.text.trim().isEmpty) return;
+                  onPressed: isUploadingImage
+                      ? null
+                      : () async {
+                          if (titleController.text.trim().isEmpty) return;
 
-                    final dateVal = dateController.text.trim();
-                    final timeVal = timeController.text.trim();
+                          setDialogState(() {
+                            isUploadingImage = true;
+                          });
 
-                    // Defaults
-                    final finalMonth = dateVal.toUpperCase().contains(' ')
-                        ? dateVal.split(' ').last
-                        : 'JUN';
-                    final finalDay = dateVal.isNotEmpty ? dateVal.split(' ').first : '15';
+                          try {
+                            final eventId = DateTime.now().millisecondsSinceEpoch.toString();
+                            String? imageUrl;
 
-                    final newEvent = Event(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      illustrationPath: _getCategoryImageUrl(selectedCat),
-                      month: finalMonth,
-                      day: finalDay,
-                      title: titleController.text.trim(),
-                      location: locController.text.isEmpty ? 'General Lounge' : locController.text.trim(),
-                      time: "${timeVal.isEmpty ? '6:00 PM' : timeVal} • Today",
-                      attendees: '1 attending',
-                      category: selectedCat,
-                      price: priceController.text.trim().isEmpty ? 'Free' : priceController.text.trim(),
-                      mapUrl: mapsController.text.trim().isNotEmpty ? mapsController.text.trim() : null,
-                      latitude: latitude,
-                      longitude: longitude,
-                      isJoined: true,
-                    );
+                            if (selectedImage != null) {
+                              imageUrl = await EventService().uploadEventImage(eventId, selectedImage!);
+                            }
 
-                    _state.createEvent(newEvent);
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Event hosted successfully!'),
-                        backgroundColor: Color(0xFF7A432D),
-                      ),
-                    );
-                  },
-                  child: const Text('Publish', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            final dateVal = dateController.text.trim();
+                            final timeVal = timeController.text.trim();
+
+                            // Defaults
+                            final finalMonth = dateVal.toUpperCase().contains(' ')
+                                ? dateVal.split(' ').last
+                                : 'JUN';
+                            final finalDay = dateVal.isNotEmpty ? dateVal.split(' ').first : '15';
+
+                            final newEvent = Event(
+                              id: eventId,
+                              illustrationPath: _getCategoryImageUrl(selectedCat),
+                              month: finalMonth,
+                              day: finalDay,
+                              title: titleController.text.trim(),
+                              location: locController.text.isEmpty ? 'General Lounge' : locController.text.trim(),
+                              time: "${timeVal.isEmpty ? '6:00 PM' : timeVal} • Today",
+                              attendees: '1 attending',
+                              category: selectedCat,
+                              price: priceController.text.trim().isEmpty ? 'Free' : priceController.text.trim(),
+                              mapUrl: mapsController.text.trim().isNotEmpty ? mapsController.text.trim() : null,
+                              latitude: latitude,
+                              longitude: longitude,
+                              imageUrl: imageUrl,
+                              isJoined: true,
+                            );
+
+                            _state.createEvent(newEvent);
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Event hosted successfully!'),
+                                  backgroundColor: Color(0xFF7A432D),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to host event: $e'),
+                                  backgroundColor: const Color(0xFFC62828),
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (context.mounted) {
+                              setDialogState(() {
+                                isUploadingImage = false;
+                              });
+                            }
+                          }
+                        },
+                  child: isUploadingImage
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Publish', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -523,7 +650,9 @@ class _EventsScreenState extends State<EventsScreen> {
               Stack(
                 children: [
                   CachedNetworkImage(
-                    imageUrl: _getCategoryImageUrl(event.category),
+                    imageUrl: (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+                        ? event.imageUrl!
+                        : _getCategoryImageUrl(event.category),
                     height: 200,
                     width: double.infinity,
                     fit: BoxFit.cover,
@@ -1040,7 +1169,11 @@ class _EventsScreenState extends State<EventsScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           image: DecorationImage(
-            image: CachedNetworkImageProvider(_getCategoryImageUrl(event.category)),
+            image: CachedNetworkImageProvider(
+              (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+                  ? event.imageUrl!
+                  : _getCategoryImageUrl(event.category),
+            ),
             fit: BoxFit.cover,
           ),
         ),
@@ -1165,7 +1298,9 @@ class _EventsScreenState extends State<EventsScreen> {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: CachedNetworkImage(
-                imageUrl: _getCategoryImageUrl(event.category),
+                imageUrl: (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+                    ? event.imageUrl!
+                    : _getCategoryImageUrl(event.category),
                 height: 100,
                 width: double.infinity,
                 fit: BoxFit.cover,

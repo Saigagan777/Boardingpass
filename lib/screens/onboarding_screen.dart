@@ -45,6 +45,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _experienceController = TextEditingController();
   final TextEditingController _profileImageUrlController = TextEditingController();
 
+  // Career & Education timelines state
+  final List<Map<String, dynamic>> _careerTimeline = [];
+  final List<Map<String, dynamic>> _educationTimeline = [];
+
+  // Career form inputs
+  final TextEditingController _workRoleController = TextEditingController();
+  final TextEditingController _workCompanyController = TextEditingController();
+  final TextEditingController _workDurationController = TextEditingController();
+  final TextEditingController _workDescController = TextEditingController();
+
+  // Education form inputs
+  final TextEditingController _eduDegreeController = TextEditingController();
+  final TextEditingController _eduSchoolController = TextEditingController();
+  final TextEditingController _eduDurationController = TextEditingController();
+
   String? _selectedIndustry = 'Technology';
   String? _selectedTravelFrequency = 'Occasional';
 
@@ -186,6 +201,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _industryController.dispose();
     _experienceController.dispose();
     _profileImageUrlController.dispose();
+    _workRoleController.dispose();
+    _workCompanyController.dispose();
+    _workDurationController.dispose();
+    _workDescController.dispose();
+    _eduDegreeController.dispose();
+    _eduSchoolController.dispose();
+    _eduDurationController.dispose();
     super.dispose();
   }
 
@@ -365,6 +387,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
+      AppStateManager().isRegistering = true;
       await AuthService().signUpWithEmail(
         email: email,
         password: password,
@@ -381,8 +404,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
         expertise: expertiseList,
         intents: selectedIntents,
+        skills: expertiseList,
+        interests: selectedIntents,
+        careerTimeline: _careerTimeline,
+        educationTimeline: _educationTimeline,
       );
+      await AuthService().signOut();
+      await Future.delayed(const Duration(milliseconds: 500));
+      AppStateManager().isRegistering = false;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully! Please sign in with your email and password.'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+        setState(() {
+          _currentView = OnboardingView.signIn;
+          _passwordController.clear();
+        });
+      }
     } on FirebaseAuthException catch (e) {
+      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -392,6 +436,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         );
       }
     } catch (e) {
+      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -480,6 +525,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           travelFrequency: travelFrequency,
           expertise: expertiseList,
           intents: selectedIntents,
+          skills: expertiseList,
+          interests: selectedIntents,
+          careerTimeline: _careerTimeline,
+          educationTimeline: _educationTimeline,
         );
       }
     } catch (e) {
@@ -602,6 +651,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onPressed: () {
               setState(() {
                 _currentView = OnboardingView.slides;
+                _currentIndex = _onboardingData.length - 1;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_pageController.hasClients) {
+                  _pageController.jumpToPage(_onboardingData.length - 1);
+                }
               });
             },
           ),
@@ -680,6 +735,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onPressed: () {
               setState(() {
                 _currentView = OnboardingView.slides;
+                _currentIndex = _onboardingData.length - 1;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_pageController.hasClients) {
+                  _pageController.jumpToPage(_onboardingData.length - 1);
+                }
               });
             },
           ),
@@ -1155,6 +1216,226 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               });
             },
           ),
+          const SizedBox(height: 24),
+
+          // Section 5: Work Experience (Career Timeline)
+          _buildSectionHeader('Work Experience (Optional)'),
+          const SizedBox(height: 12),
+          if (_careerTimeline.isNotEmpty) ...[
+            ..._careerTimeline.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              return Card(
+                color: Colors.white,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                child: ListTile(
+                  title: Text(
+                    '${item['role']} at ${item['company']}',
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                  ),
+                  subtitle: Text(
+                    '${item['duration']}\n${item['description']}',
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _careerTimeline.removeAt(idx);
+                      });
+                    },
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE8E2DD)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Add Work Experience',
+                  style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11)),
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workRoleController,
+                  labelText: 'Role / Job Title',
+                  hintText: 'e.g. Software Engineer',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workCompanyController,
+                  labelText: 'Company',
+                  hintText: 'e.g. Google',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workDurationController,
+                  labelText: 'Duration (e.g. Jan 2023 - Present)',
+                  hintText: 'e.g. Jan 2023 - Present',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workDescController,
+                  labelText: 'Description',
+                  hintText: 'Describe key accomplishments...',
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7A432D),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      if (_workRoleController.text.trim().isEmpty || _workCompanyController.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please fill Role and Company')),
+                        );
+                        return;
+                      }
+                      setState(() {
+                        _careerTimeline.add({
+                          'role': _workRoleController.text.trim(),
+                          'company': _workCompanyController.text.trim(),
+                          'duration': _workDurationController.text.trim(),
+                          'description': _workDescController.text.trim(),
+                        });
+                        _workRoleController.clear();
+                        _workCompanyController.clear();
+                        _workDurationController.clear();
+                        _workDescController.clear();
+                      });
+                    },
+                    child: const Text(
+                      'Add Work Experience Entry',
+                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Section 6: Education (Education Timeline)
+          _buildSectionHeader('Education (Optional)'),
+          const SizedBox(height: 12),
+          if (_educationTimeline.isNotEmpty) ...[
+            ..._educationTimeline.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final item = entry.value;
+              return Card(
+                color: Colors.white,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                child: ListTile(
+                  title: Text(
+                    '${item['degree']} at ${item['school']}',
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                  ),
+                  subtitle: Text(
+                    '${item['duration']}',
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    onPressed: () {
+                      setState(() {
+                        _educationTimeline.removeAt(idx);
+                      });
+                    },
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE8E2DD)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Add Education',
+                  style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11)),
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _eduDegreeController,
+                  labelText: 'Degree / Course',
+                  hintText: 'e.g. B.S. in Computer Science',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _eduSchoolController,
+                  labelText: 'School / University',
+                  hintText: 'e.g. Stanford University',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _eduDurationController,
+                  labelText: 'Duration (e.g. 2013 - 2017)',
+                  hintText: 'e.g. 2013 - 2017',
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7A432D),
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      if (_eduDegreeController.text.trim().isEmpty || _eduSchoolController.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Please fill Degree and School')),
+                        );
+                        return;
+                      }
+                      setState(() {
+                        _educationTimeline.add({
+                          'degree': _eduDegreeController.text.trim(),
+                          'school': _eduSchoolController.text.trim(),
+                          'duration': _eduDurationController.text.trim(),
+                          'description': '',
+                        });
+                        _eduDegreeController.clear();
+                        _eduSchoolController.clear();
+                        _eduDurationController.clear();
+                      });
+                    },
+                    child: const Text(
+                      'Add Education Entry',
+                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 40),
 
           // Complete Button
@@ -1393,40 +1674,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
                             // Next Button
                             if (_currentIndex < _onboardingData.length - 1)
-                              InkWell(
-                                onTap: () {
-                                  _pageController.nextPage(
-                                    duration: const Duration(milliseconds: 300),
-                                    curve: Curves.easeInOut,
-                                  );
-                                },
-                                borderRadius: BorderRadius.circular(8),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Text(
-                                        'Next',
-                                        style: TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF3E1F11),
-                                        ),
+                              Row(
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      _pageController.jumpToPage(_onboardingData.length - 1);
+                                    },
+                                    child: const Text(
+                                      'Skip',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF8C736B),
                                       ),
-                                      SizedBox(width: 8),
-                                      Icon(
-                                        Icons.arrow_forward_rounded,
-                                        color: Color(0xFF3E1F11),
-                                        size: 20,
-                                      ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () {
+                                      _pageController.nextPage(
+                                        duration: const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOut,
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Text(
+                                            'Next',
+                                            style: TextStyle(
+                                              fontFamily: 'PlusJakartaSans',
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF3E1F11),
+                                            ),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Icon(
+                                            Icons.arrow_forward_rounded,
+                                            color: Color(0xFF3E1F11),
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               )
                             else
                               const SizedBox(height: 32),

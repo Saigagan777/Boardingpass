@@ -1,11 +1,10 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:csc_picker_plus/csc_picker_plus.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
@@ -13,9 +12,6 @@ import '../services/event_service.dart';
 import '../models/user_profile.dart';
 import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
-import '../services/linkedin_oauth_config.dart';
-import 'linkedin_webview.dart';
-import '../services/resume_parser_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -26,7 +22,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final AppStateManager _state = AppStateManager();
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   void _showEditProfileModal(BuildContext context, UserProfile profile) {
     showModalBottomSheet(
@@ -37,175 +33,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return _EditProfileSheet(profile: profile);
       },
     );
-  }
-
-  void _showResumePromptDialog(BuildContext context, String uid) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFFFAF7F5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.auto_awesome, color: Color(0xFF7A432D)),
-              SizedBox(width: 8),
-              Text(
-                'Sync Complete!',
-                style: TextStyle(
-                  fontFamily: 'PlayfairDisplay',
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3E1F11),
-                ),
-              ),
-            ],
-          ),
-          content: const Text(
-            'Your basic LinkedIn details have been synced.\n\n'
-            'Want to add more details? Upload your resume to enrich your profile with career history, skills, and education.',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 13,
-              color: Color(0xFF5C473E),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Maybe Later',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  color: Color(0xFF8C736B),
-                ),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () {
-                Navigator.pop(context); // close prompt dialog
-                _handleResumeUpload(uid); // trigger real resume upload
-              },
-              child: const Text(
-                'Upload Resume',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _handleResumeUpload(String uid) async {
-    try {
-      final parser = ResumeParserService();
-      final pickedFile = await parser.pickResumeFile();
-      if (pickedFile == null || pickedFile.bytes == null) {
-        return;
-      }
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFFFAF7F5),
-          content: Row(
-            children: const [
-              CircularProgressIndicator(color: Color(0xFF7A432D)),
-              SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  'AI is parsing your resume...',
-                  style: TextStyle(fontFamily: 'PlusJakartaSans'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      final text = parser.extractText(pickedFile.bytes!, pickedFile.name);
-      final parsedData = parser.parseResumeText(text);
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-      }
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return _ResumePreviewDialog(
-            parsedData: parsedData,
-            onSave: (updatedData) async {
-              Navigator.pop(context); // close preview dialog
-              
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => AlertDialog(
-                  backgroundColor: const Color(0xFFFAF7F5),
-                  content: Row(
-                    children: const [
-                      CircularProgressIndicator(color: Color(0xFF7A432D)),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                          'Saving your parsed profile data...',
-                          style: TextStyle(fontFamily: 'PlusJakartaSans'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-
-              try {
-                await parser.saveResumeDataToProfile(uid, updatedData);
-                if (mounted) Navigator.pop(context); // close saving dialog
-                
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Resume parsed & profile enriched!'),
-                      backgroundColor: Color(0xFF2E7D32),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) Navigator.pop(context); // close saving dialog
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Failed to save parsed profile: $e'),
-                      backgroundColor: const Color(0xFFC62828),
-                    ),
-                  );
-                }
-              }
-            },
-          );
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking/parsing resume: $e'),
-            backgroundColor: const Color(0xFFC62828),
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildProfileHeader(UserProfile profile, BuildContext context) {
@@ -527,8 +354,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final String currentLocation = (profile.currentLocationName != null && profile.currentLocationName!.isNotEmpty) ? profile.currentLocationName! : 'Current Location';
         final String travelFrequency = (profile.travelFrequency != null && profile.travelFrequency!.isNotEmpty) ? profile.travelFrequency! : 'Travel Frequency';
 
-        final List<String> interests = (profile.interests.isNotEmpty) ? profile.interests : ['Tech Startups', 'AI & ML', 'Venture Capital', 'Aviation', 'Travel'];
-        final List<String> skills = (profile.skills.isNotEmpty) ? profile.skills : ['Java', 'Spring Boot', 'Flutter', 'Dart', 'Cloud Architecture'];
+        final List<String> interests = profile.interests;
+        final List<String> skills = profile.skills;
 
         final String mainCardBg = (profile.cardImageUrl != null && profile.cardImageUrl!.isNotEmpty)
             ? profile.cardImageUrl!
@@ -601,97 +428,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Color(0xFF7A432D),
                                 ),
                               ),
-                              const SizedBox(height: 16),
-                              // Action Sync Buttons
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF0077B5),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                              const SizedBox(height: 12),
+                              // LinkedIn Button
+                              InkWell(
+                                onTap: () {
+                                  final url = profile.linkedinProfileUrl;
+                                  if (url != null && url.isNotEmpty) {
+                                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('No LinkedIn profile linked. Add your LinkedIn URL in Edit Profile.'),
+                                        backgroundColor: Color(0xFF0A66C2),
                                       ),
-                                      icon: const Icon(Icons.sync, size: 16, color: Colors.white),
-                                      label: const Text(
-                                        'Sync LinkedIn',
-                                        style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                                      ),
-                                      onPressed: () async {
-                                        final String redirectUri = LinkedInOAuthConfig.redirectUri;
-                                        final String authUrl = LinkedInOAuthConfig.authorizationUrl(
-                                          redirectUri: redirectUri,
-                                        );
-
-                                        if (kIsWeb) {
-                                          final storage = const FlutterSecureStorage();
-                                          await storage.write(key: 'linkedin_sync_pending_uid', value: profile.uid);
-                                        }
-
-                                        final String? authCode = await showLinkedInWebView(context, authUrl);
-
-                                        if (authCode == null) {
-                                          return;
-                                        }
-
-                                        if (authCode.startsWith('error:')) {
-                                          if (mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'LinkedIn login failed: ${authCode.replaceFirst('error:', '')}',
-                                                ),
-                                                backgroundColor: const Color(0xFF7A432D),
-                                              ),
-                                            );
-                                          }
-                                          return;
-                                        }
-
-                                        setState(() => _isLoading = true);
-                                        try {
-                                          await UserService().syncLinkedInProfile(profile.uid, authCode, redirectUri: redirectUri);
-                                          if (!context.mounted) return;
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('LinkedIn details synced!'), backgroundColor: Color(0xFF2E7D32)),
-                                          );
-                                          _showResumePromptDialog(context, profile.uid);
-                                        } catch (e) {
-                                          if (!context.mounted) return;
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('LinkedIn sync failed: $e'), backgroundColor: Color(0xFFC62828)),
-                                          );
-                                        } finally {
-                                          if (mounted) {
-                                            setState(() => _isLoading = false);
-                                          }
-                                        }
-                                      },
-                                    ),
+                                    );
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0A66C2),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        side: const BorderSide(color: Color(0xFF7A432D)),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.link, color: Colors.white, size: 16),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        profile.linkedinProfileUrl != null && profile.linkedinProfileUrl!.isNotEmpty
+                                            ? 'View LinkedIn'
+                                            : 'Connect LinkedIn',
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
                                       ),
-                                      icon: const Icon(Icons.auto_awesome, size: 16, color: Color(0xFF7A432D)),
-                                      label: const Text(
-                                        'Parse Resume',
-                                        style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF7A432D)),
-                                      ),
-                                      onPressed: () => _handleResumeUpload(profile.uid),
-                                    ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
+                              const SizedBox(height: 20),
                             ],
                           ),
                         ),
-
-                        const SizedBox(height: 20),
 
                         // Stats Dashboard
                         Padding(
@@ -775,24 +558,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: _buildSectionCard(
                             icon: Icons.build_outlined,
                             title: 'Skills',
-                            content: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: skills.map((s) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFAF7F5),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: const Color(0xFFE8E2DD)),
+                            content: skills.isEmpty
+                                ? const Text(
+                                    'No skills added yet. Tap Edit to add your skills.',
+                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
+                                  )
+                                : Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: skills.map((s) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFAF7F5),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: const Color(0xFFE8E2DD)),
+                                        ),
+                                        child: Text(
+                                          s,
+                                          style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF3E1F11)),
+                                        ),
+                                      );
+                                    }).toList(),
                                   ),
-                                  child: Text(
-                                    s,
-                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF3E1F11)),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -857,36 +645,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: _buildSectionCard(
                             icon: Icons.star_border_rounded,
                             title: 'Interests',
-                            content: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: interests.map((tag) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: const Color(0xFFE8E2DD)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(_getInterestIcon(tag), size: 14, color: const Color(0xFF7A432D)),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        tag,
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: Color(0xFF3E1F11),
+                            content: interests.isEmpty
+                                ? const Text(
+                                    'No interests added yet. Tap Edit to add your interests.',
+                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
+                                  )
+                                : Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: interests.map((tag) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: const Color(0xFFE8E2DD)),
                                         ),
-                                      ),
-                                    ],
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(_getInterestIcon(tag), size: 14, color: const Color(0xFF7A432D)),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              tag,
+                                              style: const TextStyle(
+                                                fontFamily: 'PlusJakartaSans',
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFF3E1F11),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
                                   ),
-                                );
-                              }).toList(),
-                            ),
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -1462,6 +1255,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _coverImageUrlController;
   late final TextEditingController _connectionCountController;
   late final TextEditingController _followerCountController;
+  late final TextEditingController _linkedinUrlController;
 
   // New item text controllers for timeline and skills
   final TextEditingController _newRoleController = TextEditingController();
@@ -1551,6 +1345,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _coverImageUrlController = TextEditingController(text: widget.profile.coverImageUrl ?? '');
     _connectionCountController = TextEditingController(text: widget.profile.connectionCount.toString());
     _followerCountController = TextEditingController(text: widget.profile.followerCount.toString());
+    _linkedinUrlController = TextEditingController(text: widget.profile.linkedinProfileUrl ?? '');
 
     _newCardTitleController = TextEditingController();
     _newCardDescController = TextEditingController();
@@ -1669,6 +1464,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _coverImageUrlController.dispose();
     _connectionCountController.dispose();
     _followerCountController.dispose();
+    _linkedinUrlController.dispose();
 
     _newRoleController.dispose();
     _newCompanyController.dispose();
@@ -1725,6 +1521,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         profileImageUrl: _profileImageUrlController.text.trim(),
         customCards: _localCustomCards,
         coverImageUrl: _coverImageUrlController.text.trim(),
+        linkedinProfileUrl: _linkedinUrlController.text.trim(),
         connectionCount: int.tryParse(_connectionCountController.text) ?? widget.profile.connectionCount,
         followerCount: int.tryParse(_followerCountController.text) ?? widget.profile.followerCount,
         skills: _localSkills,
@@ -1952,6 +1749,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                         Expanded(child: _buildTextField('LinkedIn Followers Count', _followerCountController)),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    _buildTextField('LinkedIn Profile URL', _linkedinUrlController),
                     const SizedBox(height: 12),
 
                     // Home Base CSC Picker
@@ -2580,7 +2379,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
-                              value: _selectedCardTemplate,
+                              value: ['50-50 Split', 'Image Overlay', 'Top Image / Bottom Text'].contains(_selectedCardTemplate)
+                                  ? _selectedCardTemplate
+                                  : 'Image Overlay',
                               isExpanded: true,
                               icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7A432D)),
                               style: const TextStyle(
@@ -2798,6 +2599,10 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     required ValueChanged<String?> onChanged,
     Widget? secondaryField,
   }) {
+    final List<String> safeItems = List<String>.from(items);
+    if (currentValue.isNotEmpty && !safeItems.contains(currentValue)) {
+      safeItems.add(currentValue);
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -2822,7 +2627,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: currentValue,
+                value: safeItems.contains(currentValue) ? currentValue : (safeItems.isNotEmpty ? safeItems.first : null),
                 isExpanded: true,
                 dropdownColor: Colors.white,
                 icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
@@ -2831,7 +2636,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   fontSize: 14,
                   color: Color(0xFF3E1F11),
                 ),
-                items: items.map((String val) {
+                items: safeItems.map((String val) {
                   return DropdownMenuItem<String>(
                     value: val,
                     child: Text(val),

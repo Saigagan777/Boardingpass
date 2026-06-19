@@ -15,6 +15,9 @@ class Candidate {
   final String? profileImageUrl;
   final Color primaryColor;
   final List<CustomCard> customCards;
+  final List<String> interests;
+  final List<String> skills;
+  final String homeBase;
 
   const Candidate({
     this.uid,
@@ -30,5 +33,8 @@ class Candidate {
     this.profileImageUrl,
     required this.primaryColor,
     this.customCards = const [],
+    this.interests = const [],
+    this.skills = const [],
+    this.homeBase = '',
   });
 }

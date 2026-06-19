@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 /// Singleton service for the Firestore `events` collection.
 ///
@@ -36,6 +38,7 @@ class EventService {
     String? mapUrl,
     double? latitude,
     double? longitude,
+    String? imageUrl,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -51,8 +54,9 @@ class EventService {
         'category': category,
         'price': price,
         if (mapUrl != null && mapUrl.isNotEmpty) 'mapUrl': mapUrl,
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
+        'imageUrl': ?imageUrl,
         'organiserId': uid,
         'attendees': <String>[],
         'attendeeCount': 0,
@@ -163,6 +167,21 @@ class EventService {
       await _eventsRef.doc(eventId).delete();
     } catch (e) {
       throw Exception('Failed to delete event: $e');
+    }
+  }
+
+  /// Uploads an event flyer image and returns the download URL.
+  Future<String> uploadEventImage(String eventId, File imageFile) async {
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('event_images')
+          .child(eventId)
+          .child('flyer_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = await ref.putFile(imageFile);
+      return await uploadTask.ref.getDownloadURL();
+    } catch (e) {
+      throw Exception('Failed to upload event image: $e');
     }
   }
 }

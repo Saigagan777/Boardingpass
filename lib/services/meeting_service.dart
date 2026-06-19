@@ -35,6 +35,7 @@ class MeetingService {
     DateTime? scheduledAt,
     String? location,
     String? note,
+    int? reminderMinutes,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -62,6 +63,7 @@ class MeetingService {
             : null,
         'location': location,
         'note': note,
+        'reminderMinutes': reminderMinutes,
         'suggestedAgenda': agenda,
         'cancellationReasons': {},
         'createdAt': FieldValue.serverTimestamp(),
@@ -456,6 +458,51 @@ class MeetingService {
     } catch (e) {
       debugPrint('Error checking meeting conflict: $e');
       return false;
+    }
+  }
+
+  /// Allows a participant to propose an alternative meeting time.
+  Future<void> proposeOtherTime({
+    required String meetingId,
+    required DateTime proposedTime,
+    String? note,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final meetingDoc = await _meetingsRef.doc(meetingId).get();
+      if (!meetingDoc.exists) throw Exception('Meeting not found');
+
+      final data = meetingDoc.data()!;
+      final hosts = List<String>.from(data['hosts'] ?? []);
+
+      await _meetingsRef.doc(meetingId).update({
+        'proposedTime': Timestamp.fromDate(proposedTime),
+        'proposedBy': uid,
+        'proposalNote': note ?? '',
+        'participantsStatus.$uid': 'proposed_other_time',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Notify the host(s)
+      final userName = _auth.currentUser?.displayName ?? 'Participant';
+      for (final hostId in hosts) {
+        await _firestore.collection('notifications').add({
+          'userId': hostId,
+          'title': '🔄 New Time Proposed',
+          'body': '$userName proposed a different time for your meeting.',
+          'type': 'meeting_time_proposal',
+          'isRead': false,
+          'metadata': {
+            'meetingId': meetingId,
+            'proposedBy': uid,
+          },
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      throw Exception('Failed to propose new time: $e');
     }
   }
 }

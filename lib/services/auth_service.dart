@@ -64,6 +64,10 @@ class AuthService {
     String? profileImageUrl,
     List<String> expertise = const [],
     List<String> intents = const [],
+    List<String> skills = const [],
+    List<String> interests = const [],
+    List<Map<String, dynamic>> careerTimeline = const [],
+    List<Map<String, dynamic>> educationTimeline = const [],
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -92,6 +96,10 @@ class AuthService {
           profileImageUrl: profileImageUrl,
           expertise: expertise,
           intents: intents,
+          skills: skills,
+          interests: interests,
+          careerTimeline: careerTimeline,
+          educationTimeline: educationTimeline,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
         );

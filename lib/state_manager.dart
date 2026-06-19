@@ -6,6 +6,7 @@ import 'services/auth_service.dart';
 import 'services/user_service.dart';
 import 'services/event_service.dart';
 import 'services/checkin_service.dart';
+import 'services/chat_service.dart';
 import 'models/candidate.dart';
 import 'models/checkin.dart';
 import 'models/event.dart';
@@ -45,6 +46,7 @@ class AppStateManager extends ChangeNotifier {
   StreamSubscription? _eventsSubscription;
   StreamSubscription? _checkinsSubscription;
   StreamSubscription? _profileSubscription;
+  Timer? _presenceTimer;
 
   void _cancelSubscriptions() {
     _eventsSubscription?.cancel();
@@ -53,6 +55,8 @@ class AppStateManager extends ChangeNotifier {
     _checkinsSubscription = null;
     _profileSubscription?.cancel();
     _profileSubscription = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
   }
 
   // Navigation and View Modes
@@ -82,6 +86,7 @@ class AppStateManager extends ChangeNotifier {
   // Authentication State
   bool _isLoggedIn = false;
   bool _isAuthCallbackInProgress = false;
+  bool isRegistering = false;
   Map<String, String>? _profileData;
   UserProfile? _currentUserProfile;
 
@@ -93,12 +98,14 @@ class AppStateManager extends ChangeNotifier {
   bool get isProfileComplete {
     if (_currentUserProfile == null) return true; // Default to true to prevent screen flickering during load
     final p = _currentUserProfile!;
+    final hasSkills = p.skills.isNotEmpty || p.expertise.isNotEmpty;
+    final hasInterests = p.interests.isNotEmpty || p.intents.isNotEmpty;
     return p.role != null && p.role!.trim().isNotEmpty &&
            p.company != null && p.company!.trim().isNotEmpty &&
            p.bio != null && p.bio!.trim().isNotEmpty &&
            p.experience != null && p.experience!.trim().isNotEmpty &&
-           p.expertise.isNotEmpty &&
-           p.intents.isNotEmpty;
+           hasSkills &&
+           hasInterests;
   }
 
   void beginAuthCallback() {
@@ -188,6 +195,7 @@ class AppStateManager extends ChangeNotifier {
         mapUrl: newEvent.mapUrl,
         latitude: newEvent.latitude,
         longitude: newEvent.longitude,
+        imageUrl: newEvent.imageUrl,
       );
     } catch (e) {
       debugPrint('Error creating event: $e');
@@ -259,6 +267,9 @@ class AppStateManager extends ChangeNotifier {
 
     // Listen to Firebase Authentication state changes
     AuthService().authStateChanges.listen((User? user) async {
+      if (isRegistering) {
+        return;
+      }
       if (user != null) {
         await syncSignedInUser(user);
       } else if (!_isAuthCallbackInProgress) {
@@ -275,6 +286,20 @@ class AppStateManager extends ChangeNotifier {
     _isAuthCallbackInProgress = false;
     _currentScreen = AppScreen.hub;
     notifyListeners();
+
+    // Start presence heartbeat
+    try {
+      UserService().touchLastSeen(user.uid);
+    } catch (e) {
+      debugPrint('Error touching lastSeen on sync: $e');
+    }
+    _presenceTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      try {
+        UserService().touchLastSeen(user.uid);
+      } catch (e) {
+        debugPrint('Error touching lastSeen heartbeat: $e');
+      }
+    });
 
     try {
       final isAdminUser = await AuthService().isAdmin().timeout(
@@ -332,6 +357,7 @@ class AppStateManager extends ChangeNotifier {
             mapUrl: data['mapUrl'],
             latitude: (data['latitude'] as num?)?.toDouble(),
             longitude: (data['longitude'] as num?)?.toDouble(),
+            imageUrl: data['imageUrl'],
             isJoined: attendeesList.contains(user.uid),
           ),
         );
@@ -396,7 +422,17 @@ class AppStateManager extends ChangeNotifier {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       if (currentUid == null) return;
 
-      // Query users collection
+      // 1. Fetch current user's swipes to exclude already swiped candidates
+      final swipesSnapshot = await FirebaseFirestore.instance
+          .collection('swipes')
+          .where('fromUid', isEqualTo: currentUid)
+          .get();
+
+      final swipedUids = swipesSnapshot.docs
+          .map((doc) => doc.data()['toUid'] as String)
+          .toSet();
+
+      // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('isDiscoverable', isEqualTo: true)
@@ -404,11 +440,13 @@ class AppStateManager extends ChangeNotifier {
           .get();
 
       final loaded = querySnapshot.docs
-          .where((doc) => doc.id != currentUid)
+          .where((doc) => doc.id != currentUid && !swipedUids.contains(doc.id))
           .map((doc) {
             final data = doc.data();
             final expertise = List<String>.from(data['expertise'] ?? []);
             final intents = List<String>.from(data['intents'] ?? []);
+            final interests = List<String>.from(data['interests'] ?? []);
+            final skills = List<String>.from(data['skills'] ?? []);
             final customCardsData = data['customCards'] as List? ?? [];
             final customCards = customCardsData
                 .map((item) => CustomCard.fromMap(Map<String, dynamic>.from(item)))
@@ -423,6 +461,9 @@ class AppStateManager extends ChangeNotifier {
               match: data['matchScore'] ?? 0,
               intent: intents.isNotEmpty ? intents.join(', ') : '',
               tags: expertise,
+              interests: interests,
+              skills: skills,
+              homeBase: data['homeBase'] ?? '',
               bio: data['bio'] ?? '',
               initials: (data['name'] as String?)?.isNotEmpty == true
                   ? data['name']
@@ -446,6 +487,53 @@ class AppStateManager extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
+    }
+  }
+
+  /// Record a swipe gesture (like, reject, or favorite) in Firestore.
+  /// If the swiped action is 'like' or 'favorite', check if the target candidate
+  /// has also liked/favorited the current user. Returns true if it results in
+  /// a mutual connection, false otherwise.
+  Future<bool> swipeCandidate({
+    required String targetUid,
+    required String action,
+  }) async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return false;
+
+    try {
+      final now = FieldValue.serverTimestamp();
+
+      // 1. Record the swipe action using a composite document ID to prevent duplicate entry rows
+      final docId = '${currentUid}_$targetUid';
+      await FirebaseFirestore.instance.collection('swipes').doc(docId).set({
+        'fromUid': currentUid,
+        'toUid': targetUid,
+        'action': action,
+        'timestamp': now,
+      });
+
+      // 2. If liking or favoriting, check if the other user has liked/favorited current user
+      if (action == 'like' || action == 'favorite') {
+        final reverseDocId = '${targetUid}_$currentUid';
+        final reverseDoc = await FirebaseFirestore.instance
+            .collection('swipes')
+            .doc(reverseDocId)
+            .get();
+
+        if (reverseDoc.exists) {
+          final reverseAction = reverseDoc.data()?['action'] as String?;
+          if (reverseAction == 'like' || reverseAction == 'favorite') {
+            // Create chat connection
+            await ChatService().getOrCreateChat(userId1: currentUid, userId2: targetUid);
+            return true; // Mutual match connection successful
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error swiping candidate: $e');
+      return false;
     }
   }
 

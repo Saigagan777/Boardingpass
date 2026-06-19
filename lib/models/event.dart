@@ -12,6 +12,7 @@ class Event {
   final String? mapUrl;
   final double? latitude;
   final double? longitude;
+  final String? imageUrl;
   bool isJoined;
 
   Event({
@@ -28,6 +29,7 @@ class Event {
     this.mapUrl,
     this.latitude,
     this.longitude,
+    this.imageUrl,
     this.isJoined = false,
   });
 }
