@@ -1,8 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'linkedin_secret.dart';
 
 class LinkedInOAuthConfig {
-  static const String clientId = '';
-  static const String state = '';
+  static const String clientId = linkedinClientId;
+  static const String state = 'boardingpass_linkedin_oauth_state';
   static const String mobileRedirectUri = '';
 
   static String get redirectUri {
@@ -20,7 +21,7 @@ class LinkedInOAuthConfig {
       return '${baseUri.scheme}://${baseUri.authority}';
     }
 
-    return 'http://localhost:5000';
+    return 'http://localhost:8080';
   }
 
   static String authorizationUrl({required String redirectUri}) {

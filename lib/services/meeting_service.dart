@@ -461,8 +461,11 @@ class MeetingService {
     }
   }
 
-  /// Allows a participant to propose an alternative meeting time.
-  Future<void> proposeOtherTime({
+  /// Proposes a new meeting time using a Firestore transaction.
+  ///
+  /// Creates a proposal entry with a unique ID, supersedes any previous active
+  /// proposal by the same user, and notifies the host(s).
+  Future<String> proposeOtherTime({
     required String meetingId,
     required DateTime proposedTime,
     String? note,
@@ -470,39 +473,277 @@ class MeetingService {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
 
+    final proposalId = '${uid}_${DateTime.now().millisecondsSinceEpoch}';
+
     try {
-      final meetingDoc = await _meetingsRef.doc(meetingId).get();
-      if (!meetingDoc.exists) throw Exception('Meeting not found');
+      final docRef = _meetingsRef.doc(meetingId);
 
-      final data = meetingDoc.data()!;
-      final hosts = List<String>.from(data['hosts'] ?? []);
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) throw Exception('Meeting not found');
 
-      await _meetingsRef.doc(meetingId).update({
-        'proposedTime': Timestamp.fromDate(proposedTime),
-        'proposedBy': uid,
-        'proposalNote': note ?? '',
-        'participantsStatus.$uid': 'proposed_other_time',
-        'updatedAt': FieldValue.serverTimestamp(),
+        final data = snapshot.data()!;
+        final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+
+        // Supersede any previous active proposal from the same user
+        for (int i = 0; i < proposals.length; i++) {
+          if (proposals[i]['proposedBy'] == uid && proposals[i]['status'] == 'active') {
+            proposals[i]['status'] = 'superseded';
+            proposals[i]['updatedAt'] = Timestamp.now();
+          }
+        }
+
+        // Add new proposal
+        proposals.add({
+          'proposalId': proposalId,
+          'proposedBy': uid,
+          'proposedTime': Timestamp.fromDate(proposedTime),
+          'note': note ?? '',
+          'status': 'active', // active | accepted | declined | superseded
+          'responses': <String, String>{}, // participantId -> 'accepted'|'declined'
+          'createdAt': Timestamp.now(),
+          'updatedAt': Timestamp.now(),
+        });
+
+        transaction.update(docRef, {
+          'proposals': proposals,
+          'participantsStatus.$uid': 'proposed_other_time',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
 
-      // Notify the host(s)
-      final userName = _auth.currentUser?.displayName ?? 'Participant';
-      for (final hostId in hosts) {
-        await _firestore.collection('notifications').add({
-          'userId': hostId,
-          'title': '🔄 New Time Proposed',
-          'body': '$userName proposed a different time for your meeting.',
-          'type': 'meeting_time_proposal',
-          'isRead': false,
-          'metadata': {
-            'meetingId': meetingId,
-            'proposedBy': uid,
-          },
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+      // Notify the host(s) outside the transaction
+      final meetingDoc = await _meetingsRef.doc(meetingId).get();
+      if (meetingDoc.exists) {
+        final hosts = List<String>.from(meetingDoc.data()?['hosts'] ?? []);
+        final userName = _auth.currentUser?.displayName ?? 'Participant';
+        for (final hostId in hosts) {
+          await _firestore.collection('notifications').add({
+            'userId': hostId,
+            'title': '🔄 New Time Proposed',
+            'body': '$userName proposed a different time for your meeting.',
+            'type': 'meeting_time_proposal',
+            'isRead': false,
+            'metadata': {
+              'meetingId': meetingId,
+              'proposalId': proposalId,
+              'proposedBy': uid,
+            },
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        }
       }
+
+      return proposalId;
     } catch (e) {
       throw Exception('Failed to propose new time: $e');
+    }
+  }
+
+  /// Accepts a specific proposal using a Firestore transaction.
+  ///
+  /// Implements **Host Decides** rule: if the current user is a host,
+  /// accepting a proposal immediately updates the meeting's scheduled time
+  /// and resets all participant statuses.
+  Future<void> acceptProposal({
+    required String meetingId,
+    required String proposalId,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final docRef = _meetingsRef.doc(meetingId);
+
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) throw Exception('Meeting not found');
+
+        final data = snapshot.data()!;
+        final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+        final hosts = List<String>.from(data['hosts'] ?? []);
+        final participants = List<String>.from(data['participants'] ?? []);
+        final isHost = hosts.contains(uid);
+
+        // Find the proposal
+        final proposalIndex = proposals.indexWhere((p) => p['proposalId'] == proposalId);
+        if (proposalIndex == -1) throw Exception('Proposal not found');
+        final proposal = proposals[proposalIndex];
+
+        if (proposal['status'] != 'active') {
+          throw Exception('Proposal is no longer active');
+        }
+
+        if (isHost) {
+          // Host Decides: accepting = reschedule the meeting
+          final proposedTime = proposal['proposedTime'] as Timestamp;
+
+          // Mark proposal as accepted
+          proposals[proposalIndex]['status'] = 'accepted';
+          proposals[proposalIndex]['updatedAt'] = Timestamp.now();
+
+          // Supersede all other active proposals
+          for (int i = 0; i < proposals.length; i++) {
+            if (i != proposalIndex && proposals[i]['status'] == 'active') {
+              proposals[i]['status'] = 'superseded';
+              proposals[i]['updatedAt'] = Timestamp.now();
+            }
+          }
+
+          // Reset participant statuses
+          final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
+          for (final p in participants) {
+            statusMap[p] = hosts.contains(p) ? 'accepted' : 'pending';
+          }
+
+          transaction.update(docRef, {
+            'scheduledAt': proposedTime,
+            'proposals': proposals,
+            'participantsStatus': statusMap,
+            'status': 'rescheduled',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          // Non-host: record response on the proposal
+          final responses = Map<String, dynamic>.from(proposal['responses'] ?? {});
+          responses[uid] = 'accepted';
+          proposals[proposalIndex]['responses'] = responses;
+          proposals[proposalIndex]['updatedAt'] = Timestamp.now();
+
+          transaction.update(docRef, {
+            'proposals': proposals,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+
+      // Notify relevant parties
+      final meetingDoc = await _meetingsRef.doc(meetingId).get();
+      if (meetingDoc.exists) {
+        final data = meetingDoc.data()!;
+        final hosts = List<String>.from(data['hosts'] ?? []);
+        final userName = _auth.currentUser?.displayName ?? 'User';
+        final isHost = hosts.contains(uid);
+
+        if (isHost) {
+          // Notify all non-host participants about the reschedule
+          final participants = List<String>.from(data['participants'] ?? []);
+          for (final p in participants) {
+            if (p == uid) continue;
+            await _firestore.collection('notifications').add({
+              'userId': p,
+              'title': '📅 Meeting Rescheduled',
+              'body': '$userName accepted a proposed time. Check the updated schedule.',
+              'type': 'meeting_invite',
+              'isRead': false,
+              'metadata': {'meetingId': meetingId, 'proposalId': proposalId},
+              'timestamp': FieldValue.serverTimestamp(),
+            });
+          }
+        } else {
+          // Notify hosts that a participant accepted the proposal
+          for (final hostId in hosts) {
+            await _firestore.collection('notifications').add({
+              'userId': hostId,
+              'title': '✅ Proposal Response',
+              'body': '$userName accepted the proposed time.',
+              'type': 'meeting_time_proposal',
+              'isRead': false,
+              'metadata': {'meetingId': meetingId, 'proposalId': proposalId},
+              'timestamp': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      throw Exception('Failed to accept proposal: $e');
+    }
+  }
+
+  /// Declines a specific proposal using a Firestore transaction.
+  Future<void> declineProposal({
+    required String meetingId,
+    required String proposalId,
+    String? reason,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final docRef = _meetingsRef.doc(meetingId);
+
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+        if (!snapshot.exists) throw Exception('Meeting not found');
+
+        final data = snapshot.data()!;
+        final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+        final hosts = List<String>.from(data['hosts'] ?? []);
+        final isHost = hosts.contains(uid);
+
+        final proposalIndex = proposals.indexWhere((p) => p['proposalId'] == proposalId);
+        if (proposalIndex == -1) throw Exception('Proposal not found');
+
+        if (proposals[proposalIndex]['status'] != 'active') {
+          throw Exception('Proposal is no longer active');
+        }
+
+        if (isHost) {
+          // Host declining = kill the proposal
+          proposals[proposalIndex]['status'] = 'declined';
+          proposals[proposalIndex]['declinedBy'] = uid;
+          proposals[proposalIndex]['declineReason'] = reason ?? '';
+          proposals[proposalIndex]['updatedAt'] = Timestamp.now();
+        } else {
+          // Non-host: record decline response
+          final responses = Map<String, dynamic>.from(proposals[proposalIndex]['responses'] ?? {});
+          responses[uid] = 'declined';
+          proposals[proposalIndex]['responses'] = responses;
+          proposals[proposalIndex]['updatedAt'] = Timestamp.now();
+        }
+
+        transaction.update(docRef, {
+          'proposals': proposals,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      // Notify the proposer
+      final meetingDoc = await _meetingsRef.doc(meetingId).get();
+      if (meetingDoc.exists) {
+        final data = meetingDoc.data()!;
+        final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+        final proposal = proposals.firstWhere((p) => p['proposalId'] == proposalId, orElse: () => {});
+        final proposedBy = proposal['proposedBy'] as String?;
+        if (proposedBy != null && proposedBy != uid) {
+          final userName = _auth.currentUser?.displayName ?? 'User';
+          await _firestore.collection('notifications').add({
+            'userId': proposedBy,
+            'title': '❌ Proposal Declined',
+            'body': '$userName declined your proposed time.${reason != null ? ' Reason: $reason' : ''}',
+            'type': 'meeting_time_proposal',
+            'isRead': false,
+            'metadata': {'meetingId': meetingId, 'proposalId': proposalId},
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    } catch (e) {
+      throw Exception('Failed to decline proposal: $e');
+    }
+  }
+
+  /// Returns only active proposals for a meeting.
+  Future<List<Map<String, dynamic>>> getActiveProposals(String meetingId) async {
+    try {
+      final doc = await _meetingsRef.doc(meetingId).get();
+      if (!doc.exists) return [];
+      final data = doc.data()!;
+      final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+      return proposals.where((p) => p['status'] == 'active').toList();
+    } catch (e) {
+      debugPrint('Error fetching active proposals: $e');
+      return [];
     }
   }
 }

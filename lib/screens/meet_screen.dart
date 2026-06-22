@@ -1036,7 +1036,144 @@ class _MeetScreenState extends State<MeetScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      if (proposedTimeTimestamp != null && proposedBy != null) ...[
+                      // Active Proposals Section
+                      if ((data['proposals'] as List?)?.isNotEmpty == true) ...[
+                        Builder(builder: (context) {
+                          final allProposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+                          final activeProposals = allProposals.where((p) => p['status'] == 'active').toList();
+                          if (activeProposals.isEmpty) return const SizedBox.shrink();
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: activeProposals.map((proposal) {
+                              final pTime = (proposal['proposedTime'] as Timestamp?)?.toDate();
+                              final pBy = proposal['proposedBy'] as String?;
+                              final pNote = proposal['note'] as String? ?? '';
+                              final pId = proposal['proposalId'] as String? ?? '';
+                              final pTimeStr = pTime != null
+                                  ? '${pTime.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][pTime.month - 1]} at ${pTime.hour.toString().padLeft(2, '0')}:${pTime.minute.toString().padLeft(2, '0')}'
+                                  : 'Unknown';
+
+                              return Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFAF7F5),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFF7A432D), width: 1),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.schedule, color: Color(0xFF7A432D), size: 16),
+                                        const SizedBox(width: 6),
+                                        const Text(
+                                          'Proposed Alternative Time',
+                                          style: TextStyle(
+                                            fontFamily: 'PlayfairDisplay',
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: Color(0xFF3E1F11),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        if (pBy != null)
+                                          FutureBuilder<DocumentSnapshot>(
+                                            future: FirebaseFirestore.instance.collection('users').doc(pBy).get(),
+                                            builder: (context, userSnap) {
+                                              if (userSnap.connectionState == ConnectionState.waiting) {
+                                                return const Text('By Loading...', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)));
+                                              }
+                                              final userData = userSnap.data?.data() as Map<String, dynamic>?;
+                                              final proposerName = userData?['name'] ?? 'Someone';
+                                              return Text('By $proposerName', style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)));
+                                            },
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Proposed: $pTimeStr',
+                                      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                                    ),
+                                    if (pNote.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text('Note: "$pNote"', style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF5C473E))),
+                                    ],
+                                    // Accept / Decline / Propose Another Time buttons
+                                    if (pBy != currentUid) ...[
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton(
+                                              style: OutlinedButton.styleFrom(
+                                                side: const BorderSide(color: Color(0xFFC62828)),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                              ),
+                                              onPressed: () async {
+                                                try {
+                                                  await MeetingService().declineProposal(meetingId: meetingId, proposalId: pId);
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Proposal declined.'), backgroundColor: Color(0xFFC62828)));
+                                                  }
+                                                  setState(() {});
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFC62828)));
+                                                  }
+                                                }
+                                              },
+                                              child: const Text('Decline', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFC62828))),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF2E7D32),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                              ),
+                                              onPressed: () async {
+                                                try {
+                                                  await MeetingService().acceptProposal(meetingId: meetingId, proposalId: pId);
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(isHost ? 'Meeting rescheduled to proposed time!' : 'Proposal accepted!'),
+                                                        backgroundColor: const Color(0xFF2E7D32),
+                                                      ),
+                                                    );
+                                                  }
+                                                  setState(() {});
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFC62828)));
+                                                  }
+                                                }
+                                              },
+                                              child: Text(
+                                                isHost ? 'Accept & Reschedule' : 'Accept',
+                                                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          );
+                        }),
+                      ],
+                      // Legacy single-proposal fallback (for old data without proposals array)
+                      if ((data['proposals'] as List?)?.isEmpty != false && proposedTimeTimestamp != null && proposedBy != null) ...[
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
@@ -1053,171 +1190,19 @@ class _MeetScreenState extends State<MeetScreen> {
                                 children: [
                                   const Icon(Icons.schedule, color: Color(0xFF7A432D), size: 16),
                                   const SizedBox(width: 6),
-                                  const Text(
-                                    'Proposed Alternative Time',
-                                    style: TextStyle(
-                                      fontFamily: 'PlayfairDisplay',
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: Color(0xFF3E1F11),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  FutureBuilder<DocumentSnapshot>(
-                                    future: FirebaseFirestore.instance.collection('users').doc(proposedBy).get(),
-                                    builder: (context, userSnap) {
-                                      if (userSnap.connectionState == ConnectionState.waiting) {
-                                        return const Text(
-                                          'By Loading...',
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF8C736B),
-                                          ),
-                                        );
-                                      }
-                                      final userData = userSnap.data?.data() as Map<String, dynamic>?;
-                                      final proposerName = userData?['name'] ?? 'Someone';
-                                      return Text(
-                                        'By $proposerName',
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF8C736B),
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                  const Text('Legacy Proposal', style: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11))),
                                 ],
                               ),
                               const SizedBox(height: 8),
                               Text(
                                 'Proposed: ${proposedTime!.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][proposedTime.month - 1]} at ${proposedTime.hour.toString().padLeft(2, '0')}:${proposedTime.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF3E1F11),
-                                ),
+                                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
                               ),
-                              if (proposalNote.isNotEmpty) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Note: "$proposalNote"',
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 11,
-                                    fontStyle: FontStyle.italic,
-                                    color: Color(0xFF5C473E),
-                                  ),
+                              if (proposalNote.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text('Note: "$proposalNote"', style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF5C473E))),
                                 ),
-                              ],
-                              if (isHost && statusStr == 'pending') ...[
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: OutlinedButton(
-                                        style: OutlinedButton.styleFrom(
-                                          side: const BorderSide(color: Color(0xFFC62828)),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          padding: const EdgeInsets.symmetric(vertical: 4),
-                                        ),
-                                        onPressed: () async {
-                                          try {
-                                            await FirebaseFirestore.instance.collection('meetings').doc(meetingId).update({
-                                              'proposedTime': FieldValue.delete(),
-                                              'proposedBy': FieldValue.delete(),
-                                              'proposalNote': FieldValue.delete(),
-                                              'participantsStatus.$proposedBy': 'pending',
-                                            });
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Proposed time declined.'),
-                                                  backgroundColor: Color(0xFFC62828),
-                                                ),
-                                              );
-                                            }
-                                            setState(() {});
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text('Failed to decline: $e'),
-                                                  backgroundColor: const Color(0xFFC62828),
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
-                                        child: const Text(
-                                          'Decline',
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFFC62828),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF2E7D32),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                          padding: const EdgeInsets.symmetric(vertical: 4),
-                                        ),
-                                        onPressed: () async {
-                                          try {
-                                            await MeetingService().rescheduleMeeting(
-                                              meetingId: meetingId,
-                                              newTime: proposedTime,
-                                              userId: currentUid!,
-                                            );
-                                            await FirebaseFirestore.instance.collection('meetings').doc(meetingId).update({
-                                              'proposedTime': FieldValue.delete(),
-                                              'proposedBy': FieldValue.delete(),
-                                              'proposalNote': FieldValue.delete(),
-                                            });
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Meeting rescheduled to proposed time!'),
-                                                  backgroundColor: Color(0xFF2E7D32),
-                                                ),
-                                              );
-                                            }
-                                            setState(() {});
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text('Failed to accept proposed time: $e'),
-                                                  backgroundColor: const Color(0xFFC62828),
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
-                                        child: const Text(
-                                          'Accept & Reschedule',
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
                             ],
                           ),
                         ),

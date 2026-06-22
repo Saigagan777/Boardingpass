@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'firebase_options.dart';
 import 'state_manager.dart';
@@ -17,6 +20,7 @@ import 'screens/chat_screen.dart';
 import 'screens/meet_screen.dart';
 import 'screens/admin_panel.dart';
 import 'utils/web_helper.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +51,15 @@ void main() async {
 
   if (webOAuthCode != null && webOAuthCode.isNotEmpty) {
     appState.beginAuthCallback();
+  }
+
+  // Initialize notifications (non-blocking)
+  try {
+    await NotificationService().initialize();
+    await NotificationService().requestPermission();
+    await NotificationService().getAndStoreFcmToken();
+  } catch (e) {
+    debugPrint('Notification init error: $e');
   }
 
   appState.init();
@@ -124,17 +137,41 @@ class MainApp extends StatelessWidget {
         ),
         fontFamily: 'PlusJakartaSans',
         textTheme: const TextTheme(
-          headlineLarge: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold),
-          headlineMedium: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold),
-          headlineSmall: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.w600),
-          titleLarge: TextStyle(fontFamily: 'PlayfairDisplay', fontWeight: FontWeight.bold),
-          titleMedium: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.w600),
-          titleSmall: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.w600),
+          headlineLarge: TextStyle(
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.bold,
+          ),
+          headlineMedium: TextStyle(
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.bold,
+          ),
+          headlineSmall: TextStyle(
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.w600,
+          ),
+          titleLarge: TextStyle(
+            fontFamily: 'PlayfairDisplay',
+            fontWeight: FontWeight.bold,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w600,
+          ),
           bodyLarge: TextStyle(fontFamily: 'PlusJakartaSans'),
           bodyMedium: TextStyle(fontFamily: 'PlusJakartaSans'),
           bodySmall: TextStyle(fontFamily: 'PlusJakartaSans'),
-          labelLarge: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
-          labelMedium: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.w600),
+          labelLarge: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.bold,
+          ),
+          labelMedium: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.w600,
+          ),
           labelSmall: TextStyle(fontFamily: 'PlusJakartaSans'),
         ),
         appBarTheme: const AppBarTheme(
@@ -182,16 +219,26 @@ class MainNavigationShell extends StatefulWidget {
 
 class _MainNavigationShellState extends State<MainNavigationShell> {
   final AppStateManager _state = AppStateManager();
+  // Session-level set of dismissed notification IDs (not marked as read in Firestore)
+  final Set<String> _dismissedNotificationIds = {};
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notificationSub;
+  Map<String, dynamic>? _latestUnreadNotification;
+  String? _latestUnreadNotificationId;
+  Timer? _notificationBannerTimer;
+  bool _showNotificationBanner = false;
 
   @override
   void initState() {
     super.initState();
     _state.addListener(_onStateChanged);
+    _listenForNotifications();
   }
 
   @override
   void dispose() {
     _state.removeListener(_onStateChanged);
+    _notificationSub?.cancel();
+    _notificationBannerTimer?.cancel();
     super.dispose();
   }
 
@@ -201,18 +248,232 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     }
   }
 
+  void _listenForNotifications() {
+    final uid =
+        _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      // Retry when user logs in
+      _state.addListener(_retryNotificationListener);
+      return;
+    }
+    _startNotificationStream(uid);
+  }
+
+  void _retryNotificationListener() {
+    final uid =
+        _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _state.removeListener(_retryNotificationListener);
+      _startNotificationStream(uid);
+    }
+  }
+
+  void _startNotificationStream(String uid) {
+    _notificationSub?.cancel();
+    _notificationSub = FirebaseFirestore.instance
+        .collection('notifications')
+        .where('userId', isEqualTo: uid)
+        .snapshots()
+        .listen(
+          (snap) {
+            if (mounted) {
+              final unreadDocs = snap.docs.where((doc) {
+                final data = doc.data();
+                return (data['isRead'] as bool? ?? false) == false;
+              }).toList();
+
+              if (unreadDocs.isNotEmpty) {
+                unreadDocs.sort((a, b) {
+                  final aTime = a.data()['timestamp'] as Timestamp?;
+                  final bTime = b.data()['timestamp'] as Timestamp?;
+                  if (aTime == null && bTime == null) return 0;
+                  if (aTime == null) return 1;
+                  if (bTime == null) return -1;
+                  return bTime.compareTo(aTime);
+                });
+                final doc = unreadDocs.first;
+                final isNewBanner = doc.id != _latestUnreadNotificationId;
+                final isDismissed = _dismissedNotificationIds.contains(doc.id);
+
+                if (isNewBanner && !isDismissed) {
+                  _notificationBannerTimer?.cancel();
+                  _notificationBannerTimer = Timer(const Duration(seconds: 5), () {
+                    if (mounted) {
+                      setState(() {
+                        _showNotificationBanner = false;
+                      });
+                    }
+                  });
+                }
+
+                if (isNewBanner ||
+                    _showNotificationBanner == isDismissed ||
+                    _latestUnreadNotification == null) {
+                  setState(() {
+                    _latestUnreadNotificationId = doc.id;
+                    _latestUnreadNotification = doc.data();
+                    if (isNewBanner) {
+                      _showNotificationBanner = !isDismissed;
+                    }
+                  });
+                } else {
+                  _latestUnreadNotification = doc.data();
+                }
+              } else {
+                _notificationBannerTimer?.cancel();
+                setState(() {
+                  _latestUnreadNotificationId = null;
+                  _latestUnreadNotification = null;
+                  _showNotificationBanner = false;
+                });
+              }
+            }
+          },
+          onError: (err) {
+            debugPrint("Error listening to notifications: $err");
+          },
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Determine if banner should show
+    final showBanner =
+        _latestUnreadNotificationId != null &&
+        _latestUnreadNotification != null &&
+        _showNotificationBanner &&
+        !_dismissedNotificationIds.contains(_latestUnreadNotificationId);
+
     return Scaffold(
-      body: _state.isAuthCallbackInProgress
-          ? const AuthCallbackScreen()
-          : (!_state.isLoggedIn
-                ? const OnboardingScreen()
-                : (_state.isProfileComplete
-                      ? (_state.isAdminView
-                            ? const AdminPanel()
-                            : _buildMobileAppShell())
-                      : const OnboardingScreen(completionMode: true))),
+      body: Stack(
+        children: [
+          // Main content
+          (_state.isAuthCallbackInProgress || _state.isProfileLoading)
+              ? const AuthCallbackScreen()
+              : (!_state.isLoggedIn
+                    ? const OnboardingScreen()
+                    : (_state.isProfileComplete
+                          ? (_state.isAdminView
+                                ? const AdminPanel()
+                                : _buildMobileAppShell())
+                          : const OnboardingScreen(completionMode: true))),
+          // In-app notification banner overlay
+          if (showBanner && _state.isLoggedIn && _state.isProfileComplete)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 12,
+              right: 12,
+              child: Material(
+                color: Colors.transparent,
+                child: GestureDetector(
+                  onTap: () async {
+                    // Mark as read in Firestore and navigate
+                    final notifId = _latestUnreadNotificationId;
+                    final notifData = _latestUnreadNotification;
+                    if (notifId != null) {
+                      await FirebaseFirestore.instance
+                          .collection('notifications')
+                          .doc(notifId)
+                          .update({'isRead': true});
+                      _notificationBannerTimer?.cancel();
+                      setState(() {
+                        _latestUnreadNotificationId = null;
+                        _latestUnreadNotification = null;
+                        _showNotificationBanner = false;
+                      });
+                      // Route based on type
+                      final type = notifData?['type'] as String? ?? '';
+                      if (type.contains('meeting')) {
+                        _state.currentScreen = AppScreen.meeting;
+                      } else if (type.contains('chat') ||
+                          type.contains('group')) {
+                        _state.currentScreen = AppScreen.chat;
+                      }
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3E1F11),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.notifications_active,
+                          color: Color(0xFFE5A475),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _latestUnreadNotification?['title'] ??
+                                    'New Notification',
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if ((_latestUnreadNotification?['body'] ?? '')
+                                  .toString()
+                                  .isNotEmpty)
+                                Text(
+                                  _latestUnreadNotification!['body'],
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 11,
+                                    color: Color(0xFFE8E2DD),
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Close button — dismisses locally, does NOT mark as read
+                        GestureDetector(
+                          onTap: () {
+                            _notificationBannerTimer?.cancel();
+                            setState(() {
+                              _dismissedNotificationIds.add(
+                                _latestUnreadNotificationId!,
+                              );
+                              _showNotificationBanner = false;
+                            });
+                          },
+                          child: const Icon(
+                            Icons.close,
+                            color: Color(0xFF8C736B),
+                            size: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -238,12 +499,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         activeWidget = EventsScreen();
         break;
       case AppScreen.discover:
-        activeWidget = DiscoverScreen(
-          onMatch: (name) {
-            _state.activeChatContact = name;
-            _state.currentScreen = AppScreen.chat;
-          },
-        );
+        activeWidget = const DiscoverScreen();
         break;
       case AppScreen.chat:
         activeWidget = ChatScreen(

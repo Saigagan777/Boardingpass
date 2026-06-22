@@ -43,7 +43,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _expertiseController = TextEditingController();
   final TextEditingController _industryController = TextEditingController();
   final TextEditingController _experienceController = TextEditingController();
-  final TextEditingController _profileImageUrlController = TextEditingController();
+  final TextEditingController _profileImageUrlController =
+      TextEditingController();
 
   // Career & Education timelines state
   final List<Map<String, dynamic>> _careerTimeline = [];
@@ -52,13 +53,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // Career form inputs
   final TextEditingController _workRoleController = TextEditingController();
   final TextEditingController _workCompanyController = TextEditingController();
-  final TextEditingController _workDurationController = TextEditingController();
+  final TextEditingController _workLocationController = TextEditingController();
+  final TextEditingController _workStartDateController =
+      TextEditingController();
+  final TextEditingController _workEndDateController = TextEditingController();
   final TextEditingController _workDescController = TextEditingController();
+  String _workEmploymentType = 'Full-time';
 
   // Education form inputs
   final TextEditingController _eduDegreeController = TextEditingController();
   final TextEditingController _eduSchoolController = TextEditingController();
-  final TextEditingController _eduDurationController = TextEditingController();
+  final TextEditingController _eduStartDateController = TextEditingController();
+  final TextEditingController _eduEndDateController = TextEditingController();
 
   String? _selectedIndustry = 'Technology';
   String? _selectedTravelFrequency = 'Occasional';
@@ -82,14 +88,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Real Estate',
     'Automotive',
     'Entertainment',
-    'Other'
+    'Other',
   ];
 
   final List<String> _travelFrequencies = [
     'Rarely',
     'Occasional',
     'Frequent',
-    'Never'
+    'Never',
   ];
 
   // Intents selectable checkboxes/chips
@@ -154,7 +160,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    _currentView = widget.completionMode ? OnboardingView.signUpStep2 : OnboardingView.slides;
+    _currentView = widget.completionMode
+        ? OnboardingView.signUpStep2
+        : OnboardingView.slides;
 
     if (widget.completionMode) {
       final profile = AppStateManager().currentUserProfile;
@@ -173,12 +181,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         if (profile.industry != null && profile.industry!.isNotEmpty) {
           _selectedIndustry = profile.industry;
         }
-        if (profile.travelFrequency != null && profile.travelFrequency!.isNotEmpty) {
+        if (profile.travelFrequency != null &&
+            profile.travelFrequency!.isNotEmpty) {
           _selectedTravelFrequency = profile.travelFrequency;
         }
         // Sync intents selection
         for (final intentLabel in profile.intents) {
-          final idx = _intentsSelection.indexWhere((item) => item['label'] == intentLabel);
+          final idx = _intentsSelection.indexWhere(
+            (item) => item['label'] == intentLabel,
+          );
           if (idx != -1) {
             _intentsSelection[idx]['selected'] = true;
           }
@@ -203,11 +214,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _profileImageUrlController.dispose();
     _workRoleController.dispose();
     _workCompanyController.dispose();
-    _workDurationController.dispose();
+    _workLocationController.dispose();
+    _workStartDateController.dispose();
+    _workEndDateController.dispose();
     _workDescController.dispose();
     _eduDegreeController.dispose();
     _eduSchoolController.dispose();
-    _eduDurationController.dispose();
+    _eduStartDateController.dispose();
+    _eduEndDateController.dispose();
     super.dispose();
   }
 
@@ -372,10 +386,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         .toList();
 
     // Validate fields before sign up
-    if (role.isEmpty || company.isEmpty || experience.isEmpty || bio.isEmpty || expertiseList.isEmpty || selectedIntents.isEmpty) {
+    if (role.isEmpty ||
+        company.isEmpty ||
+        experience.isEmpty ||
+        bio.isEmpty ||
+        expertiseList.isEmpty ||
+        selectedIntents.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please complete all professional details, skills, experience, bio, and select at least one interest.'),
+          content: Text(
+            'Please complete all professional details, skills, experience, bio, and select at least one interest.',
+          ),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -396,10 +417,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         company: company.isNotEmpty ? company : null,
         role: role.isNotEmpty ? role : null,
         bio: bio.isNotEmpty ? bio : null,
-        industry: industry != null && industry.isNotEmpty ? industry : 'Technology',
+        industry: industry != null && industry.isNotEmpty
+            ? industry
+            : 'Technology',
         experience: experience.isNotEmpty ? experience : null,
         homeBase: homeBase.isNotEmpty ? homeBase : null,
-        currentLocationName: currentLocationName.isNotEmpty ? currentLocationName : null,
+        currentLocationName: currentLocationName.isNotEmpty
+            ? currentLocationName
+            : null,
         travelFrequency: travelFrequency,
         profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
         expertise: expertiseList,
@@ -409,21 +434,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         careerTimeline: _careerTimeline,
         educationTimeline: _educationTimeline,
       );
-      await AuthService().signOut();
-      await Future.delayed(const Duration(milliseconds: 500));
+      final user = FirebaseAuth.instance.currentUser;
       AppStateManager().isRegistering = false;
+      if (user != null) {
+        await AppStateManager().syncSignedInUser(user);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Account created successfully! Please sign in with your email and password.'),
+            content: Text('Account created successfully! Welcome!'),
             backgroundColor: Color(0xFF2E7D32),
           ),
         );
-        setState(() {
-          _currentView = OnboardingView.signIn;
-          _passwordController.clear();
-        });
       }
     } on FirebaseAuthException catch (e) {
       AppStateManager().isRegistering = false;
@@ -495,10 +518,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         .toList();
 
     // Validate fields before complete
-    if (role.isEmpty || company.isEmpty || experience.isEmpty || bio.isEmpty || expertiseList.isEmpty || selectedIntents.isEmpty) {
+    if (role.isEmpty ||
+        company.isEmpty ||
+        experience.isEmpty ||
+        bio.isEmpty ||
+        expertiseList.isEmpty ||
+        selectedIntents.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please complete all professional details, skills, experience, bio, and select at least one interest.'),
+          content: Text(
+            'Please complete all professional details, skills, experience, bio, and select at least one interest.',
+          ),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -518,10 +548,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           company: company,
           headline: headline.isNotEmpty ? headline : '$role at $company',
           bio: bio,
-          industry: industry != null && industry.isNotEmpty ? industry : 'Technology',
+          industry: industry != null && industry.isNotEmpty
+              ? industry
+              : 'Technology',
           experience: experience,
           homeBase: homeBase.isNotEmpty ? homeBase : null,
-          currentLocationName: currentLocationName.isNotEmpty ? currentLocationName : null,
+          currentLocationName: currentLocationName.isNotEmpty
+              ? currentLocationName
+              : null,
           travelFrequency: travelFrequency,
           expertise: expertiseList,
           intents: selectedIntents,
@@ -530,6 +564,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           careerTimeline: _careerTimeline,
           educationTimeline: _educationTimeline,
         );
+        await AppStateManager().syncSignedInUser(user);
+        AppStateManager().currentScreen = AppScreen.hub;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile completed successfully!'),
+              backgroundColor: Color(0xFF2E7D32),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -588,12 +632,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     bool obscureText = false,
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
+    bool readOnly = false,
+    VoidCallback? onTap,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onTap: onTap,
       decoration: InputDecoration(
         labelText: labelText,
         hintText: hintText,
@@ -613,6 +661,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
         filled: true,
         fillColor: Colors.white,
+        suffixIcon: readOnly
+            ? const Icon(
+                Icons.calendar_today_outlined,
+                color: Color(0xFF7A432D),
+                size: 18,
+              )
+            : null,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -806,7 +861,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: const Color(0xFFE8E2DD),
-                  border: Border.all(color: const Color(0xFF7A432D), width: 1.5),
+                  border: Border.all(
+                    color: const Color(0xFF7A432D),
+                    width: 1.5,
+                  ),
                 ),
                 child: ClipOval(
                   child: buildProfileImage(
@@ -814,7 +872,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     width: 70,
                     height: 70,
                     fit: BoxFit.cover,
-                    fallback: const Icon(Icons.person, size: 36, color: Color(0xFF7A432D)),
+                    fallback: const Icon(
+                      Icons.person,
+                      size: 36,
+                      color: Color(0xFF7A432D),
+                    ),
                   ),
                 ),
               ),
@@ -827,7 +889,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                icon: const Icon(Icons.camera_alt_outlined, size: 16, color: Colors.white),
+                icon: const Icon(
+                  Icons.camera_alt_outlined,
+                  size: 16,
+                  color: Colors.white,
+                ),
                 label: const Text(
                   'Upload Photo',
                   style: TextStyle(
@@ -840,12 +906,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _buildTextField(
-            controller: _profileImageUrlController,
-            labelText: 'Or Paste Profile Photo URL',
-            hintText: 'https://example.com/photo.jpg',
-          ),
+
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
@@ -881,7 +942,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 if (_profileImageUrlController.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Please upload a profile photo or paste a URL'),
+                      content: Text(
+                        'Please upload a profile photo or paste a URL',
+                      ),
                       backgroundColor: Color(0xFF7A432D),
                     ),
                   );
@@ -928,8 +991,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Align(
               alignment: Alignment.topRight,
               child: TextButton.icon(
-                icon: const Icon(Icons.logout, size: 16, color: Color(0xFF7A432D)),
-                label: const Text('Cancel / Logout', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontWeight: FontWeight.bold)),
+                icon: const Icon(
+                  Icons.logout,
+                  size: 16,
+                  color: Color(0xFF7A432D),
+                ),
+                label: const Text(
+                  'Cancel / Logout',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    color: Color(0xFF7A432D),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 onPressed: () {
                   AppStateManager().logOut();
                 },
@@ -940,7 +1014,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _buildStepIndicator(2),
           const SizedBox(height: 20),
           Text(
-            widget.completionMode ? 'Complete Your Profile' : 'Professional Profile',
+            widget.completionMode
+                ? 'Complete Your Profile'
+                : 'Professional Profile',
             style: const TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 32,
@@ -1139,7 +1215,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             searchBarRadius: 10.0,
             onCountryChanged: (value) {
               setState(() {
-                _homeBaseCountry = value.contains('   ') ? value.split('   ').last : value;
+                _homeBaseCountry = value.contains('   ')
+                    ? value.split('   ').last
+                    : value;
               });
             },
             onStateChanged: (value) {
@@ -1202,7 +1280,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             searchBarRadius: 10.0,
             onCountryChanged: (value) {
               setState(() {
-                _currentLocationCountry = value.contains('   ') ? value.split('   ').last : value;
+                _currentLocationCountry = value.contains('   ')
+                    ? value.split('   ').last
+                    : value;
               });
             },
             onStateChanged: (value) {
@@ -1225,6 +1305,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ..._careerTimeline.asMap().entries.map((entry) {
               final idx = entry.key;
               final item = entry.value;
+              final subtitleParts = <String>[
+                if ((item['startDate'] ?? '').toString().isNotEmpty ||
+                    (item['endDate'] ?? '').toString().isNotEmpty)
+                  '${item['startDate'] ?? ''} to ${item['endDate'] ?? ''}',
+                if ((item['employmentType'] ?? '').toString().isNotEmpty)
+                  item['employmentType'],
+                if ((item['location'] ?? '').toString().isNotEmpty)
+                  item['location'],
+              ];
+              final subtitleLine = subtitleParts
+                  .where((s) => s.isNotEmpty)
+                  .join(' \u00B7 ');
               return Card(
                 color: Colors.white,
                 margin: const EdgeInsets.only(bottom: 8),
@@ -1235,14 +1327,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: ListTile(
                   title: Text(
                     '${item['role']} at ${item['company']}',
-                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
                   ),
                   subtitle: Text(
-                    '${item['duration']}\n${item['description']}',
-                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                    subtitleLine +
+                        ((item['description'] ?? '').toString().isNotEmpty
+                            ? '\n${item['description']}'
+                            : ''),
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      color: Color(0xFF8C736B),
+                    ),
                   ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
                     onPressed: () {
                       setState(() {
                         _careerTimeline.removeAt(idx);
@@ -1266,13 +1374,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: [
                 const Text(
                   'Add Work Experience',
-                  style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11)),
-                ),
-                const SizedBox(height: 8),
-                _buildTextField(
-                  controller: _workRoleController,
-                  labelText: 'Role / Job Title',
-                  hintText: 'e.g. Software Engineer',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
@@ -1282,9 +1389,96 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
-                  controller: _workDurationController,
-                  labelText: 'Duration (e.g. Jan 2023 - Present)',
-                  hintText: 'e.g. Jan 2023 - Present',
+                  controller: _workRoleController,
+                  labelText: 'Role / Job Title',
+                  hintText: 'e.g. Software Engineer',
+                ),
+                const SizedBox(height: 8),
+                // Employment Type Dropdown
+                DropdownButtonFormField<String>(
+                  value: _workEmploymentType,
+                  decoration: InputDecoration(
+                    labelText: 'Employment Type',
+                    labelStyle: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      color: Color(0xFF8C736B),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFFAF7F5),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF7A432D)),
+                    ),
+                  ),
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Full-time',
+                      child: Text('Full-time'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Part-time',
+                      child: Text('Part-time'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Self-employed',
+                      child: Text('Self-employed'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Freelance',
+                      child: Text('Freelance'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Contract',
+                      child: Text('Contract'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Internship',
+                      child: Text('Internship'),
+                    ),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => _workEmploymentType = val);
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workLocationController,
+                  labelText: 'Location',
+                  hintText: 'e.g. San Francisco, CA',
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workStartDateController,
+                  labelText: 'From',
+                  hintText: 'Select From date',
+                  readOnly: true,
+                  onTap: () => _selectDate(context, _workStartDateController),
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workEndDateController,
+                  labelText: 'To',
+                  hintText: 'Select To date',
+                  readOnly: true,
+                  onTap: () => _selectDate(
+                    context,
+                    _workEndDateController,
+                    isEndDate: true,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
@@ -1302,28 +1496,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () {
-                      if (_workRoleController.text.trim().isEmpty || _workCompanyController.text.trim().isEmpty) {
+                      if (_workRoleController.text.trim().isEmpty ||
+                          _workCompanyController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please fill Role and Company')),
+                          const SnackBar(
+                            content: Text('Please fill Role and Company'),
+                          ),
                         );
                         return;
                       }
                       setState(() {
                         _careerTimeline.add({
-                          'role': _workRoleController.text.trim(),
                           'company': _workCompanyController.text.trim(),
-                          'duration': _workDurationController.text.trim(),
+                          'role': _workRoleController.text.trim(),
+                          'employmentType': _workEmploymentType,
+                          'location': _workLocationController.text.trim(),
+                          'startDate': _workStartDateController.text.trim(),
+                          'endDate': _workEndDateController.text.trim(),
+                          'duration':
+                              '${_workStartDateController.text.trim()} to ${_workEndDateController.text.trim()}',
                           'description': _workDescController.text.trim(),
                         });
-                        _workRoleController.clear();
                         _workCompanyController.clear();
-                        _workDurationController.clear();
+                        _workRoleController.clear();
+                        _workEmploymentType = 'Full-time';
+                        _workLocationController.clear();
+                        _workStartDateController.clear();
+                        _workEndDateController.clear();
                         _workDescController.clear();
                       });
                     },
                     child: const Text(
                       'Add Work Experience Entry',
-                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -1349,14 +1557,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: ListTile(
                   title: Text(
                     '${item['degree']} at ${item['school']}',
-                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
                   ),
                   subtitle: Text(
-                    '${item['duration']}',
-                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                    ((item['startDate'] ?? '').toString().isNotEmpty ||
+                            (item['endDate'] ?? '').toString().isNotEmpty)
+                        ? '${item['startDate'] ?? ''} to ${item['endDate'] ?? ''}'
+                        : '${item['duration'] ?? ''}',
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      color: Color(0xFF8C736B),
+                    ),
                   ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
                     onPressed: () {
                       setState(() {
                         _educationTimeline.removeAt(idx);
@@ -1380,7 +1604,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: [
                 const Text(
                   'Add Education',
-                  style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11)),
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
@@ -1396,9 +1625,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
-                  controller: _eduDurationController,
-                  labelText: 'Duration (e.g. 2013 - 2017)',
-                  hintText: 'e.g. 2013 - 2017',
+                  controller: _eduStartDateController,
+                  labelText: 'From',
+                  hintText: 'Select From date',
+                  readOnly: true,
+                  onTap: () => _selectDate(context, _eduStartDateController),
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _eduEndDateController,
+                  labelText: 'To',
+                  hintText: 'Select To date',
+                  readOnly: true,
+                  onTap: () => _selectDate(
+                    context,
+                    _eduEndDateController,
+                    isEndDate: true,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -1409,9 +1652,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () {
-                      if (_eduDegreeController.text.trim().isEmpty || _eduSchoolController.text.trim().isEmpty) {
+                      if (_eduDegreeController.text.trim().isEmpty ||
+                          _eduSchoolController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please fill Degree and School')),
+                          const SnackBar(
+                            content: Text('Please fill Degree and School'),
+                          ),
+                        );
+                        return;
+                      }
+                      if (_eduStartDateController.text.trim().isEmpty ||
+                          _eduEndDateController.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please fill From and To dates'),
+                          ),
                         );
                         return;
                       }
@@ -1419,17 +1674,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         _educationTimeline.add({
                           'degree': _eduDegreeController.text.trim(),
                           'school': _eduSchoolController.text.trim(),
-                          'duration': _eduDurationController.text.trim(),
+                          'startDate': _eduStartDateController.text.trim(),
+                          'endDate': _eduEndDateController.text.trim(),
+                          'duration':
+                              '${_eduStartDateController.text.trim()} to ${_eduEndDateController.text.trim()}',
                           'description': '',
                         });
                         _eduDegreeController.clear();
                         _eduSchoolController.clear();
-                        _eduDurationController.clear();
+                        _eduStartDateController.clear();
+                        _eduEndDateController.clear();
                       });
                     },
                     child: const Text(
                       'Add Education Entry',
-                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -1449,9 +1711,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: widget.completionMode ? _handleProfileCompletion : _handleEmailSignUp,
+              onPressed: widget.completionMode
+                  ? _handleProfileCompletion
+                  : _handleEmailSignUp,
               child: Text(
-                widget.completionMode ? 'Complete Profile' : 'Complete & Create Account',
+                widget.completionMode
+                    ? 'Complete Profile'
+                    : 'Complete & Create Account',
                 style: const TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
@@ -1486,6 +1752,104 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  Future<void> _selectDate(
+    BuildContext context,
+    TextEditingController controller, {
+    bool isEndDate = false,
+  }) async {
+    if (isEndDate) {
+      final String? result = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text(
+              'Select End Date',
+              style: TextStyle(
+                fontFamily: 'PlayfairDisplay',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: const Text(
+              'Choose if this is your current position or select a specific date.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'Present'),
+                child: const Text(
+                  'Present',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'Select'),
+                child: const Text(
+                  'Select Date',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+      if (result == 'Present') {
+        controller.text = 'Present';
+        return;
+      } else if (result == null) {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(1950),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF7A432D),
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF3E1F11),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF7A432D),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      controller.text = '${months[picked.month - 1]} ${picked.year}';
+    }
+  }
+
   Widget _buildDropdownField({
     required String label,
     required String currentValue,
@@ -1493,30 +1857,55 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     required ValueChanged<String?> onChanged,
     Widget? secondaryField,
   }) {
+    final List<String> safeItems = List<String>.from(items);
+    if (currentValue.isNotEmpty && !safeItems.contains(currentValue)) {
+      safeItems.add(currentValue);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'PlusJakartaSans',
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF8C736B),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE8E2DD)),
+        InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              color: Color(0xFF8C736B),
+              fontSize: 13,
+            ),
+            floatingLabelStyle: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              color: Color(0xFF7A432D),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(
+                color: Color(0xFF7A432D),
+                width: 1.5,
+              ),
+            ),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: currentValue,
+              value: safeItems.contains(currentValue)
+                  ? currentValue
+                  : (safeItems.isNotEmpty ? safeItems.first : null),
               isExpanded: true,
+              isDense: true,
               dropdownColor: Colors.white,
               icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
               style: const TextStyle(
@@ -1524,11 +1913,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 fontSize: 14,
                 color: Color(0xFF3E1F11),
               ),
-              items: items.map((String val) {
-                return DropdownMenuItem<String>(
-                  value: val,
-                  child: Text(val),
-                );
+              items: safeItems.map((String val) {
+                return DropdownMenuItem<String>(value: val, child: Text(val));
               }).toList(),
               onChanged: onChanged,
             ),
@@ -1577,9 +1963,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load image: $e')));
       }
     }
   }
@@ -1678,7 +2064,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 children: [
                                   TextButton(
                                     onPressed: () {
-                                      _pageController.jumpToPage(_onboardingData.length - 1);
+                                      _pageController.jumpToPage(
+                                        _onboardingData.length - 1,
+                                      );
                                     },
                                     child: const Text(
                                       'Skip',
@@ -1694,7 +2082,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   InkWell(
                                     onTap: () {
                                       _pageController.nextPage(
-                                        duration: const Duration(milliseconds: 300),
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
                                         curve: Curves.easeInOut,
                                       );
                                     },

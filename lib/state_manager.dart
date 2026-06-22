@@ -15,6 +15,8 @@ import 'models/user_profile.dart'; // Added import for CustomCard
 
 enum AppScreen { hub, profile, checkin, events, discover, chat, meeting }
 
+enum ConnectionRequestResult { sent, accepted, alreadyPending, failed }
+
 class AdminLog {
   final String id;
   final String title;
@@ -95,17 +97,25 @@ class AppStateManager extends ChangeNotifier {
   Map<String, String>? get profileData => _profileData;
   UserProfile? get currentUserProfile => _currentUserProfile;
 
+  bool get isProfileLoading => _isLoggedIn && _currentUserProfile == null;
+
   bool get isProfileComplete {
-    if (_currentUserProfile == null) return true; // Default to true to prevent screen flickering during load
+    if (_currentUserProfile == null) return false;
     final p = _currentUserProfile!;
     final hasSkills = p.skills.isNotEmpty || p.expertise.isNotEmpty;
     final hasInterests = p.interests.isNotEmpty || p.intents.isNotEmpty;
-    return p.role != null && p.role!.trim().isNotEmpty &&
-           p.company != null && p.company!.trim().isNotEmpty &&
-           p.bio != null && p.bio!.trim().isNotEmpty &&
-           p.experience != null && p.experience!.trim().isNotEmpty &&
-           hasSkills &&
-           hasInterests;
+    final hasRole = p.role != null && p.role!.trim().isNotEmpty;
+    final hasCompany = p.company != null && p.company!.trim().isNotEmpty;
+    final hasBio = p.bio != null && p.bio!.trim().isNotEmpty;
+    final hasExperience =
+        p.experience != null && p.experience!.trim().isNotEmpty;
+
+    return hasRole &&
+        hasCompany &&
+        hasBio &&
+        hasExperience &&
+        hasSkills &&
+        hasInterests;
   }
 
   void beginAuthCallback() {
@@ -310,12 +320,16 @@ class AppStateManager extends ChangeNotifier {
       _isAdminView = user.email == 'Gagan@gmail.com'; // Dev fallback
     }
 
-    _profileSubscription = UserService().streamCurrentUserProfile().listen((profile) {
+    _profileSubscription = UserService().streamCurrentUserProfile().listen((
+      profile,
+    ) {
       if (profile != null) {
         _currentUserProfile = profile;
         _profileData = {
           'sub': user.uid,
-          'name': profile.name.isNotEmpty ? profile.name : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),
+          'name': profile.name.isNotEmpty
+              ? profile.name
+              : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),
           'email': user.email ?? '',
           'location': profile.currentLocationName ?? profile.homeBase ?? '',
           'picture': profile.profileImageUrl ?? user.photoURL ?? '',
@@ -370,7 +384,9 @@ class AppStateManager extends ChangeNotifier {
       snapshot,
     ) {
       _checkins.clear();
-      final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.docs);
+      final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+        snapshot.docs,
+      );
       docs.sort((a, b) {
         final aTime = a.data()['createdAt'] as Timestamp?;
         final bTime = b.data()['createdAt'] as Timestamp?;
@@ -449,7 +465,9 @@ class AppStateManager extends ChangeNotifier {
             final skills = List<String>.from(data['skills'] ?? []);
             final customCardsData = data['customCards'] as List? ?? [];
             final customCards = customCardsData
-                .map((item) => CustomCard.fromMap(Map<String, dynamic>.from(item)))
+                .map(
+                  (item) => CustomCard.fromMap(Map<String, dynamic>.from(item)),
+                )
                 .toList();
 
             return Candidate(
@@ -494,46 +512,152 @@ class AppStateManager extends ChangeNotifier {
   /// If the swiped action is 'like' or 'favorite', check if the target candidate
   /// has also liked/favorited the current user. Returns true if it results in
   /// a mutual connection, false otherwise.
-  Future<bool> swipeCandidate({
+  Future<void> swipeCandidate({
     required String targetUid,
     required String action,
   }) async {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUid == null) return false;
+    if (currentUid == null) return;
 
     try {
       final now = FieldValue.serverTimestamp();
-
-      // 1. Record the swipe action using a composite document ID to prevent duplicate entry rows
       final docId = '${currentUid}_$targetUid';
       await FirebaseFirestore.instance.collection('swipes').doc(docId).set({
         'fromUid': currentUid,
         'toUid': targetUid,
         'action': action,
+        'createdAt': now,
         'timestamp': now,
       });
-
-      // 2. If liking or favoriting, check if the other user has liked/favorited current user
-      if (action == 'like' || action == 'favorite') {
-        final reverseDocId = '${targetUid}_$currentUid';
-        final reverseDoc = await FirebaseFirestore.instance
-            .collection('swipes')
-            .doc(reverseDocId)
-            .get();
-
-        if (reverseDoc.exists) {
-          final reverseAction = reverseDoc.data()?['action'] as String?;
-          if (reverseAction == 'like' || reverseAction == 'favorite') {
-            // Create chat connection
-            await ChatService().getOrCreateChat(userId1: currentUid, userId2: targetUid);
-            return true; // Mutual match connection successful
-          }
-        }
-      }
-      return false;
     } catch (e) {
       debugPrint('Error swiping candidate: $e');
-      return false;
+    }
+  }
+
+  Future<ConnectionRequestResult> sendOrAcceptConnection({
+    required String targetUid,
+  }) async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return ConnectionRequestResult.failed;
+
+    try {
+      final now = FieldValue.serverTimestamp();
+
+      // 1. Check if a pending connection request exists from targetUid to currentUid
+      final incomingReqRef = FirebaseFirestore.instance
+          .collection('connection_requests')
+          .doc('${targetUid}_$currentUid');
+      final incomingReqDoc = await incomingReqRef.get();
+
+      if (incomingReqDoc.exists &&
+          incomingReqDoc.data()?['status'] == 'pending') {
+        // Acceptance flow!
+        final batch = FirebaseFirestore.instance.batch();
+
+        // Update connection request
+        batch.update(incomingReqRef, {
+          'status': 'accepted',
+          'updatedAt': now,
+          'respondedAt': now,
+        });
+
+        // Create connection document userA < userB
+        final userA = currentUid.compareTo(targetUid) < 0
+            ? currentUid
+            : targetUid;
+        final userB = currentUid.compareTo(targetUid) < 0
+            ? targetUid
+            : currentUid;
+        final connectionRef = FirebaseFirestore.instance
+            .collection('connections')
+            .doc('${userA}_$userB');
+
+        batch.set(connectionRef, {
+          'connectionId': '${userA}_$userB',
+          'userA': userA,
+          'userB': userB,
+          'connectedAt': now,
+        });
+
+        // Update connection count for both users
+        final user1Ref = FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUid);
+        final user2Ref = FirebaseFirestore.instance
+            .collection('users')
+            .doc(targetUid);
+        batch.update(user1Ref, {'connectionCount': FieldValue.increment(1)});
+        batch.update(user2Ref, {'connectionCount': FieldValue.increment(1)});
+
+        await batch.commit();
+
+        try {
+          await ChatService().getOrCreateChat(
+            userId1: currentUid,
+            userId2: targetUid,
+          );
+        } catch (e) {
+          debugPrint('Connection accepted, but chat creation failed: $e');
+        }
+
+        // Notify proposer of acceptance
+        final currentUserName = _currentUserProfile?.name ?? 'Someone';
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'userId': targetUid,
+          'title': '🤝 Connection Request Accepted',
+          'body': '$currentUserName accepted your connection request.',
+          'type': 'connection_accept',
+          'isRead': false,
+          'metadata': {'acceptedBy': currentUid},
+          'timestamp': now,
+        });
+
+        return ConnectionRequestResult.accepted; // Mutual connection accepted
+      } else {
+        // New request flow!
+        final outgoingReqRef = FirebaseFirestore.instance
+            .collection('connection_requests')
+            .doc('${currentUid}_$targetUid');
+        final outgoingReqDoc = await outgoingReqRef.get();
+        final outgoingStatus = outgoingReqDoc.data()?['status'] as String?;
+
+        if (!outgoingReqDoc.exists || outgoingStatus == 'rejected') {
+          await outgoingReqRef.set({
+            'requestId': '${currentUid}_$targetUid',
+            'fromUid': currentUid,
+            'toUid': targetUid,
+            'status': 'pending',
+            'createdAt': now,
+            'updatedAt': now,
+          });
+
+          // Add notification to recipient
+          final currentUserName = _currentUserProfile?.name ?? 'Someone';
+          await FirebaseFirestore.instance.collection('notifications').add({
+            'userId': targetUid,
+            'title': '🤝 New Connection Request',
+            'body': '$currentUserName wants to connect with you.',
+            'type': 'connection_request',
+            'isRead': false,
+            'metadata': {
+              'fromUid': currentUid,
+              'requestId': '${currentUid}_$targetUid',
+            },
+            'timestamp': now,
+          });
+
+          return ConnectionRequestResult.sent;
+        }
+
+        if (outgoingStatus == 'accepted') {
+          return ConnectionRequestResult.accepted;
+        }
+
+        return ConnectionRequestResult.alreadyPending;
+      }
+    } catch (e) {
+      debugPrint('Error sending/accepting connection: $e');
+      return ConnectionRequestResult.failed;
     }
   }
 

@@ -46,8 +46,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _otherUid;
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _chatDocStream;
 
-  String? _selectedContactName;
   String? _chatId;
+  bool _isBlocked = false;
+  String? _selectedContactName;
 
   // Audio services
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -68,11 +69,31 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _selectedMentionUids = [];
   List<UserProfile> _groupMembers = [];
 
+  Future<String?> _ensureChatId() async {
+    if (_chatId != null) return _chatId;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null || _otherUid == null) return null;
+    try {
+      final cid = await ChatService().getOrCreateChat(userId1: currentUid, userId2: _otherUid!);
+      if (mounted) {
+        setState(() {
+          _chatId = cid;
+          _chatDocStream = FirebaseFirestore.instance.collection('chats').doc(cid).snapshots();
+        });
+      }
+      return cid;
+    } catch (e) {
+      debugPrint('Error ensuring lazy chat ID: $e');
+      return null;
+    }
+  }
+
   void _initializeChat() async {
     final contactName = _selectedContactName;
     if (contactName == null) {
       setState(() {
         _chatId = null;
+        _isBlocked = false;
       });
       return;
     }
@@ -98,6 +119,7 @@ class _ChatScreenState extends State<ChatScreen> {
           
           if (mounted) {
             setState(() {
+              _isBlocked = false;
               _otherUserProfileImage = data['groupImageUrl'] as String?;
               _otherUserInitials = (data['groupName'] as String? ?? 'GP')
                   .trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase();
@@ -146,15 +168,44 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      final chatId = await ChatService().getOrCreateChat(
-        userId1: currentUid,
-        userId2: otherUid,
-      );
+      // Check if users are connected
+      final isConnected = await ChatService().hasConnection(currentUid, otherUid);
+      if (!isConnected) {
+        if (mounted && _selectedContactName == contactName) {
+          setState(() {
+            _isBlocked = true;
+            _chatId = null;
+            _chatDocStream = null;
+          });
+        }
+        return;
+      }
+
+      // If connected, query if there is already a chat doc
+      final chatQuery = await FirebaseFirestore.instance
+          .collection('chats')
+          .where('isGroup', isEqualTo: false)
+          .where('participants', arrayContains: currentUid)
+          .get();
+      
+      String? foundChatId;
+      for (final doc in chatQuery.docs) {
+        final participants = List<String>.from(doc.data()['participants'] ?? []);
+        if (participants.contains(otherUid)) {
+          foundChatId = doc.id;
+          break;
+        }
+      }
 
       if (mounted && _selectedContactName == contactName) {
         setState(() {
-          _chatId = chatId;
-          _chatDocStream = FirebaseFirestore.instance.collection('chats').doc(chatId).snapshots();
+          _isBlocked = false;
+          _chatId = foundChatId;
+          if (foundChatId != null) {
+            _chatDocStream = FirebaseFirestore.instance.collection('chats').doc(foundChatId).snapshots();
+          } else {
+            _chatDocStream = null;
+          }
         });
         _scrollToBottom();
       }
@@ -217,7 +268,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }  void _handleSendMessage() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty || _chatId == null) return;
+    if (text.isEmpty) return;
+
+    final cid = await _ensureChatId();
+    if (cid == null) return;
 
     _inputController.clear();
     _resetTypingState();
@@ -233,7 +287,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await ChatService().sendTextMessage(
-        chatId: _chatId!,
+        chatId: cid,
         text: text,
         replyTo: replyPayload,
         mentions: mentionsPayload,
@@ -449,7 +503,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _resetTypingState();
 
-      if (path != null && _chatId != null) {
+      if (path != null) {
+        final cid = await _ensureChatId();
+        if (cid == null) return;
+
         final file = File(path);
         if (await file.exists()) {
           final bytes = await file.readAsBytes();
@@ -457,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final duration = _recordDuration > 0 ? _recordDuration : 1;
           
           await ChatService().sendVoiceMessage(
-            chatId: _chatId!,
+            chatId: cid,
             voiceDuration: duration,
             audioUrl: 'data:audio/m4a;base64,$base64Audio',
           );
@@ -2860,75 +2917,95 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-        Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              top: BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: SafeArea(
-            top: false,
-            child: Row(
-              children: [
-                // Attachment drawer
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline, color: Color(0xFF8C736B)),
-                  onPressed: _showAttachmentDrawer,
-                ),
-
-                // Voice memo button
-                IconButton(
-                  icon: const Icon(Icons.mic_none_outlined, color: Color(0xFF8C736B)),
-                  onPressed: _startRecording,
-                ),
-
-                // Meeting request button
-                IconButton(
-                  icon: const Icon(Icons.calendar_month_outlined, color: Color(0xFF7A432D)),
-                  onPressed: _otherUid != null ? () => _showQuickMeetingRequestSheet() : null,
-                ),
-
-                // Input field
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFAF7F5),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE8E2DD)),
+        _isBlocked
+            ? Container(
+                width: double.infinity,
+                color: const Color(0xFFFDF1E6),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                alignment: Alignment.center,
+                child: const SafeArea(
+                  top: false,
+                  child: Text(
+                    'You must be connected with this user to start a conversation.',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF7A432D),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: TextField(
-                      controller: _inputController,
-                      style: const TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        color: Color(0xFF3E1F11),
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: 'Type a message...',
-                        hintStyle: TextStyle(color: Color(0xFF8C736B), fontSize: 13),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
-                      ),
-                      onSubmitted: (_) => _handleSendMessage(),
-                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-
-                const SizedBox(width: 8),
-
-                // Send button
-                IconButton(
-                  icon: const Icon(Icons.send_rounded, color: Color(0xFF7A432D)),
-                  onPressed: _handleSendMessage,
+              )
+            : Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+                  ),
                 ),
-              ],
-            ),
-          ),
-        ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      // Attachment drawer
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline, color: Color(0xFF8C736B)),
+                        onPressed: _showAttachmentDrawer,
+                      ),
+
+                      // Voice memo button
+                      IconButton(
+                        icon: const Icon(Icons.mic_none_outlined, color: Color(0xFF8C736B)),
+                        onPressed: _startRecording,
+                      ),
+
+                      // Meeting request button
+                      IconButton(
+                        icon: const Icon(Icons.calendar_month_outlined, color: Color(0xFF7A432D)),
+                        onPressed: _otherUid != null ? () => _showQuickMeetingRequestSheet() : null,
+                      ),
+
+                      // Input field
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFAF7F5),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFE8E2DD)),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: TextField(
+                            controller: _inputController,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: 'Type a message...',
+                              hintStyle: TextStyle(color: Color(0xFF8C736B), fontSize: 13),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            onSubmitted: (_) => _handleSendMessage(),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      // Send button
+                      IconButton(
+                        icon: const Icon(Icons.send_rounded, color: Color(0xFF7A432D)),
+                        onPressed: _handleSendMessage,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
       ],
     );
   }
@@ -3134,10 +3211,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: const Color(0xFF7A432D),
                       onTap: () async {
                         Navigator.pop(context);
-                        if (_chatId == null) return;
+                        final cid = await _ensureChatId();
+                        if (cid == null) return;
                         // Send mock premium airport lounge/networking image
                         await ChatService().sendImageMessage(
-                          chatId: _chatId!,
+                          chatId: cid,
                           imageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=60',
                         );
                       },
@@ -3148,10 +3226,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: const Color(0xFFE5A475),
                       onTap: () async {
                         Navigator.pop(context);
-                        if (_chatId == null) return;
+                        final cid = await _ensureChatId();
+                        if (cid == null) return;
                         // Send mock pdf boarding pass or guide
                         await ChatService().sendFileMessage(
-                          chatId: _chatId!,
+                          chatId: cid,
                           fileUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
                           fileName: 'Networking_BoardingPass_Guide.pdf',
                           fileSize: 1048576,

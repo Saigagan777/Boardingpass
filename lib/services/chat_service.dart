@@ -231,6 +231,20 @@ class ChatService {
     }
   }
 
+  Future<bool> hasConnection(String userId1, String userId2) async {
+    try {
+      final userA = userId1.compareTo(userId2) < 0 ? userId1 : userId2;
+      final userB = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
+      final doc = await FirebaseFirestore.instance
+          .collection('connections')
+          .doc('${userA}_${userB}')
+          .get();
+      return doc.exists;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /// Returns the existing chat ID between two users, or creates a new one.
   Future<String> getOrCreateChat({
     required String userId1,
@@ -247,6 +261,11 @@ class ChatService {
         if (participants.contains(userId2)) {
           return doc.id;
         }
+      }
+
+      final isConnected = await hasConnection(userId1, userId2);
+      if (!isConnected) {
+        throw Exception('You can only chat with accepted connections.');
       }
 
       return createChat(userId1: userId1, userId2: userId2);

@@ -10,7 +10,6 @@ import '../services/user_service.dart';
 import '../services/chat_service.dart';
 import '../services/event_service.dart';
 import '../models/user_profile.dart';
-import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -85,7 +84,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: IconButton(
                   padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Color(0xFF7A432D)),
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 14,
+                    color: Color(0xFF7A432D),
+                  ),
                   onPressed: () {
                     _state.currentScreen = AppScreen.hub;
                   },
@@ -103,10 +106,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: IconButton(
                       padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.ios_share_rounded, size: 14, color: Color(0xFF7A432D)),
+                      icon: const Icon(
+                        Icons.ios_share_rounded,
+                        size: 14,
+                        color: Color(0xFF7A432D),
+                      ),
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Profile link copied to clipboard')),
+                          const SnackBar(
+                            content: Text('Profile link copied to clipboard'),
+                          ),
                         );
                       },
                     ),
@@ -128,7 +137,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                       ),
                       onPressed: () => _showEditProfileModal(context, profile),
-                      icon: const Icon(Icons.edit_outlined, size: 14, color: Color(0xFF7A432D)),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        size: 14,
+                        color: Color(0xFF7A432D),
+                      ),
                       label: const Text(
                         'Edit',
                         style: TextStyle(
@@ -217,7 +230,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: title,
         content: const Text(
           'No details added yet. Sync LinkedIn or parse your resume to enrich profile.',
-          style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
+          style: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontSize: 12,
+            color: Color(0xFF8C736B),
+          ),
         ),
       );
     }
@@ -228,9 +245,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       content: Column(
         children: List.generate(items.length, (index) {
           final item = items[index];
-          final titleText = type == 'career' ? (item['role'] ?? '') : (item['degree'] ?? '');
-          final subtitleText = type == 'career' ? (item['company'] ?? '') : (item['school'] ?? '');
-          final duration = item['duration'] ?? '';
+          final titleText = type == 'career'
+              ? (item['role'] ?? '')
+              : (item['degree'] ?? '');
+          final subtitleText = type == 'career'
+              ? (item['company'] ?? '')
+              : (item['school'] ?? '');
+          // Build formatted duration line
+          final String durationLine;
+          if (type == 'career' &&
+              ((item['startDate'] ?? '').toString().isNotEmpty ||
+                  (item['endDate'] ?? '').toString().isNotEmpty)) {
+            durationLine = [
+              '${item['startDate'] ?? ''} \u2192 ${item['endDate'] ?? ''}',
+              if ((item['employmentType'] ?? '').toString().isNotEmpty)
+                item['employmentType'],
+              if ((item['location'] ?? '').toString().isNotEmpty)
+                item['location'],
+            ].where((s) => s != null && s.toString().isNotEmpty).join(' \u00B7 ');
+          } else {
+            durationLine = item['duration'] ?? '';
+          }
           final description = item['description'] ?? '';
 
           return Row(
@@ -280,7 +315,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     Text(
-                      duration,
+                      durationLine,
                       style: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
                         fontSize: 11,
@@ -329,42 +364,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (profile == null) {
           return Scaffold(
             backgroundColor: const Color(0xFFFAF7F5),
-            body: Center(
-              child: Text('Profile not found.'),
-            ),
+            body: Center(child: Text('Profile not found.')),
           );
         }
 
-        final String name = profile.name.isNotEmpty ? profile.name : 'Sai Gagan';
-        final String headline = (profile.headline != null && profile.headline!.isNotEmpty)
+        final String name = profile.name.isNotEmpty
+            ? profile.name
+            : 'Sai Gagan';
+        final String headline =
+            (profile.headline != null && profile.headline!.isNotEmpty)
             ? profile.headline!
             : 'Java Full Stack Developer';
-        final String workingLocation = (profile.currentLocationName != null && profile.currentLocationName!.isNotEmpty)
+        final String workingLocation =
+            (profile.currentLocationName != null &&
+                profile.currentLocationName!.isNotEmpty)
             ? profile.currentLocationName!
             : 'Bangalore, Karnataka, India';
         final String bio = (profile.bio != null && profile.bio!.isNotEmpty)
             ? profile.bio!
             : 'No bio added yet. Tap Edit to introduce yourself!';
-        final String company = (profile.company != null && profile.company!.isNotEmpty) ? profile.company! : 'Company';
-        final String role = (profile.role != null && profile.role!.isNotEmpty) ? profile.role! : 'Role';
-        final String industry = (profile.industry != null && profile.industry!.isNotEmpty) ? profile.industry! : 'Sector';
-        final String experience = (profile.experience != null && profile.experience!.isNotEmpty) ? profile.experience! : 'Experience';
+        final String company =
+            (profile.company != null && profile.company!.isNotEmpty)
+            ? profile.company!
+            : 'Company';
+        final String role = (profile.role != null && profile.role!.isNotEmpty)
+            ? profile.role!
+            : 'Role';
+        final String industry =
+            (profile.industry != null && profile.industry!.isNotEmpty)
+            ? profile.industry!
+            : 'Sector';
+        final String experience =
+            (profile.experience != null && profile.experience!.isNotEmpty)
+            ? profile.experience!
+            : 'Experience';
 
-        final String homeBase = (profile.homeBase != null && profile.homeBase!.isNotEmpty) ? profile.homeBase! : 'Home Base';
-        final String currentLocation = (profile.currentLocationName != null && profile.currentLocationName!.isNotEmpty) ? profile.currentLocationName! : 'Current Location';
-        final String travelFrequency = (profile.travelFrequency != null && profile.travelFrequency!.isNotEmpty) ? profile.travelFrequency! : 'Travel Frequency';
+        final String homeBase =
+            (profile.homeBase != null && profile.homeBase!.isNotEmpty)
+            ? profile.homeBase!
+            : 'Home Base';
+        final String currentLocation =
+            (profile.currentLocationName != null &&
+                profile.currentLocationName!.isNotEmpty)
+            ? profile.currentLocationName!
+            : 'Current Location';
+        final String travelFrequency =
+            (profile.travelFrequency != null &&
+                profile.travelFrequency!.isNotEmpty)
+            ? profile.travelFrequency!
+            : 'Travel Frequency';
 
         final List<String> interests = profile.interests;
         final List<String> skills = profile.skills;
 
-        final String mainCardBg = (profile.cardImageUrl != null && profile.cardImageUrl!.isNotEmpty)
-            ? profile.cardImageUrl!
-            : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&q=80';
-
         return Scaffold(
           backgroundColor: const Color(0xFFFAF7F5),
           body: _isLoading
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)))
+              ? const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF7A432D)),
+                )
               : SafeArea(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -376,7 +434,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         // Name, Headline, Location & Sync Buttons
                         Padding(
-                          padding: const EdgeInsets.only(top: 50, left: 20, right: 20),
+                          padding: const EdgeInsets.only(
+                            top: 50,
+                            left: 20,
+                            right: 20,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -401,7 +463,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  const Icon(Icons.place_outlined, size: 14, color: Color(0xFF7A432D)),
+                                  const Icon(
+                                    Icons.place_outlined,
+                                    size: 14,
+                                    color: Color(0xFF7A432D),
+                                  ),
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
@@ -417,28 +483,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              // Connections stats
-                              Text(
-                                '${profile.connectionCount} connections · ${profile.followerCount} followers',
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF7A432D),
-                                ),
-                              ),
                               const SizedBox(height: 12),
                               // LinkedIn Button
                               InkWell(
                                 onTap: () {
                                   final url = profile.linkedinProfileUrl;
                                   if (url != null && url.isNotEmpty) {
-                                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                    launchUrl(
+                                      Uri.parse(url),
+                                      mode: LaunchMode.externalApplication,
+                                    );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('No LinkedIn profile linked. Add your LinkedIn URL in Edit Profile.'),
+                                        content: Text(
+                                          'No LinkedIn profile linked. Add your LinkedIn URL in Edit Profile.',
+                                        ),
                                         backgroundColor: Color(0xFF0A66C2),
                                       ),
                                     );
@@ -446,7 +506,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 },
                                 borderRadius: BorderRadius.circular(8),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF0A66C2),
                                     borderRadius: BorderRadius.circular(8),
@@ -454,10 +517,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.link, color: Colors.white, size: 16),
+                                      const Icon(
+                                        Icons.link,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        profile.linkedinProfileUrl != null && profile.linkedinProfileUrl!.isNotEmpty
+                                        profile.linkedinProfileUrl != null &&
+                                                profile
+                                                    .linkedinProfileUrl!
+                                                    .isNotEmpty
                                             ? 'View LinkedIn'
                                             : 'Connect LinkedIn',
                                         style: const TextStyle(
@@ -487,7 +557,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 StreamBuilder<QuerySnapshot>(
                                   stream: ChatService().streamUserChats(),
                                   builder: (context, chatSnapshot) {
-                                    final int count = chatSnapshot.hasData ? chatSnapshot.data!.docs.length : profile.connectionsCount;
+                                    final int count = chatSnapshot.hasData
+                                        ? chatSnapshot.data!.docs.length
+                                        : profile.connectionsCount;
                                     return _buildStatsCard(
                                       icon: Icons.people_outline_rounded,
                                       label: 'Connections',
@@ -498,9 +570,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 StreamBuilder<QuerySnapshot>(
-                                  stream: FirebaseFirestore.instance.collection('events').where('attendees', arrayContains: profile.uid).snapshots(),
+                                  stream: FirebaseFirestore.instance
+                                      .collection('events')
+                                      .where(
+                                        'attendees',
+                                        arrayContains: profile.uid,
+                                      )
+                                      .snapshots(),
                                   builder: (context, joinedSnapshot) {
-                                    final int count = joinedSnapshot.hasData ? joinedSnapshot.data!.docs.length : profile.eventsJoinedCount;
+                                    final int count = joinedSnapshot.hasData
+                                        ? joinedSnapshot.data!.docs.length
+                                        : profile.eventsJoinedCount;
                                     return _buildStatsCard(
                                       icon: Icons.calendar_today_outlined,
                                       label: 'Joined',
@@ -511,9 +591,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 StreamBuilder<QuerySnapshot>(
-                                  stream: EventService().streamEventsByUser(profile.uid),
+                                  stream: EventService().streamEventsByUser(
+                                    profile.uid,
+                                  ),
                                   builder: (context, hostedSnapshot) {
-                                    final int count = hostedSnapshot.hasData ? hostedSnapshot.data!.docs.length : profile.eventsHostedCount;
+                                    final int count = hostedSnapshot.hasData
+                                        ? hostedSnapshot.data!.docs.length
+                                        : profile.eventsHostedCount;
                                     return _buildStatsCard(
                                       icon: Icons.star_border_rounded,
                                       label: 'Hosted',
@@ -561,22 +645,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             content: skills.isEmpty
                                 ? const Text(
                                     'No skills added yet. Tap Edit to add your skills.',
-                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      color: Color(0xFF8C736B),
+                                    ),
                                   )
                                 : Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
                                     children: skills.map((s) {
                                       return Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFFAF7F5),
-                                          borderRadius: BorderRadius.circular(20),
-                                          border: Border.all(color: const Color(0xFFE8E2DD)),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFE8E2DD),
+                                          ),
                                         ),
                                         child: Text(
                                           s,
-                                          style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF3E1F11)),
+                                          style: const TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 12,
+                                            color: Color(0xFF3E1F11),
+                                          ),
                                         ),
                                       );
                                     }).toList(),
@@ -600,7 +699,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _buildVerticalDivider(),
                                 _buildProfileFieldColumn('Sector', industry),
                                 _buildVerticalDivider(),
-                                _buildProfileFieldColumn('Experience', experience),
+                                _buildProfileFieldColumn(
+                                  'Experience',
+                                  experience,
+                                ),
                               ],
                             ),
                           ),
@@ -631,7 +733,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 SizedBox(
                                   width: 80,
                                   height: 80,
-                                  child: CustomPaint(painter: ConstellationPainter()),
+                                  child: CustomPaint(
+                                    painter: ConstellationPainter(),
+                                  ),
                                 ),
                               ],
                             ),
@@ -648,23 +752,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             content: interests.isEmpty
                                 ? const Text(
                                     'No interests added yet. Tap Edit to add your interests.',
-                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      color: Color(0xFF8C736B),
+                                    ),
                                   )
                                 : Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
                                     children: interests.map((tag) {
                                       return Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: Colors.white,
-                                          borderRadius: BorderRadius.circular(20),
-                                          border: Border.all(color: const Color(0xFFE8E2DD)),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFE8E2DD),
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(_getInterestIcon(tag), size: 14, color: const Color(0xFF7A432D)),
+                                            Icon(
+                                              _getInterestIcon(tag),
+                                              size: 14,
+                                              color: const Color(0xFF7A432D),
+                                            ),
                                             const SizedBox(width: 6),
                                             Text(
                                               tag,
@@ -720,157 +839,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Digital Card Deck
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: _buildSectionCard(
-                            icon: Icons.qr_code_rounded,
-                            title: 'Digital Card Deck',
-                            content: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Row(
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 16),
-                                    child: Container(
-                                      width: 300,
-                                      height: 190,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(color: const Color(0xFFE8E2DD), width: 0.5),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.05),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 3),
-                                          ),
-                                        ],
-                                        image: DecorationImage(
-                                          image: NetworkImage(mainCardBg),
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(16),
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topCenter,
-                                            end: Alignment.bottomCenter,
-                                            colors: [
-                                              Colors.black.withValues(alpha: 0.15),
-                                              Colors.black.withValues(alpha: 0.65),
-                                            ],
-                                          ),
-                                        ),
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                const Text(
-                                                  'BOARDINGPAUSE',
-                                                  style: TextStyle(
-                                                    fontFamily: 'PlusJakartaSans',
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w800,
-                                                    letterSpacing: 2.0,
-                                                    color: Colors.white70,
-                                                  ),
-                                                ),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white.withValues(alpha: 0.15),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: const Text(
-                                                    'MEMBER',
-                                                    style: TextStyle(
-                                                      fontFamily: 'PlusJakartaSans',
-                                                      fontSize: 8,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.white,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                              children: [
-                                                Expanded(
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        name,
-                                                        style: const TextStyle(
-                                                          fontFamily: 'PlayfairDisplay',
-                                                          fontSize: 18,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        '$role · $company',
-                                                        style: const TextStyle(
-                                                          fontFamily: 'PlusJakartaSans',
-                                                          fontSize: 11,
-                                                          color: Colors.white70,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        workingLocation,
-                                                        style: const TextStyle(
-                                                          fontFamily: 'PlusJakartaSans',
-                                                          fontSize: 10,
-                                                          color: Colors.white54,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Container(
-                                                  width: 44,
-                                                  height: 44,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white.withValues(alpha: 0.9),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  padding: const EdgeInsets.all(4),
-                                                  child: const Icon(
-                                                    Icons.qr_code_2_rounded,
-                                                    size: 36,
-                                                    color: Color(0xFF3E1F11),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  ...profile.customCards.map((card) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 16),
-                                      child: PremiumCustomCard(card: card),
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
                         // Settings / Menu List
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -878,7 +846,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFE8E2DD)),
+                              border: Border.all(
+                                color: const Color(0xFFE8E2DD),
+                              ),
                             ),
                             child: Column(
                               children: [
@@ -943,7 +913,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: const Color(0xFFFAF7F5),
-                  border: Border.all(color: const Color(0xFFE8E2DD), width: 0.5),
+                  border: Border.all(
+                    color: const Color(0xFFE8E2DD),
+                    width: 0.5,
+                  ),
                 ),
                 child: Icon(icon, size: 16, color: const Color(0xFF7A432D)),
               ),
@@ -1060,11 +1033,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildVerticalDivider() {
-    return Container(
-      width: 1,
-      height: 24,
-      color: const Color(0xFFE8E2DD),
-    );
+    return Container(width: 1, height: 24, color: const Color(0xFFE8E2DD));
   }
 
   Widget _buildTravelItem({
@@ -1117,7 +1086,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool isLogout = false,
   }) {
     final color = isLogout ? const Color(0xFF8B2500) : const Color(0xFF3E1F11);
-    final iconColor = isLogout ? const Color(0xFF8B2500) : const Color(0xFF7A432D);
+    final iconColor = isLogout
+        ? const Color(0xFF8B2500)
+        : const Color(0xFF7A432D);
 
     return InkWell(
       onTap: onTap,
@@ -1143,17 +1114,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
-                Icon(Icons.chevron_right_rounded, size: 18, color: isLogout ? const Color(0xFF8B2500) : const Color(0xFF8C736B)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: isLogout
+                      ? const Color(0xFF8B2500)
+                      : const Color(0xFF8C736B),
+                ),
               ],
             ),
           ),
           if (!isLogout)
             Padding(
               padding: const EdgeInsets.only(left: 48),
-              child: Container(
-                height: 0.5,
-                color: const Color(0xFFE8E2DD),
-              ),
+              child: Container(height: 0.5, color: const Color(0xFFE8E2DD)),
             ),
         ],
       ),
@@ -1163,14 +1137,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   IconData _getInterestIcon(String name) {
     final lower = name.toLowerCase();
     if (lower.contains('java')) return Icons.coffee_outlined;
-    if (lower.contains('spring') || lower.contains('boot')) return Icons.spa_outlined;
-    if (lower.contains('ai') || lower.contains('machine') || lower.contains('ml')) return Icons.auto_awesome_outlined;
-    if (lower.contains('startup') || lower.contains('entrepreneur')) return Icons.rocket_launch_outlined;
-    if (lower.contains('network') || lower.contains('connect')) return Icons.people_outline_rounded;
-    if (lower.contains('travel') || lower.contains('explore') || lower.contains('flight')) return Icons.flight_takeoff_outlined;
-    if (lower.contains('code') || lower.contains('develop') || lower.contains('program')) return Icons.code_outlined;
+    if (lower.contains('spring') || lower.contains('boot')) {
+      return Icons.spa_outlined;
+    }
+    if (lower.contains('ai') ||
+        lower.contains('machine') ||
+        lower.contains('ml')) {
+      return Icons.auto_awesome_outlined;
+    }
+    if (lower.contains('startup') || lower.contains('entrepreneur')) {
+      return Icons.rocket_launch_outlined;
+    }
+    if (lower.contains('network') || lower.contains('connect')) {
+      return Icons.people_outline_rounded;
+    }
+    if (lower.contains('travel') ||
+        lower.contains('explore') ||
+        lower.contains('flight')) {
+      return Icons.flight_takeoff_outlined;
+    }
+    if (lower.contains('code') ||
+        lower.contains('develop') ||
+        lower.contains('program')) {
+      return Icons.code_outlined;
+    }
     if (lower.contains('coffee')) return Icons.coffee_outlined;
-    if (lower.contains('partnership') || lower.contains('b2b')) return Icons.handshake_outlined;
+    if (lower.contains('partnership') || lower.contains('b2b')) {
+      return Icons.handshake_outlined;
+    }
     return Icons.label_outline_rounded;
   }
 }
@@ -1195,23 +1189,27 @@ class ConstellationPainter extends CustomPainter {
 
     final List<Offset> points = [];
     points.add(center);
-    
+
     final int outerCount = 6;
     for (int i = 0; i < outerCount; i++) {
       final double angle = (i * 2 * pi) / outerCount;
-      points.add(Offset(
-        center.dx + radius * 0.7 * cos(angle),
-        center.dy + radius * 0.7 * sin(angle),
-      ));
+      points.add(
+        Offset(
+          center.dx + radius * 0.7 * cos(angle),
+          center.dy + radius * 0.7 * sin(angle),
+        ),
+      );
     }
 
     final int innerCount = 4;
     for (int i = 0; i < innerCount; i++) {
       final double angle = (i * 2 * pi) / innerCount + 0.7;
-      points.add(Offset(
-        center.dx + radius * 0.35 * cos(angle),
-        center.dy + radius * 0.35 * sin(angle),
-      ));
+      points.add(
+        Offset(
+          center.dx + radius * 0.35 * cos(angle),
+          center.dy + radius * 0.35 * sin(angle),
+        ),
+      );
     }
 
     for (int i = 0; i < points.length; i++) {
@@ -1249,35 +1247,29 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _roleController;
   late final TextEditingController _industryController;
   late final TextEditingController _experienceController;
-  late final TextEditingController _cardImageUrlController;
-  late final TextEditingController _newCardUrlController;
   late final TextEditingController _profileImageUrlController;
   late final TextEditingController _coverImageUrlController;
-  late final TextEditingController _connectionCountController;
-  late final TextEditingController _followerCountController;
   late final TextEditingController _linkedinUrlController;
 
   // New item text controllers for timeline and skills
   final TextEditingController _newRoleController = TextEditingController();
   final TextEditingController _newCompanyController = TextEditingController();
-  final TextEditingController _newDurationController = TextEditingController();
+  final TextEditingController _newLocationController = TextEditingController();
+  final TextEditingController _newStartDateController = TextEditingController();
+  final TextEditingController _newEndDateController = TextEditingController();
   final TextEditingController _newDescController = TextEditingController();
+  String _newEmploymentType = 'Full-time';
 
   final TextEditingController _newSchoolController = TextEditingController();
   final TextEditingController _newDegreeController = TextEditingController();
-  final TextEditingController _newEduDurationController = TextEditingController();
+  final TextEditingController _newEduStartDateController =
+      TextEditingController();
+  final TextEditingController _newEduEndDateController =
+      TextEditingController();
 
   final TextEditingController _newSkillController = TextEditingController();
 
-  // Custom Card Editor Fields
-  late final TextEditingController _newCardTitleController;
-  late final TextEditingController _newCardDescController;
-  late final TextEditingController _newCardImageController;
-  String _selectedCardTemplate = 'Image Overlay';
-  int? _editingCardIndex;
-
   bool _isLoading = false;
-  late List<CustomCard> _localCustomCards;
   late List<Map<String, dynamic>> _localCareerTimeline;
   late List<Map<String, dynamic>> _localEducationTimeline;
   late List<String> _localSkills;
@@ -1291,21 +1283,14 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     'Real Estate',
     'Automotive',
     'Entertainment',
-    'Other'
+    'Other',
   ];
 
   final List<String> _travelFrequencies = [
     'Rarely',
     'Occasional',
     'Frequent',
-    'Never'
-  ];
-
-  final List<Map<String, String>> _cardPresets = [
-    {'name': 'Terracotta', 'url': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&q=80'},
-    {'name': 'Midnight', 'url': 'https://images.unsplash.com/photo-1618005198143-e5283b519a7f?w=600&q=80'},
-    {'name': 'Emerald', 'url': 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=600&q=80'},
-    {'name': 'Golden', 'url': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&q=80'},
+    'Never',
   ];
 
   String? _selectedIndustry;
@@ -1327,33 +1312,42 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _bioController = TextEditingController(text: widget.profile.bio);
     _companyController = TextEditingController(text: widget.profile.company);
     _roleController = TextEditingController(text: widget.profile.role);
-    
+
     final initialIndustry = widget.profile.industry ?? 'Technology';
-    _selectedIndustry = _industries.contains(initialIndustry) ? initialIndustry : 'Other';
-    _industryController = TextEditingController(text: widget.profile.industry ?? '');
+    _selectedIndustry = _industries.contains(initialIndustry)
+        ? initialIndustry
+        : 'Other';
+    _industryController = TextEditingController(
+      text: widget.profile.industry ?? '',
+    );
 
     final initialTravel = widget.profile.travelFrequency ?? 'Occasional';
-    _selectedTravelFrequency = _travelFrequencies.contains(initialTravel) ? initialTravel : 'Occasional';
+    _selectedTravelFrequency = _travelFrequencies.contains(initialTravel)
+        ? initialTravel
+        : 'Occasional';
 
     _parseHomeBase(widget.profile.homeBase);
     _parseCurrentLocation(widget.profile.currentLocationName);
 
-    _experienceController = TextEditingController(text: widget.profile.experience ?? '');
-    _cardImageUrlController = TextEditingController(text: widget.profile.cardImageUrl ?? '');
-    _newCardUrlController = TextEditingController();
-    _profileImageUrlController = TextEditingController(text: widget.profile.profileImageUrl ?? '');
-    _coverImageUrlController = TextEditingController(text: widget.profile.coverImageUrl ?? '');
-    _connectionCountController = TextEditingController(text: widget.profile.connectionCount.toString());
-    _followerCountController = TextEditingController(text: widget.profile.followerCount.toString());
-    _linkedinUrlController = TextEditingController(text: widget.profile.linkedinProfileUrl ?? '');
+    _experienceController = TextEditingController(
+      text: widget.profile.experience ?? '',
+    );
+    _profileImageUrlController = TextEditingController(
+      text: widget.profile.profileImageUrl ?? '',
+    );
+    _coverImageUrlController = TextEditingController(
+      text: widget.profile.coverImageUrl ?? '',
+    );
+    _linkedinUrlController = TextEditingController(
+      text: widget.profile.linkedinProfileUrl ?? '',
+    );
 
-    _newCardTitleController = TextEditingController();
-    _newCardDescController = TextEditingController();
-    _newCardImageController = TextEditingController();
-
-    _localCustomCards = List<CustomCard>.from(widget.profile.customCards);
-    _localCareerTimeline = List<Map<String, dynamic>>.from(widget.profile.careerTimeline);
-    _localEducationTimeline = List<Map<String, dynamic>>.from(widget.profile.educationTimeline);
+    _localCareerTimeline = List<Map<String, dynamic>>.from(
+      widget.profile.careerTimeline,
+    );
+    _localEducationTimeline = List<Map<String, dynamic>>.from(
+      widget.profile.educationTimeline,
+    );
     _localSkills = List<String>.from(widget.profile.skills);
   }
 
@@ -1415,7 +1409,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
   void _onHomeBaseCountryChanged(String country) {
     setState(() {
-      _homeBaseCountry = country.contains('   ') ? country.split('   ').last : country;
+      _homeBaseCountry = country.contains('   ')
+          ? country.split('   ').last
+          : country;
     });
   }
 
@@ -1433,7 +1429,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
   void _onCurrentLocationCountryChanged(String country) {
     setState(() {
-      _currentLocationCountry = country.contains('   ') ? country.split('   ').last : country;
+      _currentLocationCountry = country.contains('   ')
+          ? country.split('   ').last
+          : country;
     });
   }
 
@@ -1458,28 +1456,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _roleController.dispose();
     _industryController.dispose();
     _experienceController.dispose();
-    _cardImageUrlController.dispose();
-    _newCardUrlController.dispose();
     _profileImageUrlController.dispose();
     _coverImageUrlController.dispose();
-    _connectionCountController.dispose();
-    _followerCountController.dispose();
     _linkedinUrlController.dispose();
 
     _newRoleController.dispose();
     _newCompanyController.dispose();
-    _newDurationController.dispose();
+    _newLocationController.dispose();
+    _newStartDateController.dispose();
+    _newEndDateController.dispose();
     _newDescController.dispose();
 
     _newSchoolController.dispose();
     _newDegreeController.dispose();
-    _newEduDurationController.dispose();
+    _newEduStartDateController.dispose();
+    _newEduEndDateController.dispose();
 
     _newSkillController.dispose();
 
-    _newCardTitleController.dispose();
-    _newCardDescController.dispose();
-    _newCardImageController.dispose();
     super.dispose();
   }
 
@@ -1517,13 +1511,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         homeBase: finalHomeBase,
         currentLocationName: finalCurrentLocation,
         travelFrequency: _selectedTravelFrequency,
-        cardImageUrl: _cardImageUrlController.text.trim(),
         profileImageUrl: _profileImageUrlController.text.trim(),
-        customCards: _localCustomCards,
         coverImageUrl: _coverImageUrlController.text.trim(),
         linkedinProfileUrl: _linkedinUrlController.text.trim(),
-        connectionCount: int.tryParse(_connectionCountController.text) ?? widget.profile.connectionCount,
-        followerCount: int.tryParse(_followerCountController.text) ?? widget.profile.followerCount,
         skills: _localSkills,
         careerTimeline: _localCareerTimeline,
         educationTimeline: _localEducationTimeline,
@@ -1536,9 +1526,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save profile: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
       }
     } finally {
       if (mounted) {
@@ -1596,7 +1586,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF7A432D),
+                          ),
                         ),
                       )
                     : TextButton(
@@ -1619,108 +1611,272 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
-                    // Profile Image Editor
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Profile Image',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF8C736B),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFFE8E2DD),
-                            border: Border.all(color: const Color(0xFF7A432D), width: 1.5),
-                          ),
-                          child: ClipOval(
-                            child: _profileImageUrlController.text.isNotEmpty
-                                ? Image.network(
-                                    _profileImageUrlController.text,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                  )
-                                : const Icon(Icons.person, size: 32, color: Color(0xFF7A432D)),
+                        // Profile Photo Section
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'PROFILE PHOTO',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(0xFFE8E2DD),
+                                      border: Border.all(
+                                        color: const Color(0xFF7A432D),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: ClipOval(
+                                      child:
+                                          _profileImageUrlController
+                                              .text
+                                              .isNotEmpty
+                                          ? Image.network(
+                                              _profileImageUrlController.text,
+                                              width: 50,
+                                              height: 50,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : const Icon(
+                                              Icons.person,
+                                              size: 28,
+                                              color: Color(0xFF7A432D),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        try {
+                                          final ImagePicker picker =
+                                              ImagePicker();
+                                          final XFile? pickedFile = await picker
+                                              .pickImage(
+                                                source: ImageSource.gallery,
+                                                imageQuality: 70,
+                                              );
+                                          if (pickedFile == null) return;
+                                          setState(() => _isLoading = true);
+                                          final bytes = await pickedFile
+                                              .readAsBytes();
+                                          final storageRef = FirebaseStorage
+                                              .instance
+                                              .ref()
+                                              .child('profile_images')
+                                              .child(
+                                                '${DateTime.now().millisecondsSinceEpoch}.jpg',
+                                              );
+                                          final uploadTask = storageRef.putData(
+                                            bytes,
+                                            SettableMetadata(
+                                              contentType: 'image/jpeg',
+                                            ),
+                                          );
+                                          final snapshot = await uploadTask;
+                                          final downloadUrl = await snapshot.ref
+                                              .getDownloadURL();
+                                          setState(() {
+                                            _profileImageUrlController.text =
+                                                downloadUrl;
+                                            _isLoading = false;
+                                          });
+                                        } catch (e) {
+                                          setState(() => _isLoading = false);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Failed to upload image: $e',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF7A432D,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Upload',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 16),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            try {
-                              final ImagePicker picker = ImagePicker();
-                              final XFile? pickedFile = await picker.pickImage(
-                                source: ImageSource.gallery,
-                                imageQuality: 70,
-                              );
-                              if (pickedFile == null) return;
-                              setState(() => _isLoading = true);
-                              final bytes = await pickedFile.readAsBytes();
-                              final storageRef = FirebaseStorage.instance
-                                  .ref()
-                                  .child('profile_images')
-                                  .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-                              final uploadTask = storageRef.putData(
-                                bytes,
-                                SettableMetadata(contentType: 'image/jpeg'),
-                              );
-                              final snapshot = await uploadTask;
-                              final downloadUrl = await snapshot.ref.getDownloadURL();
-                              setState(() {
-                                _profileImageUrlController.text = downloadUrl;
-                                _isLoading = false;
-                              });
-                            } catch (e) {
-                              setState(() => _isLoading = false);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Failed to upload image: $e')),
-                                );
-                              }
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF7A432D),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          icon: const Icon(Icons.camera_alt_outlined, size: 16, color: Colors.white),
-                          label: const Text(
-                            'Upload Photo',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 13,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        // Cover Photo Section
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'COVER PHOTO',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8E2DD),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: const Color(0xFF7A432D),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child:
+                                          _coverImageUrlController
+                                              .text
+                                              .isNotEmpty
+                                          ? Image.network(
+                                              _coverImageUrlController.text,
+                                              width: 50,
+                                              height: 50,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : const Icon(
+                                              Icons.image,
+                                              size: 28,
+                                              color: Color(0xFF7A432D),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        try {
+                                          final ImagePicker picker =
+                                              ImagePicker();
+                                          final XFile? pickedFile = await picker
+                                              .pickImage(
+                                                source: ImageSource.gallery,
+                                                imageQuality: 70,
+                                              );
+                                          if (pickedFile == null) return;
+                                          setState(() => _isLoading = true);
+                                          final bytes = await pickedFile
+                                              .readAsBytes();
+                                          final storageRef = FirebaseStorage
+                                              .instance
+                                              .ref()
+                                              .child('cover_images')
+                                              .child(
+                                                '${DateTime.now().millisecondsSinceEpoch}.jpg',
+                                              );
+                                          final uploadTask = storageRef.putData(
+                                            bytes,
+                                            SettableMetadata(
+                                              contentType: 'image/jpeg',
+                                            ),
+                                          );
+                                          final snapshot = await uploadTask;
+                                          final downloadUrl = await snapshot.ref
+                                              .getDownloadURL();
+                                          setState(() {
+                                            _coverImageUrlController.text =
+                                                downloadUrl;
+                                            _isLoading = false;
+                                          });
+                                        } catch (e) {
+                                          setState(() => _isLoading = false);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Failed to upload image: $e',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF7A432D,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Upload',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    _buildTextField('Profile Photo URL', _profileImageUrlController),
-                    _buildTextField('Cover Photo URL', _coverImageUrlController),
                     const SizedBox(height: 12),
                     _buildTextField('Name', _nameController),
                     _buildTextField('Headline', _headlineController),
-                    _buildTextField('Bio / Description', _bioController, maxLines: 3),
+                    _buildTextField(
+                      'Bio / Description',
+                      _bioController,
+                      maxLines: 3,
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildTextField('Company', _companyController)),
+                        Expanded(
+                          child: _buildTextField('Company', _companyController),
+                        ),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildTextField('Role', _roleController)),
+                        Expanded(
+                          child: _buildTextField('Role', _roleController),
+                        ),
                       ],
                     ),
                     Row(
@@ -1734,23 +1890,28 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               setState(() => _selectedIndustry = val);
                             },
                             secondaryField: _selectedIndustry == 'Other'
-                                ? _buildTextField('Custom Industry', _industryController)
+                                ? _buildTextField(
+                                    'Custom Industry',
+                                    _industryController,
+                                  )
                                 : null,
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildTextField('Experience', _experienceController)),
+                        Expanded(
+                          child: _buildTextField(
+                            'Experience',
+                            _experienceController,
+                          ),
+                        ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        Expanded(child: _buildTextField('LinkedIn Connections Count', _connectionCountController)),
-                        const SizedBox(width: 12),
-                        Expanded(child: _buildTextField('LinkedIn Followers Count', _followerCountController)),
-                      ],
-                    ),
+
                     const SizedBox(height: 12),
-                    _buildTextField('LinkedIn Profile URL', _linkedinUrlController),
+                    _buildTextField(
+                      'LinkedIn Profile URL',
+                      _linkedinUrlController,
+                    ),
                     const SizedBox(height: 12),
 
                     // Home Base CSC Picker
@@ -1778,12 +1939,18 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       dropdownDecoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
+                        border: Border.all(
+                          color: const Color(0xFFE8E2DD),
+                          width: 1.5,
+                        ),
                       ),
                       disabledDropdownDecoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: const Color(0xFFFAF7F5),
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
+                        border: Border.all(
+                          color: const Color(0xFFE8E2DD),
+                          width: 1.5,
+                        ),
                       ),
                       selectedItemStyle: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
@@ -1840,12 +2007,18 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       dropdownDecoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
+                        border: Border.all(
+                          color: const Color(0xFFE8E2DD),
+                          width: 1.5,
+                        ),
                       ),
                       disabledDropdownDecoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: const Color(0xFFFAF7F5),
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
+                        border: Border.all(
+                          color: const Color(0xFFE8E2DD),
+                          width: 1.5,
+                        ),
                       ),
                       selectedItemStyle: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
@@ -1885,7 +2058,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                         setState(() => _selectedTravelFrequency = val);
                       },
                     ),
-                    
+
                     // Career Timeline Editor
                     const Divider(color: Color(0xFFE8E2DD), thickness: 1),
                     const SizedBox(height: 12),
@@ -1907,12 +2080,58 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       return Card(
                         color: Colors.white,
                         margin: const EdgeInsets.symmetric(vertical: 4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: const BorderSide(color: Color(0xFFE8E2DD))),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: Color(0xFFE8E2DD)),
+                        ),
                         child: ListTile(
-                          title: Text('${item['role']} at ${item['company']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11))),
-                          subtitle: Text('${item['duration']}\n${item['description']}', style: const TextStyle(fontSize: 11, color: Color(0xFF8C736B))),
+                          title: Text(
+                            '${item['role']} at ${item['company']}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          subtitle: Text(
+                            [
+                                      if ((item['startDate'] ?? '')
+                                              .toString()
+                                              .isNotEmpty ||
+                                          (item['endDate'] ?? '')
+                                              .toString()
+                                              .isNotEmpty)
+                                        '${item['startDate'] ?? ''} to ${item['endDate'] ?? ''}',
+                                      if ((item['employmentType'] ?? '')
+                                          .toString()
+                                          .isNotEmpty)
+                                        item['employmentType'],
+                                      if ((item['location'] ?? '')
+                                          .toString()
+                                          .isNotEmpty)
+                                        item['location'],
+                                    ]
+                                    .where(
+                                      (s) =>
+                                          s != null && s.toString().isNotEmpty,
+                                    )
+                                    .join(' · ') +
+                                ((item['description'] ?? '')
+                                        .toString()
+                                        .isNotEmpty
+                                    ? '\n${item['description']}'
+                                    : ''),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF8C736B),
+                            ),
+                          ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
                             onPressed: () {
                               setState(() {
                                 _localCareerTimeline.removeAt(idx);
@@ -1933,36 +2152,166 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Add Work Experience', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11))),
+                          const Text(
+                            'Add Work Experience',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          _buildTextField('Role / Job Title', _newRoleController),
                           _buildTextField('Company', _newCompanyController),
-                          _buildTextField('Duration (e.g. Jan 2023 - Present)', _newDurationController),
-                          _buildTextField('Description', _newDescController, maxLines: 2),
+                          _buildTextField(
+                            'Role / Job Title',
+                            _newRoleController,
+                          ),
+                          // Employment Type Dropdown
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: DropdownButtonFormField<String>(
+                              value: _newEmploymentType,
+                              decoration: InputDecoration(
+                                labelText: 'Employment Type',
+                                labelStyle: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13,
+                                  color: Color(0xFF8C736B),
+                                ),
+                                filled: true,
+                                fillColor: const Color(0xFFFAF7F5),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE8E2DD),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF7A432D),
+                                  ),
+                                ),
+                              ),
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 13,
+                                color: Color(0xFF3E1F11),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Full-time',
+                                  child: Text('Full-time'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Part-time',
+                                  child: Text('Part-time'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Self-employed',
+                                  child: Text('Self-employed'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Freelance',
+                                  child: Text('Freelance'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Contract',
+                                  child: Text('Contract'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Internship',
+                                  child: Text('Internship'),
+                                ),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setState(() => _newEmploymentType = val);
+                                }
+                              },
+                            ),
+                          ),
+                          _buildTextField('Location', _newLocationController),
+                          _buildTextField(
+                            'From',
+                            _newStartDateController,
+                            readOnly: true,
+                            onTap: () =>
+                                _selectDate(context, _newStartDateController),
+                          ),
+                          _buildTextField(
+                            'To',
+                            _newEndDateController,
+                            readOnly: true,
+                            onTap: () => _selectDate(
+                              context,
+                              _newEndDateController,
+                              isEndDate: true,
+                            ),
+                          ),
+                          _buildTextField(
+                            'Description',
+                            _newDescController,
+                            maxLines: 2,
+                          ),
                           const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF7A432D),
+                              ),
                               onPressed: () {
-                                if (_newRoleController.text.trim().isEmpty || _newCompanyController.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill Role and Company')));
+                                if (_newRoleController.text.trim().isEmpty ||
+                                    _newCompanyController.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please fill Role and Company',
+                                      ),
+                                    ),
+                                  );
                                   return;
                                 }
                                 setState(() {
                                   _localCareerTimeline.add({
+                                    'company': _newCompanyController.text
+                                        .trim(),
                                     'role': _newRoleController.text.trim(),
-                                    'company': _newCompanyController.text.trim(),
-                                    'duration': _newDurationController.text.trim(),
-                                    'description': _newDescController.text.trim(),
+                                    'employmentType': _newEmploymentType,
+                                    'location': _newLocationController.text
+                                        .trim(),
+                                    'startDate': _newStartDateController.text
+                                        .trim(),
+                                    'endDate': _newEndDateController.text
+                                        .trim(),
+                                    'duration':
+                                        '${_newStartDateController.text.trim()} to ${_newEndDateController.text.trim()}',
+                                    'description': _newDescController.text
+                                        .trim(),
                                   });
-                                  _newRoleController.clear();
                                   _newCompanyController.clear();
-                                  _newDurationController.clear();
+                                  _newRoleController.clear();
+                                  _newEmploymentType = 'Full-time';
+                                  _newLocationController.clear();
+                                  _newStartDateController.clear();
+                                  _newEndDateController.clear();
                                   _newDescController.clear();
                                 });
                               },
-                              child: const Text('Add Experience', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Colors.white, fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                'Add Experience',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -1992,12 +2341,37 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       return Card(
                         color: Colors.white,
                         margin: const EdgeInsets.symmetric(vertical: 4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: const BorderSide(color: Color(0xFFE8E2DD))),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: Color(0xFFE8E2DD)),
+                        ),
                         child: ListTile(
-                          title: Text('${item['degree']} at ${item['school']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11))),
-                          subtitle: Text('${item['duration']}', style: const TextStyle(fontSize: 11, color: Color(0xFF8C736B))),
+                          title: Text(
+                            '${item['degree']} at ${item['school']}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          subtitle: Text(
+                            ((item['startDate'] ?? '').toString().isNotEmpty ||
+                                    (item['endDate'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
+                                ? '${item['startDate'] ?? ''} to ${item['endDate'] ?? ''}'
+                                : '${item['duration'] ?? ''}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF8C736B),
+                            ),
+                          ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
                             onPressed: () {
                               setState(() {
                                 _localEducationTimeline.removeAt(idx);
@@ -2018,33 +2392,102 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Add Education', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF3E1F11))),
+                          const Text(
+                            'Add Education',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          _buildTextField('Degree / Course', _newDegreeController),
-                          _buildTextField('School / University', _newSchoolController),
-                          _buildTextField('Duration (e.g. 2013 - 2017)', _newEduDurationController),
+                          _buildTextField(
+                            'Degree / Course',
+                            _newDegreeController,
+                          ),
+                          _buildTextField(
+                            'School / University',
+                            _newSchoolController,
+                          ),
+                          _buildTextField(
+                            'From',
+                            _newEduStartDateController,
+                            readOnly: true,
+                            onTap: () => _selectDate(
+                              context,
+                              _newEduStartDateController,
+                            ),
+                          ),
+                          _buildTextField(
+                            'To',
+                            _newEduEndDateController,
+                            readOnly: true,
+                            onTap: () => _selectDate(
+                              context,
+                              _newEduEndDateController,
+                              isEndDate: true,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF7A432D),
+                              ),
                               onPressed: () {
-                                if (_newDegreeController.text.trim().isEmpty || _newSchoolController.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill Degree and School')));
+                                if (_newDegreeController.text.trim().isEmpty ||
+                                    _newSchoolController.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please fill Degree and School',
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                if (_newEduStartDateController.text
+                                        .trim()
+                                        .isEmpty ||
+                                    _newEduEndDateController.text
+                                        .trim()
+                                        .isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Please fill From and To dates',
+                                      ),
+                                    ),
+                                  );
                                   return;
                                 }
                                 setState(() {
                                   _localEducationTimeline.add({
                                     'degree': _newDegreeController.text.trim(),
                                     'school': _newSchoolController.text.trim(),
-                                    'duration': _newEduDurationController.text.trim(),
+                                    'startDate': _newEduStartDateController.text
+                                        .trim(),
+                                    'endDate': _newEduEndDateController.text
+                                        .trim(),
+                                    'duration':
+                                        '${_newEduStartDateController.text.trim()} to ${_newEduEndDateController.text.trim()}',
                                   });
                                   _newDegreeController.clear();
                                   _newSchoolController.clear();
-                                  _newEduDurationController.clear();
+                                  _newEduStartDateController.clear();
+                                  _newEduEndDateController.clear();
                                 });
                               },
-                              child: const Text('Add Education', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Colors.white, fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                'Add Education',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -2072,441 +2515,64 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _localSkills.map((s) => Chip(
-                        backgroundColor: Colors.white,
-                        label: Text(s, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF3E1F11))),
-                        onDeleted: () {
-                          setState(() {
-                            _localSkills.remove(s);
-                          });
-                        },
-                      )).toList(),
+                      children: _localSkills
+                          .map(
+                            (s) => Chip(
+                              backgroundColor: Colors.white,
+                              label: Text(
+                                s,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              onDeleted: () {
+                                setState(() {
+                                  _localSkills.remove(s);
+                                });
+                              },
+                            ),
+                          )
+                          .toList(),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(child: _buildTextField('Add Skill', _newSkillController)),
+                        Expanded(
+                          child: _buildTextField(
+                            'Add Skill',
+                            _newSkillController,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Padding(
                           padding: const EdgeInsets.only(top: 18),
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7A432D),
+                            ),
                             onPressed: () {
                               final text = _newSkillController.text.trim();
-                              if (text.isNotEmpty && !_localSkills.contains(text)) {
+                              if (text.isNotEmpty &&
+                                  !_localSkills.contains(text)) {
                                 setState(() {
                                   _localSkills.add(text);
                                 });
                                 _newSkillController.clear();
                               }
                             },
-                            child: const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        )
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFFE8E2DD), thickness: 1),
-                    const SizedBox(height: 12),
-
-                    // Card deck Customizer
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Customize My Share Cards',
-                        style: TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _buildTextField('Main Card Background Image URL', _cardImageUrlController),
-                    
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Choose background preset:',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8C736B),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 36,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: _cardPresets.length,
-                        itemBuilder: (context, idx) {
-                          final preset = _cardPresets[idx];
-                          final isSelected = _cardImageUrlController.text == preset['url'];
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ActionChip(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              label: Text(
-                                preset['name']!,
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                  color: isSelected ? Colors.white : const Color(0xFF7A432D),
-                                ),
+                            child: const Text(
+                              'Add',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
                               ),
-                              backgroundColor: isSelected ? const Color(0xFF7A432D) : Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                side: BorderSide(
-                                  color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
-                                ),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _cardImageUrlController.text = preset['url']!;
-                                });
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Additional Deck Cards',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    if (_localCustomCards.isNotEmpty)
-                      Column(
-                        children: List.generate(_localCustomCards.length, (idx) {
-                          final card = _localCustomCards[idx];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFFE8E2DD)),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 80,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(6),
-                                    image: card.imageUrl.isNotEmpty
-                                        ? DecorationImage(
-                                            image: NetworkImage(card.imageUrl),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                    color: const Color(0xFFE8E2DD),
-                                  ),
-                                  child: card.imageUrl.isEmpty
-                                      ? const Icon(Icons.image_outlined, size: 20, color: Color(0xFF8C736B))
-                                      : null,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        card.title.isNotEmpty ? card.title : 'No Title',
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF3E1F11),
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Layout: ${card.template}',
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 10,
-                                          color: Color(0xFF8C736B),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_rounded, color: Color(0xFF7A432D), size: 20),
-                                  onPressed: () {
-                                    setState(() {
-                                      _editingCardIndex = idx;
-                                      _newCardTitleController.text = card.title;
-                                      _newCardDescController.text = card.description;
-                                      _newCardImageController.text = card.imageUrl;
-                                      _selectedCardTemplate = card.template;
-                                    });
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                                  onPressed: () {
-                                    setState(() {
-                                      _localCustomCards.removeAt(idx);
-                                      if (_editingCardIndex == idx) {
-                                        _editingCardIndex = null;
-                                        _newCardTitleController.clear();
-                                        _newCardDescController.clear();
-                                        _newCardImageController.clear();
-                                      } else if (_editingCardIndex != null && _editingCardIndex! > idx) {
-                                        _editingCardIndex = _editingCardIndex! - 1;
-                                      }
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                      )
-                    else
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE8E2DD)),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          'No additional cards in deck. Add one below!',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 12,
-                            color: Color(0xFF8C736B),
-                          ),
-                        ),
-                      ),
-
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFFE8E2DD), thickness: 1),
-                    const SizedBox(height: 12),
-
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _editingCardIndex == null ? 'Create New Deck Card' : 'Edit Deck Card',
-                        style: const TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    _buildTextField('Card Title', _newCardTitleController, onChanged: (v) => setState(() {})),
-                    _buildTextField('Card Description', _newCardDescController, maxLines: 3, onChanged: (v) => setState(() {})),
-                    _buildTextField('Card Image URL', _newCardImageController, onChanged: (v) => setState(() {})),
-
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Choose background image preset:',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8C736B),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 36,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        children: [
-                          _buildPresetChip('Lounge', 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&q=80'),
-                          _buildPresetChip('Coffee', 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&q=80'),
-                          _buildPresetChip('Airport', 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&q=80'),
-                          _buildPresetChip('Office', 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&q=80'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Layout Template',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF8C736B),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFE8E2DD)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: ['50-50 Split', 'Image Overlay', 'Top Image / Bottom Text'].contains(_selectedCardTemplate)
-                                  ? _selectedCardTemplate
-                                  : 'Image Overlay',
-                              isExpanded: true,
-                              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF7A432D)),
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 13,
-                                color: Color(0xFF3E1F11),
-                              ),
-                              items: ['50-50 Split', 'Image Overlay', 'Top Image / Bottom Text'].map((String val) {
-                                return DropdownMenuItem<String>(
-                                  value: val,
-                                  child: Text(val),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setState(() => _selectedCardTemplate = val);
-                                }
-                              },
                             ),
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 20),
-
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Live Card Preview',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Center(
-                      child: PremiumCustomCard(
-                        card: CustomCard(
-                          title: _newCardTitleController.text.trim().isNotEmpty 
-                              ? _newCardTitleController.text.trim() 
-                              : 'Card Title Preview',
-                          description: _newCardDescController.text.trim().isNotEmpty 
-                              ? _newCardDescController.text.trim() 
-                              : 'Enter a card description above to preview.',
-                          imageUrl: _newCardImageController.text.trim().isNotEmpty 
-                              ? _newCardImageController.text.trim() 
-                              : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&q=80',
-                          template: _selectedCardTemplate,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (_editingCardIndex != null) ...[
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF7A432D),
-                              side: const BorderSide(color: Color(0xFFE8E2DD)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _editingCardIndex = null;
-                                _newCardTitleController.clear();
-                                _newCardDescController.clear();
-                                _newCardImageController.clear();
-                                _selectedCardTemplate = 'Image Overlay';
-                              });
-                            },
-                            child: const Text('Cancel'),
-                          ),
-                          const SizedBox(width: 10),
-                        ],
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF7A432D),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          ),
-                          onPressed: () {
-                            final title = _newCardTitleController.text.trim();
-                            final desc = _newCardDescController.text.trim();
-                            final imgUrl = _newCardImageController.text.trim();
-                            if (title.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Please enter a card title')),
-                              );
-                              return;
-                            }
-                            final card = CustomCard(
-                              title: title,
-                              description: desc,
-                              imageUrl: imgUrl,
-                              template: _selectedCardTemplate,
-                            );
-                            setState(() {
-                              if (_editingCardIndex == null) {
-                                _localCustomCards.add(card);
-                              } else {
-                                _localCustomCards[_editingCardIndex!] = card;
-                                _editingCardIndex = null;
-                              }
-                              _newCardTitleController.clear();
-                              _newCardDescController.clear();
-                              _newCardImageController.clear();
-                              _selectedCardTemplate = 'Image Overlay';
-                            });
-                          },
-                          child: Text(
-                            _editingCardIndex == null ? 'Add to Deck' : 'Update Card',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -2517,38 +2583,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  Widget _buildPresetChip(String label, String url) {
-    final isSelected = _newCardImageController.text == url;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ActionChip(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        label: Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'PlusJakartaSans',
-            fontSize: 11,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : const Color(0xFF7A432D),
-          ),
-        ),
-        backgroundColor: isSelected ? const Color(0xFF7A432D) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
-          ),
-        ),
-        onPressed: () {
-          setState(() {
-            _newCardImageController.text = url;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1, ValueChanged<String>? onChanged}) {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+    ValueChanged<String>? onChanged,
+    bool readOnly = false,
+    VoidCallback? onTap,
+    Widget? suffixIcon,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -2568,6 +2611,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             controller: controller,
             maxLines: maxLines,
             onChanged: onChanged,
+            readOnly: readOnly,
+            onTap: onTap,
             style: const TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontSize: 14,
@@ -2576,20 +2621,133 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              suffixIcon:
+                  suffixIcon ??
+                  (readOnly
+                      ? const Icon(
+                          Icons.calendar_today_outlined,
+                          color: Color(0xFF7A432D),
+                          size: 18,
+                        )
+                      : null),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                borderSide: const BorderSide(
+                  color: Color(0xFF7A432D),
+                  width: 1.5,
+                ),
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _selectDate(
+    BuildContext context,
+    TextEditingController controller, {
+    bool isEndDate = false,
+  }) async {
+    if (isEndDate) {
+      final String? result = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text(
+              'Select End Date',
+              style: TextStyle(
+                fontFamily: 'PlayfairDisplay',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: const Text(
+              'Choose if this is your current position or select a specific date.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'Present'),
+                child: const Text(
+                  'Present',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'Select'),
+                child: const Text(
+                  'Select Date',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+      if (result == 'Present') {
+        controller.text = 'Present';
+        return;
+      } else if (result == null) {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(1950),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF7A432D),
+              onPrimary: Colors.white,
+              onSurface: Color(0xFF3E1F11),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF7A432D),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      controller.text = '${months[picked.month - 1]} ${picked.year}';
+    }
   }
 
   Widget _buildDropdownField({
@@ -2607,40 +2765,61 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF8C736B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE8E2DD)),
+          InputDecorator(
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                color: Color(0xFF8C736B),
+                fontSize: 13,
+              ),
+              floatingLabelStyle: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                color: Color(0xFF7A432D),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: Color(0xFF7A432D),
+                  width: 1.5,
+                ),
+              ),
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: safeItems.contains(currentValue) ? currentValue : (safeItems.isNotEmpty ? safeItems.first : null),
+                value: safeItems.contains(currentValue)
+                    ? currentValue
+                    : (safeItems.isNotEmpty ? safeItems.first : null),
                 isExpanded: true,
+                isDense: true,
                 dropdownColor: Colors.white,
-                icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+                icon: const Icon(
+                  Icons.arrow_drop_down,
+                  color: Color(0xFF7A432D),
+                ),
                 style: const TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 14,
                   color: Color(0xFF3E1F11),
                 ),
                 items: safeItems.map((String val) {
-                  return DropdownMenuItem<String>(
-                    value: val,
-                    child: Text(val),
-                  );
+                  return DropdownMenuItem<String>(value: val, child: Text(val));
                 }).toList(),
                 onChanged: onChanged,
               ),
@@ -2660,10 +2839,7 @@ class _ResumePreviewDialog extends StatefulWidget {
   final Map<String, dynamic> parsedData;
   final Function(Map<String, dynamic>) onSave;
 
-  const _ResumePreviewDialog({
-    required this.parsedData,
-    required this.onSave,
-  });
+  const _ResumePreviewDialog({required this.parsedData, required this.onSave});
 
   @override
   State<_ResumePreviewDialog> createState() => _ResumePreviewDialogState();
@@ -2677,8 +2853,10 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
   late List<String> _professionalInterests;
 
   final TextEditingController _skillInputController = TextEditingController();
-  final TextEditingController _interestInputController = TextEditingController();
-  final TextEditingController _profInterestInputController = TextEditingController();
+  final TextEditingController _interestInputController =
+      TextEditingController();
+  final TextEditingController _profInterestInputController =
+      TextEditingController();
 
   @override
   void initState() {
@@ -2691,7 +2869,9 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
     _interests = List<String>.from(widget.parsedData['interests'] ?? []);
-    _professionalInterests = List<String>.from(widget.parsedData['professionalInterests'] ?? []);
+    _professionalInterests = List<String>.from(
+      widget.parsedData['professionalInterests'] ?? [],
+    );
   }
 
   @override
@@ -2702,7 +2882,12 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
     super.dispose();
   }
 
-  Widget _buildField(String label, String value, Function(String) onChanged, {int maxLines = 1}) {
+  Widget _buildField(
+    String label,
+    String value,
+    Function(String) onChanged, {
+    int maxLines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -2730,14 +2915,20 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
             decoration: InputDecoration(
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                borderSide: const BorderSide(
+                  color: Color(0xFF7A432D),
+                  width: 1.5,
+                ),
               ),
             ),
           ),
@@ -2815,7 +3006,7 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
             ),
             const SizedBox(height: 12),
             const Divider(color: Color(0xFFE8E2DD)),
-            
+
             // Content
             Expanded(
               child: SingleChildScrollView(
@@ -2831,7 +3022,11 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         return Chip(
                           label: Text(
                             skill,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF3E1F11)),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              color: Color(0xFF3E1F11),
+                            ),
                           ),
                           backgroundColor: Colors.white,
                           side: const BorderSide(color: Color(0xFFE8E2DD)),
@@ -2850,19 +3045,29 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         Expanded(
                           child: TextField(
                             controller: _skillInputController,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                            ),
                             decoration: InputDecoration(
                               hintText: 'Add a skill...',
                               filled: true,
                               fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE8E2DD),
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFF7A432D)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF7A432D),
+                                ),
                               ),
                             ),
                           ),
@@ -2871,8 +3076,13 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7A432D),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                           onPressed: () {
                             final text = _skillInputController.text.trim();
@@ -2883,7 +3093,14 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               });
                             }
                           },
-                          child: const Text('Add', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Colors.white, fontSize: 12)),
+                          child: const Text(
+                            'Add',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -2916,7 +3133,11 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Color(0xFFC62828), size: 18),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Color(0xFFC62828),
+                                    size: 18,
+                                  ),
                                   onPressed: () {
                                     setState(() {
                                       _careerTimeline.removeAt(index);
@@ -2925,31 +3146,75 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                                 ),
                               ],
                             ),
-                            _buildField('Job Title / Role', item['role'] ?? '', (val) {
-                              item['role'] = val;
-                            }),
-                            _buildField('Company', item['company'] ?? '', (val) {
+                            _buildField('Company', item['company'] ?? '', (
+                              val,
+                            ) {
                               item['company'] = val;
                             }),
-                            _buildField('Duration', item['duration'] ?? '', (val) {
-                              item['duration'] = val;
+                            _buildField(
+                              'Job Title / Role',
+                              item['role'] ?? '',
+                              (val) {
+                                item['role'] = val;
+                              },
+                            ),
+                            _buildField(
+                              'Employment Type',
+                              item['employmentType'] ?? 'Full-time',
+                              (val) {
+                                item['employmentType'] = val;
+                              },
+                            ),
+                            _buildField('Location', item['location'] ?? '', (
+                              val,
+                            ) {
+                              item['location'] = val;
                             }),
-                            _buildField('Description', item['description'] ?? '', (val) {
-                              item['description'] = val;
-                            }, maxLines: 2),
+                            _buildField('Start Date', item['startDate'] ?? '', (
+                              val,
+                            ) {
+                              item['startDate'] = val;
+                            }),
+                            _buildField('End Date', item['endDate'] ?? '', (
+                              val,
+                            ) {
+                              item['endDate'] = val;
+                            }),
+                            _buildField(
+                              'Description',
+                              item['description'] ?? '',
+                              (val) {
+                                item['description'] = val;
+                              },
+                              maxLines: 2,
+                            ),
                           ],
                         ),
                       );
                     }),
                     TextButton.icon(
-                      icon: const Icon(Icons.add, size: 16, color: Color(0xFF7A432D)),
-                      label: const Text('Add Work Experience', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontSize: 12)),
+                      icon: const Icon(
+                        Icons.add,
+                        size: 16,
+                        color: Color(0xFF7A432D),
+                      ),
+                      label: const Text(
+                        'Add Work Experience',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          color: Color(0xFF7A432D),
+                          fontSize: 12,
+                        ),
+                      ),
                       onPressed: () {
                         setState(() {
                           _careerTimeline.add({
-                            'role': '',
                             'company': '',
-                            'duration': '',
+                            'role': '',
+                            'employmentType': 'Full-time',
+                            'location': '',
+                            'startDate': '',
+                            'endDate': '',
                             'description': '',
                           });
                         });
@@ -2984,7 +3249,11 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Color(0xFFC62828), size: 18),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Color(0xFFC62828),
+                                    size: 18,
+                                  ),
                                   onPressed: () {
                                     setState(() {
                                       _educationTimeline.removeAt(index);
@@ -2993,13 +3262,23 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                                 ),
                               ],
                             ),
-                            _buildField('Degree / Certificate', item['degree'] ?? '', (val) {
-                              item['degree'] = val;
-                            }),
-                            _buildField('School / Institution', item['school'] ?? '', (val) {
-                              item['school'] = val;
-                            }),
-                            _buildField('Duration', item['duration'] ?? '', (val) {
+                            _buildField(
+                              'Degree / Certificate',
+                              item['degree'] ?? '',
+                              (val) {
+                                item['degree'] = val;
+                              },
+                            ),
+                            _buildField(
+                              'School / Institution',
+                              item['school'] ?? '',
+                              (val) {
+                                item['school'] = val;
+                              },
+                            ),
+                            _buildField('Duration', item['duration'] ?? '', (
+                              val,
+                            ) {
                               item['duration'] = val;
                             }),
                           ],
@@ -3007,8 +3286,19 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                       );
                     }),
                     TextButton.icon(
-                      icon: const Icon(Icons.add, size: 16, color: Color(0xFF7A432D)),
-                      label: const Text('Add Education', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontSize: 12)),
+                      icon: const Icon(
+                        Icons.add,
+                        size: 16,
+                        color: Color(0xFF7A432D),
+                      ),
+                      label: const Text(
+                        'Add Education',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          color: Color(0xFF7A432D),
+                          fontSize: 12,
+                        ),
+                      ),
                       onPressed: () {
                         setState(() {
                           _educationTimeline.add({
@@ -3029,7 +3319,11 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         return Chip(
                           label: Text(
                             interest,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF3E1F11)),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              color: Color(0xFF3E1F11),
+                            ),
                           ),
                           backgroundColor: Colors.white,
                           side: const BorderSide(color: Color(0xFFE8E2DD)),
@@ -3048,19 +3342,29 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         Expanded(
                           child: TextField(
                             controller: _interestInputController,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                            ),
                             decoration: InputDecoration(
                               hintText: 'Add an interest...',
                               filled: true,
                               fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE8E2DD),
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFF7A432D)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF7A432D),
+                                ),
                               ),
                             ),
                           ),
@@ -3069,8 +3373,13 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7A432D),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                           onPressed: () {
                             final text = _interestInputController.text.trim();
@@ -3081,13 +3390,23 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               });
                             }
                           },
-                          child: const Text('Add', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Colors.white, fontSize: 12)),
+                          child: const Text(
+                            'Add',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ],
                     ),
 
                     // --- Professional Interests ---
-                    _buildSectionHeader('Professional Interests', Icons.handshake),
+                    _buildSectionHeader(
+                      'Professional Interests',
+                      Icons.handshake,
+                    ),
                     Wrap(
                       spacing: 8,
                       runSpacing: 4,
@@ -3095,7 +3414,11 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         return Chip(
                           label: Text(
                             interest,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF3E1F11)),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              color: Color(0xFF3E1F11),
+                            ),
                           ),
                           backgroundColor: Colors.white,
                           side: const BorderSide(color: Color(0xFFE8E2DD)),
@@ -3114,19 +3437,29 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         Expanded(
                           child: TextField(
                             controller: _profInterestInputController,
-                            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                            ),
                             decoration: InputDecoration(
                               hintText: 'Add a professional interest...',
                               filled: true,
                               fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE8E2DD),
+                                ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(color: Color(0xFF7A432D)),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF7A432D),
+                                ),
                               ),
                             ),
                           ),
@@ -3135,19 +3468,33 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7A432D),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                           ),
                           onPressed: () {
-                            final text = _profInterestInputController.text.trim();
-                            if (text.isNotEmpty && !_professionalInterests.contains(text)) {
+                            final text = _profInterestInputController.text
+                                .trim();
+                            if (text.isNotEmpty &&
+                                !_professionalInterests.contains(text)) {
                               setState(() {
                                 _professionalInterests.add(text);
                                 _profInterestInputController.clear();
                               });
                             }
                           },
-                          child: const Text('Add', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Colors.white, fontSize: 12)),
+                          child: const Text(
+                            'Add',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -3156,7 +3503,7 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                 ),
               ),
             ),
-            
+
             // Footer
             const SizedBox(height: 12),
             const Divider(color: Color(0xFFE8E2DD)),
@@ -3179,8 +3526,13 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF7A432D),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                   onPressed: () {
                     final updatedData = {
