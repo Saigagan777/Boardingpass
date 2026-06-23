@@ -37,7 +37,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '514349178076',
     projectId: 'fir-p-57bdc',
     authDomain: 'fir-p-57bdc.firebaseapp.com',
-    storageBucket: 'fir-p-57bdc.firebasestorage.app',
+    storageBucket: 'fir-p-57bdc.appspot.com',
     measurementId: 'G-ZCMN2STFR2',
   );
 
@@ -46,14 +46,14 @@ class DefaultFirebaseOptions {
     appId: '1:514349178076:android:94a46f73440a99e2ba6819',
     messagingSenderId: '514349178076',
     projectId: 'fir-p-57bdc',
-    storageBucket: 'fir-p-57bdc.firebasestorage.app',
+    storageBucket: 'fir-p-57bdc.appspot.com',
   );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDLR8d-mub_0d6_71j3GmZhnfCEK0apuBc',
     appId: '1:514349178076:ios:bad57bdc45b7206bba6819',
     messagingSenderId: '514349178076',
     projectId: 'fir-p-57bdc',
-    storageBucket: 'fir-p-57bdc.firebasestorage.app',
+    storageBucket: 'fir-p-57bdc.appspot.com',
     iosBundleId: 'com.example.flutterApplication1',
   );
   static const FirebaseOptions macos = FirebaseOptions(
@@ -61,7 +61,7 @@ class DefaultFirebaseOptions {
     appId: '1:514349178076:ios:bad57bdc45b7206bba6819',
     messagingSenderId: '514349178076',
     projectId: 'fir-p-57bdc',
-    storageBucket: 'fir-p-57bdc.firebasestorage.app',
+    storageBucket: 'fir-p-57bdc.appspot.com',
     iosBundleId: 'com.example.flutterApplication1',
   );
 
@@ -71,7 +71,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '514349178076',
     projectId: 'fir-p-57bdc',
     authDomain: 'fir-p-57bdc.firebaseapp.com',
-    storageBucket: 'fir-p-57bdc.firebasestorage.app',
+    storageBucket: 'fir-p-57bdc.appspot.com',
     measurementId: 'G-HWHMS7YF4J',
   );
 }

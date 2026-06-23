@@ -991,14 +991,15 @@ class _ChatScreenState extends State<ChatScreen> {
                             selectedTime.minute,
                           );
 
+                          final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
                           final meetingId = await MeetingService().createMeeting(
                             attendeeIds: [_otherUid!],
                             scheduledAt: scheduledAt,
                             location: selectedLocation,
                             note: noteController.text.trim(),
+                            chatId: _chatId,
                           );
 
-                          final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
                           final msg = "📅 Meeting Request: Let's meet at $selectedLocation on $timeStr [meetingId:$meetingId]";
                           await ChatService().sendTextMessage(chatId: _chatId!, text: msg);
 
@@ -1099,11 +1100,22 @@ class _ChatScreenState extends State<ChatScreen> {
       cleanText = text.substring(0, bracketIndex);
     }
     
-    final atIndex = cleanText.indexOf("Let's meet at ");
-    final onIndex = cleanText.indexOf(" on ");
-    if (atIndex != -1 && onIndex != -1) {
-      venue = cleanText.substring(atIndex + 14, onIndex);
-      timeDetails = cleanText.substring(onIndex + 4);
+    final requestPrefix = "📅 Meeting Request: Let's meet at ";
+    final proposalPrefix = "🔄 Proposed New Time: ";
+    
+    if (cleanText.startsWith(requestPrefix)) {
+      final atIndex = cleanText.indexOf("Let's meet at ");
+      final onIndex = cleanText.indexOf(" on ");
+      if (atIndex != -1 && onIndex != -1) {
+        venue = cleanText.substring(atIndex + 14, onIndex);
+        timeDetails = cleanText.substring(onIndex + 4);
+      }
+    } else if (cleanText.startsWith(proposalPrefix)) {
+      final forMeetingAtIndex = cleanText.indexOf(" for meeting at ");
+      if (forMeetingAtIndex != -1) {
+        timeDetails = cleanText.substring(proposalPrefix.length, forMeetingAtIndex);
+        venue = cleanText.substring(forMeetingAtIndex + 16);
+      }
     }
 
     return Container(
@@ -1122,7 +1134,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Icon(Icons.event, color: isMe ? Colors.white : const Color(0xFF7A432D), size: 18),
               const SizedBox(width: 6),
               Text(
-                'Meeting Proposal',
+                cleanText.startsWith(proposalPrefix) ? 'Reschedule Proposal' : 'Meeting Proposal',
                 style: TextStyle(
                   fontFamily: 'PlayfairDisplay',
                   fontSize: 14,
@@ -1206,10 +1218,19 @@ class _ChatScreenState extends State<ChatScreen> {
                       final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
                       final myStatus = statusMap[currentUid] as String? ?? 'pending';
 
-                      if (statusStr != 'pending' || myStatus != 'pending') {
+                      final isRescheduleRequested = statusStr == 'RESCHEDULE_REQUESTED';
+                      final isReschedulePendingForMe = statusStr == 'RESCHEDULE_APPROVED' && myStatus == 'pending';
+
+                      if (!isRescheduleRequested && !isReschedulePendingForMe && (statusStr != 'pending' || myStatus != 'pending')) {
                         String messageText = '';
                         Color textColor;
-                        if (myStatus == 'accepted') {
+                        if (statusStr == 'RESCHEDULE_APPROVED' || statusStr == 'rescheduled') {
+                          messageText = '✓ Rescheduled';
+                          textColor = const Color(0xFF2E7D32);
+                        } else if (statusStr == 'RESCHEDULE_REJECTED') {
+                          messageText = '✗ Reschedule Declined';
+                          textColor = const Color(0xFFC62828);
+                        } else if (myStatus == 'accepted') {
                           messageText = '✓ Approved';
                           textColor = const Color(0xFF2E7D32);
                         } else if (myStatus == 'cancelled') {
@@ -1233,6 +1254,147 @@ class _ChatScreenState extends State<ChatScreen> {
                               color: textColor,
                             ),
                           ),
+                        );
+                      }
+
+                      if (isRescheduleRequested) {
+                        final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+                        final activeProposal = proposals.firstWhere(
+                          (p) => p['status'] == 'active',
+                          orElse: () => {},
+                        );
+                        final String? proposalId = activeProposal['proposalId'] as String?;
+                        final String? proposedBy = activeProposal['proposedBy'] as String?;
+
+                        if (proposedBy == currentUid) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Waiting for response',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFFEF6C00),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFFC62828)),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(vertical: 4),
+                                    ),
+                                    onPressed: () async {
+                                      if (proposalId != null) {
+                                        try {
+                                          await MeetingService().declineProposal(
+                                            meetingId: meetingId,
+                                            proposalId: proposalId,
+                                          );
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Proposal declined.'), backgroundColor: Color(0xFFC62828)),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFC62828)),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
+                                    child: const Text(
+                                      'Decline',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFC62828),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF2E7D32),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(vertical: 4),
+                                    ),
+                                    onPressed: () async {
+                                      if (proposalId != null) {
+                                        try {
+                                          await MeetingService().acceptProposal(
+                                            meetingId: meetingId,
+                                            proposalId: proposalId,
+                                          );
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Meeting rescheduled successfully!'), backgroundColor: Color(0xFF2E7D32)),
+                                            );
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFC62828)),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
+                                    child: const Text(
+                                      'Approve',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Color(0xFF7A432D)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                ),
+                                icon: const Icon(Icons.schedule, size: 14, color: Color(0xFF7A432D)),
+                                label: const Text(
+                                  'Propose Other Time',
+                                  style: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF7A432D),
+                                  ),
+                                ),
+                                onPressed: () => _showProposeOtherTimeDialog(meetingId, location),
+                              ),
+                            ),
+                          ],
                         );
                       }
 
@@ -2153,12 +2315,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   });
                 },
               ),
-              IconButton(
-                icon: const Icon(Icons.calendar_month, color: Color(0xFF7A432D)),
-                onPressed: widget.onMeet ?? () {
-                  _state.currentScreen = AppScreen.meeting;
-                },
-              ),
             ],
           ),
           body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -2440,7 +2596,7 @@ class _ChatScreenState extends State<ChatScreen> {
     switch (msg.kind) {
       case MessageKind.text:
         final text = msg.text ?? '';
-        if (text.startsWith('📅 Meeting Request:')) {
+        if (text.startsWith('📅 Meeting Request:') || text.startsWith('🔄 Proposed New Time:')) {
           return _buildInlineMeetingRequestCard(msg, text);
         }
         return Text(

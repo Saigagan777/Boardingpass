@@ -1396,7 +1396,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 const SizedBox(height: 8),
                 // Employment Type Dropdown
                 DropdownButtonFormField<String>(
-                  value: _workEmploymentType,
+                  initialValue: _workEmploymentType,
                   decoration: InputDecoration(
                     labelText: 'Employment Type',
                     labelStyle: const TextStyle(

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -21,6 +21,45 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   final AppStateManager _state = AppStateManager();
+
+  ImageProvider _getEventImageProvider(String url) {
+    if (url.startsWith('data:image') && url.contains('base64,')) {
+      try {
+        final base64Str = url.split('base64,').last;
+        final bytes = base64Decode(base64Str);
+        return MemoryImage(bytes);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return CachedNetworkImageProvider(url);
+  }
+
+  Widget _buildEventImageWidget(String url, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+    if (url.startsWith('data:image') && url.contains('base64,')) {
+      try {
+        final base64Str = url.split('base64,').last;
+        final bytes = base64Decode(base64Str);
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: fit,
+        );
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      width: width,
+      height: height,
+      fit: fit,
+      placeholder: (context, url) => Container(color: const Color(0xFFE8E2DD)),
+      errorWidget: (context, url, error) => const Icon(Icons.error),
+    );
+  }
+
   int _activeSubTab = 0; // 0 for Upcoming, 1 for My Events
   String _selectedCategory = 'All';
   final Set<String> _bookmarkedEvents = {};
@@ -106,7 +145,7 @@ class _EventsScreenState extends State<EventsScreen> {
         List<Map<String, dynamic>> searchResults = [];
         Timer? debounceTimer;
         bool isSelectingVenue = false;
-        File? selectedImage;
+        Uint8List? selectedImageBytes;
         bool isUploadingImage = false;
 
         return StatefulBuilder(
@@ -143,8 +182,9 @@ class _EventsScreenState extends State<EventsScreen> {
                           final picker = ImagePicker();
                           final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
                           if (image != null) {
+                            final bytes = await image.readAsBytes();
                             setDialogState(() {
-                              selectedImage = File(image.path);
+                              selectedImageBytes = bytes;
                             });
                           }
                         },
@@ -156,14 +196,14 @@ class _EventsScreenState extends State<EventsScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: const Color(0xFFE8E2DD)),
                           ),
-                          child: selectedImage != null
+                          child: selectedImageBytes != null
                               ? Stack(
                                   fit: StackFit.expand,
                                   children: [
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(10),
-                                      child: Image.file(
-                                        selectedImage!,
+                                      child: Image.memory(
+                                        selectedImageBytes!,
                                         fit: BoxFit.cover,
                                       ),
                                     ),
@@ -173,7 +213,7 @@ class _EventsScreenState extends State<EventsScreen> {
                                       child: GestureDetector(
                                         onTap: () {
                                           setDialogState(() {
-                                            selectedImage = null;
+                                            selectedImageBytes = null;
                                           });
                                         },
                                         child: Container(
@@ -547,8 +587,8 @@ class _EventsScreenState extends State<EventsScreen> {
                             final eventId = DateTime.now().millisecondsSinceEpoch.toString();
                             String? imageUrl;
 
-                            if (selectedImage != null) {
-                              imageUrl = await EventService().uploadEventImage(eventId, selectedImage!);
+                            if (selectedImageBytes != null) {
+                              imageUrl = await EventService().uploadEventImage(eventId, selectedImageBytes!);
                             }
 
                             final dateVal = dateController.text.trim();
@@ -649,8 +689,8 @@ class _EventsScreenState extends State<EventsScreen> {
               // Banner Image Header
               Stack(
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+                  _buildEventImageWidget(
+                    (event.imageUrl != null && event.imageUrl!.isNotEmpty)
                         ? event.imageUrl!
                         : _getCategoryImageUrl(event.category),
                     height: 200,
@@ -1169,7 +1209,7 @@ class _EventsScreenState extends State<EventsScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           image: DecorationImage(
-            image: CachedNetworkImageProvider(
+            image: _getEventImageProvider(
               (event.imageUrl != null && event.imageUrl!.isNotEmpty)
                   ? event.imageUrl!
                   : _getCategoryImageUrl(event.category),
@@ -1297,8 +1337,8 @@ class _EventsScreenState extends State<EventsScreen> {
             // Image
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: CachedNetworkImage(
-                imageUrl: (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+              child: _buildEventImageWidget(
+                (event.imageUrl != null && event.imageUrl!.isNotEmpty)
                     ? event.imageUrl!
                     : _getCategoryImageUrl(event.category),
                 height: 100,

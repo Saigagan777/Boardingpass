@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'chat_service.dart';
 
 /// Possible states of a meeting.
@@ -36,6 +37,7 @@ class MeetingService {
     String? location,
     String? note,
     int? reminderMinutes,
+    String? chatId,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -66,6 +68,7 @@ class MeetingService {
         'reminderMinutes': reminderMinutes,
         'suggestedAgenda': agenda,
         'cancellationReasons': {},
+        'chatId': chatId,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -91,6 +94,10 @@ class MeetingService {
     } catch (e) {
       throw Exception('Failed to create meeting: $e');
     }
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    return DateFormat('dd MMM yyyy \'at\' HH:mm').format(dateTime);
   }
 
   /// Rules-based helper to generate a realistic agenda based on participants' profiles.
@@ -508,6 +515,7 @@ class MeetingService {
         transaction.update(docRef, {
           'proposals': proposals,
           'participantsStatus.$uid': 'proposed_other_time',
+          'status': 'RESCHEDULE_REQUESTED',
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
@@ -577,6 +585,7 @@ class MeetingService {
         if (isHost) {
           // Host Decides: accepting = reschedule the meeting
           final proposedTime = proposal['proposedTime'] as Timestamp;
+          final previousTimestamp = data['scheduledAt'] as Timestamp?;
 
           // Mark proposal as accepted
           proposals[proposalIndex]['status'] = 'accepted';
@@ -596,11 +605,21 @@ class MeetingService {
             statusMap[p] = hosts.contains(p) ? 'accepted' : 'pending';
           }
 
+          final rescheduleHistory = List<Map<String, dynamic>>.from(data['rescheduleHistory'] ?? []);
+          rescheduleHistory.add({
+            'oldDateTime': previousTimestamp,
+            'newDateTime': proposedTime,
+            'requestedBy': proposal['proposedBy'],
+            'approvedBy': uid,
+            'timestamp': Timestamp.now(),
+          });
+
           transaction.update(docRef, {
             'scheduledAt': proposedTime,
             'proposals': proposals,
             'participantsStatus': statusMap,
-            'status': 'rescheduled',
+            'status': 'RESCHEDULE_APPROVED',
+            'rescheduleHistory': rescheduleHistory,
             'updatedAt': FieldValue.serverTimestamp(),
           });
         } else {
@@ -626,19 +645,83 @@ class MeetingService {
         final isHost = hosts.contains(uid);
 
         if (isHost) {
-          // Notify all non-host participants about the reschedule
+          // Notify all non-host participants about the reschedule under the new scheme
           final participants = List<String>.from(data['participants'] ?? []);
+
+          // Find the accepted proposal details
+          final proposals = List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+          final proposalIndex = proposals.indexWhere((p) => p['proposalId'] == proposalId);
+          final proposal = proposalIndex != -1 ? proposals[proposalIndex] : null;
+          final requestedBy = proposal != null ? proposal['proposedBy'] : '';
+
+          // Format previous and new date-times
+          final historyList = List<Map<String, dynamic>>.from(data['rescheduleHistory'] ?? []);
+          Timestamp? previousTimestamp;
+          Timestamp? newTimestamp;
+          if (historyList.isNotEmpty) {
+            final lastHist = historyList.last;
+            previousTimestamp = lastHist['oldDateTime'] as Timestamp?;
+            newTimestamp = lastHist['newDateTime'] as Timestamp?;
+          } else {
+            newTimestamp = data['scheduledAt'] as Timestamp?;
+          }
+
+          final previousDateTime = previousTimestamp?.toDate();
+          final newDateTime = newTimestamp?.toDate();
+          final previousDateTimeStr = previousDateTime != null ? _formatDateTime(previousDateTime) : 'N/A';
+          final updatedDateTimeStr = newDateTime != null ? _formatDateTime(newDateTime) : 'N/A';
+
+          final location = data['location'] as String? ?? 'Lounge';
+          final meetingTitle = data['title'] ?? data['note'] ?? 'Meeting at $location';
+
+          // Fetch host name
+          final userDoc = await _firestore.collection('users').doc(uid).get();
+          final hostName = userDoc.data()?['name'] ?? _auth.currentUser?.displayName ?? 'Host';
+
           for (final p in participants) {
             if (p == uid) continue;
             await _firestore.collection('notifications').add({
               'userId': p,
               'title': '📅 Meeting Rescheduled',
-              'body': '$userName accepted a proposed time. Check the updated schedule.',
-              'type': 'meeting_invite',
+              'body': 'Meeting rescheduled from $previousDateTimeStr to $updatedDateTimeStr. Approved by: $hostName.',
+              'type': 'MEETING_RESCHEDULE_APPROVED',
               'isRead': false,
-              'metadata': {'meetingId': meetingId, 'proposalId': proposalId},
+              'metadata': {
+                'meetingId': meetingId,
+                'meetingTitle': meetingTitle,
+                'previousDateTime': previousDateTimeStr,
+                'updatedDateTime': updatedDateTimeStr,
+                'rescheduleRequestedBy': requestedBy,
+                'approvedBy': uid,
+              },
               'timestamp': FieldValue.serverTimestamp(),
             });
+          }
+
+          // Construct and send system message
+          final systemText = 'Meeting Rescheduled\n\n'
+              'Previous: $previousDateTimeStr\n'
+              'Updated: $updatedDateTimeStr\n'
+              'Approved by: $hostName';
+
+          String? resolvedChatId = data['chatId'] as String?;
+          if (resolvedChatId == null || resolvedChatId.isEmpty) {
+            final otherId = participants.firstWhere((p) => p != uid, orElse: () => '');
+            if (otherId.isNotEmpty) {
+              resolvedChatId = await ChatService().getOrCreateChat(userId1: uid, userId2: otherId);
+            }
+          }
+
+          if (resolvedChatId != null && resolvedChatId.isNotEmpty) {
+            await ChatService().sendSystemMessage(
+              chatId: resolvedChatId,
+              text: systemText,
+            );
+            final cardText = "📅 Meeting Request: Let's meet at $location on $updatedDateTimeStr [meetingId:$meetingId]";
+            await ChatService().sendTextMessage(
+              chatId: resolvedChatId,
+              text: cardText,
+            );
           }
         } else {
           // Notify hosts that a participant accepted the proposal
@@ -688,12 +771,18 @@ class MeetingService {
           throw Exception('Proposal is no longer active');
         }
 
+        final Map<String, dynamic> updates = {
+          'proposals': proposals,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
         if (isHost) {
           // Host declining = kill the proposal
           proposals[proposalIndex]['status'] = 'declined';
           proposals[proposalIndex]['declinedBy'] = uid;
           proposals[proposalIndex]['declineReason'] = reason ?? '';
           proposals[proposalIndex]['updatedAt'] = Timestamp.now();
+          updates['status'] = 'RESCHEDULE_REJECTED';
         } else {
           // Non-host: record decline response
           final responses = Map<String, dynamic>.from(proposals[proposalIndex]['responses'] ?? {});
@@ -702,10 +791,7 @@ class MeetingService {
           proposals[proposalIndex]['updatedAt'] = Timestamp.now();
         }
 
-        transaction.update(docRef, {
-          'proposals': proposals,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        transaction.update(docRef, updates);
       });
 
       // Notify the proposer

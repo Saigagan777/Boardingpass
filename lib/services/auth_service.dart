@@ -21,7 +21,7 @@ class AuthService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Dev-mode admin email – bypasses custom-claims check.
-  static const String _devAdminEmail = 'Gagan@gmail.com';
+  static const String _devAdminEmail = 'gagan123@gmail.com';
 
   // ---------------------------------------------------------------------------
   // Auth state

@@ -74,8 +74,20 @@ class _AdminPanelState extends State<AdminPanel> {
                     mainAxisSpacing: 10,
                     childAspectRatio: 1.1,
                     children: [
-                      _buildStatCard('Active Users', '42', Icons.people_outline, const Color(0xFF7A432D)),
-                      _buildStatCard('Connections', '18', Icons.handshake_outlined, const Color(0xFFB06F4D)),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('users').snapshots(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                          return _buildStatCard('Active Users', count.toString(), Icons.people_outline, const Color(0xFF7A432D));
+                        },
+                      ),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('connections').snapshots(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                          return _buildStatCard('Connections', count.toString(), Icons.handshake_outlined, const Color(0xFFB06F4D));
+                        },
+                      ),
                       _buildStatCard('Pending Flags', pendingLogs.length.toString(), Icons.flag_outlined, const Color(0xFF3E1F11)),
                     ],
                   ),

@@ -9,6 +9,7 @@ import '../services/sponsor_service.dart';
 import '../services/meeting_service.dart';
 import '../services/user_service.dart';
 import '../models/user_profile.dart';
+import '../models/checkin.dart';
 import '../utils/app_logo.dart';
 
 class HexagonClipper extends CustomClipper<Path> {
@@ -43,6 +44,21 @@ class _HubScreenState extends State<HubScreen> {
   int _tickerIndex = 0;
   Timer? _tickerTimer;
   int _carouselItemCount = 2;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _notificationsBadgeStream;
+
+  Stream<QuerySnapshot<Map<String, dynamic>>>? get _badgeStream {
+    if (_notificationsBadgeStream == null) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        _notificationsBadgeStream = FirebaseFirestore.instance
+            .collection('notifications')
+            .where('userId', isEqualTo: uid)
+            .where('isRead', isEqualTo: false)
+            .snapshots();
+      }
+    }
+    return _notificationsBadgeStream;
+  }
 
   void _updateHoveredIndex(int? index) {
     if (_hoveredIndex != index) {
@@ -121,6 +137,19 @@ class _HubScreenState extends State<HubScreen> {
   void dispose() {
     _tickerTimer?.cancel();
     super.dispose();
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour >= 5 && hour < 12) {
+      return 'Good morning';
+    } else if (hour >= 12 && hour < 17) {
+      return 'Good afternoon';
+    } else if (hour >= 17 && hour < 22) {
+      return 'Good evening';
+    } else {
+      return 'Good night';
+    }
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -293,13 +322,32 @@ class _HubScreenState extends State<HubScreen> {
                       stream: FirebaseFirestore.instance
                           .collection('notifications')
                           .where('userId', isEqualTo: uid)
-                          .orderBy('timestamp', descending: true)
                           .snapshots(),
                       builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                'Error loading notifications:\n${snapshot.error}',
+                                style: const TextStyle(color: Color(0xFFC62828), fontSize: 12, fontFamily: 'PlusJakartaSans'),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          );
+                        }
                         if (snapshot.connectionState == ConnectionState.waiting) {
                           return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
                         }
-                        final docs = snapshot.data?.docs ?? [];
+                        final docs = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snapshot.data?.docs ?? []);
+                        docs.sort((a, b) {
+                          final aTime = a.data()['timestamp'] as Timestamp?;
+                          final bTime = b.data()['timestamp'] as Timestamp?;
+                          if (aTime == null && bTime == null) return 0;
+                          if (aTime == null) return 1; // Null/missing timestamps at the end
+                          if (bTime == null) return -1;
+                          return bTime.compareTo(aTime);
+                        });
                         if (docs.isEmpty) {
                           return const Center(
                             child: Text(
@@ -318,7 +366,7 @@ class _HubScreenState extends State<HubScreen> {
                             final isRead = data['isRead'] as bool? ?? false;
                             final title = data['title'] as String? ?? 'Alert';
                             final body = data['body'] as String? ?? '';
-                            final type = data['type'] as String? ?? '';
+                            final type = (data['type'] as String? ?? '').toLowerCase();
                             final Timestamp? timestamp = data['timestamp'] as Timestamp?;
                             
                             IconData iconData = Icons.notifications_outlined;
@@ -433,6 +481,29 @@ class _HubScreenState extends State<HubScreen> {
     final String fullName = _state.profileData?['name'] ?? 'Rohan';
     final String userName = fullName.trim().split(' ').first;
 
+    final activeCheckinId = _state.currentUserProfile?.currentCheckin;
+    Checkin? activeCheckin;
+    if (activeCheckinId != null) {
+      for (final c in _state.checkins) {
+        if (c.id == activeCheckinId) {
+          activeCheckin = c;
+          break;
+        }
+      }
+    }
+
+    String locationText = 'Not checked in';
+    if (activeCheckin != null) {
+      locationText = '${activeCheckin.location} · ${activeCheckin.name}';
+    } else if (_state.profileData?['location']?.isNotEmpty == true) {
+      locationText = _state.profileData!['location']!;
+    }
+
+    final nearbyCount = _state.candidates.length;
+    final liveContextText = nearbyCount > 0 
+        ? '$locationText · $nearbyCount nearby'
+        : locationText;
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -477,7 +548,7 @@ class _HubScreenState extends State<HubScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Good morning, $userName',
+                          '${_getGreeting()}, $userName',
                           style: TextStyle(
                             fontFamily: 'PlayfairDisplay',
                             fontSize: screenHeight < 650 ? 20 : 24,
@@ -501,11 +572,7 @@ class _HubScreenState extends State<HubScreen> {
                     children: [
                       // Streamed Notifications Bell Icon with badge
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: FirebaseFirestore.instance
-                            .collection('notifications')
-                            .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-                            .where('isRead', isEqualTo: false)
-                            .snapshots(),
+                        stream: _badgeStream,
                         builder: (context, snapshot) {
                           final unreadCount = snapshot.data?.docs.length ?? 0;
                           return Stack(
@@ -860,72 +927,77 @@ class _HubScreenState extends State<HubScreen> {
                 horizontal: screenWidth * 0.06,
                 vertical: screenHeight < 650 ? screenHeight * 0.008 : screenHeight * 0.02,
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFFAF0E6), width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    )
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFFFDF1E6),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.location_on,
-                            color: Color(0xFF7A432D),
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'LIVE CONTEXT',
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF8C736B),
-                                letterSpacing: 1.2,
-                              ),
+              child: GestureDetector(
+                onTap: () {
+                  _state.currentScreen = AppScreen.checkin;
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFFAF0E6), width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      )
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFFFDF1E6),
                             ),
-                            Text(
-                              'BLR T2 · Plaza Premium · 42 nearby',
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF3E1F11),
-                              ),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Color(0xFF7A432D),
+                              size: 18,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Icon(
-                      Icons.access_time_rounded,
-                      color: Color(0xFF8C736B),
-                      size: 20,
-                    ),
-                  ],
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'LIVE CONTEXT',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF8C736B),
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              Text(
+                                liveContextText,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Icon(
+                        Icons.access_time_rounded,
+                        color: Color(0xFF8C736B),
+                        size: 20,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1017,24 +1089,14 @@ class _HubScreenState extends State<HubScreen> {
             }
 
             if (carouselItems.isEmpty) {
-              carouselItems.addAll([
-                {
-                  'kind': 'ad',
-                  'brand': 'Plaza Premium',
-                  'title': '20% off lounge upgrade — today only',
-                  'cta': 'Claim',
-                  'icon': Icons.auto_awesome_outlined,
-                  'url': '',
-                },
-                {
-                  'kind': 'ad',
-                  'brand': 'Amex Platinum',
-                  'title': 'Free lounge access at 1,400+ airports',
-                  'cta': 'Learn',
-                  'icon': Icons.star_outline_rounded,
-                  'url': '',
-                },
-              ]);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _carouselItemCount != 0) {
+                  setState(() {
+                    _carouselItemCount = 0;
+                  });
+                }
+              });
+              return const SizedBox.shrink();
             }
 
             WidgetsBinding.instance.addPostFrameCallback((_) {

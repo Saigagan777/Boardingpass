@@ -224,47 +224,49 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _notificationSub;
   Map<String, dynamic>? _latestUnreadNotification;
   String? _latestUnreadNotificationId;
-  Timer? _notificationBannerTimer;
   bool _showNotificationBanner = false;
+  String? _currentUid;
 
   @override
   void initState() {
     super.initState();
     _state.addListener(_onStateChanged);
-    _listenForNotifications();
+    
+    // Set initial uid and subscribe to notifications if logged in
+    final initialUid =
+        _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
+    if (initialUid != null) {
+      _currentUid = initialUid;
+      _startNotificationStream(initialUid);
+    }
   }
 
   @override
   void dispose() {
     _state.removeListener(_onStateChanged);
     _notificationSub?.cancel();
-    _notificationBannerTimer?.cancel();
     super.dispose();
   }
 
   void _onStateChanged() {
     if (mounted) {
+      final newUid =
+          _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
+      if (newUid != _currentUid) {
+        _currentUid = newUid;
+        if (newUid != null) {
+          _startNotificationStream(newUid);
+        } else {
+          _notificationSub?.cancel();
+          _notificationSub = null;
+          setState(() {
+            _latestUnreadNotificationId = null;
+            _latestUnreadNotification = null;
+            _showNotificationBanner = false;
+          });
+        }
+      }
       setState(() {});
-    }
-  }
-
-  void _listenForNotifications() {
-    final uid =
-        _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      // Retry when user logs in
-      _state.addListener(_retryNotificationListener);
-      return;
-    }
-    _startNotificationStream(uid);
-  }
-
-  void _retryNotificationListener() {
-    final uid =
-        _state.profileData?['uid'] ?? FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      _state.removeListener(_retryNotificationListener);
-      _startNotificationStream(uid);
     }
   }
 
@@ -287,40 +289,27 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                   final aTime = a.data()['timestamp'] as Timestamp?;
                   final bTime = b.data()['timestamp'] as Timestamp?;
                   if (aTime == null && bTime == null) return 0;
-                  if (aTime == null) return 1;
-                  if (bTime == null) return -1;
-                  return bTime.compareTo(aTime);
+                  if (aTime == null) return -1; // null (pending local write) is newest
+                  if (bTime == null) return 1;
+                  return bTime.compareTo(aTime); // descending
                 });
+                
                 final doc = unreadDocs.first;
                 final isNewBanner = doc.id != _latestUnreadNotificationId;
                 final isDismissed = _dismissedNotificationIds.contains(doc.id);
 
-                if (isNewBanner && !isDismissed) {
-                  _notificationBannerTimer?.cancel();
-                  _notificationBannerTimer = Timer(const Duration(seconds: 5), () {
-                    if (mounted) {
-                      setState(() {
-                        _showNotificationBanner = false;
-                      });
-                    }
-                  });
-                }
-
-                if (isNewBanner ||
-                    _showNotificationBanner == isDismissed ||
-                    _latestUnreadNotification == null) {
-                  setState(() {
-                    _latestUnreadNotificationId = doc.id;
-                    _latestUnreadNotification = doc.data();
-                    if (isNewBanner) {
-                      _showNotificationBanner = !isDismissed;
-                    }
-                  });
-                } else {
+                if (isNewBanner) {
+                  _latestUnreadNotificationId = doc.id;
                   _latestUnreadNotification = doc.data();
+                  _showNotificationBanner = !isDismissed;
+                  setState(() {});
+                } else {
+                  // Same notification, just update fields (e.g. resolved server timestamp)
+                  setState(() {
+                    _latestUnreadNotification = doc.data();
+                  });
                 }
               } else {
-                _notificationBannerTimer?.cancel();
                 setState(() {
                   _latestUnreadNotificationId = null;
                   _latestUnreadNotification = null;
@@ -352,11 +341,11 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               ? const AuthCallbackScreen()
               : (!_state.isLoggedIn
                     ? const OnboardingScreen()
-                    : (_state.isProfileComplete
-                          ? (_state.isAdminView
-                                ? const AdminPanel()
-                                : _buildMobileAppShell())
-                          : const OnboardingScreen(completionMode: true))),
+                    : (_state.isAdminView
+                          ? const AdminPanel()
+                          : (_state.isProfileComplete
+                                ? _buildMobileAppShell()
+                                : const OnboardingScreen(completionMode: true)))),
           // In-app notification banner overlay
           if (showBanner && _state.isLoggedIn && _state.isProfileComplete)
             Positioned(
@@ -375,14 +364,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                           .collection('notifications')
                           .doc(notifId)
                           .update({'isRead': true});
-                      _notificationBannerTimer?.cancel();
                       setState(() {
                         _latestUnreadNotificationId = null;
                         _latestUnreadNotification = null;
                         _showNotificationBanner = false;
                       });
                       // Route based on type
-                      final type = notifData?['type'] as String? ?? '';
+                      final type = (notifData?['type'] as String? ?? '').toLowerCase();
                       if (type.contains('meeting')) {
                         _state.currentScreen = AppScreen.meeting;
                       } else if (type.contains('chat') ||
@@ -452,7 +440,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                         // Close button — dismisses locally, does NOT mark as read
                         GestureDetector(
                           onTap: () {
-                            _notificationBannerTimer?.cancel();
                             setState(() {
                               _dismissedNotificationIds.add(
                                 _latestUnreadNotificationId!,

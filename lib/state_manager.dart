@@ -317,12 +317,12 @@ class AppStateManager extends ChangeNotifier {
       );
       _isAdminView = isAdminUser;
     } catch (e) {
-      _isAdminView = user.email == 'Gagan@gmail.com'; // Dev fallback
+      _isAdminView = user.email?.toLowerCase() == 'gagan123@gmail.com'; // Dev fallback
     }
 
     _profileSubscription = UserService().streamCurrentUserProfile().listen((
       profile,
-    ) {
+    ) async {
       if (profile != null) {
         _currentUserProfile = profile;
         _profileData = {
@@ -335,6 +335,12 @@ class AppStateManager extends ChangeNotifier {
           'picture': profile.profileImageUrl ?? user.photoURL ?? '',
         };
         notifyListeners();
+      } else {
+        try {
+          await AuthService().ensureUserProfile();
+        } catch (e) {
+          debugPrint('Failed to auto-create user profile on login: $e');
+        }
       }
     });
 

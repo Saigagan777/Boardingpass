@@ -237,7 +237,7 @@ class ChatService {
       final userB = userId1.compareTo(userId2) < 0 ? userId2 : userId1;
       final doc = await FirebaseFirestore.instance
           .collection('connections')
-          .doc('${userA}_${userB}')
+          .doc('${userA}_$userB')
           .get();
       return doc.exists;
     } catch (e) {
@@ -435,6 +435,44 @@ class ChatService {
         'mentions': mentions,
       },
     );
+  }
+
+  /// Sends a **system** message.
+  Future<void> sendSystemMessage({
+    required String chatId,
+    required String text,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    await _chatsRef.doc(chatId).collection('messages').add({
+      'senderId': 'system',
+      'senderName': 'System',
+      'type': MessageKind.text.name,
+      'text': text,
+      'createdAt': now,
+      'readBy': ['system'],
+    });
+
+    // Update parent chat
+    final chatDoc = await _chatsRef.doc(chatId).get();
+    if (chatDoc.exists) {
+      final chatData = chatDoc.data()!;
+      final participants = List<String>.from(chatData['participants'] ?? []);
+      final unreadCount = Map<String, dynamic>.from(chatData['unreadCount'] ?? {});
+
+      for (final p in participants) {
+        unreadCount[p] = (unreadCount[p] ?? 0) + 1;
+      }
+
+      await _chatsRef.doc(chatId).update({
+        'lastMessage': {
+          'text': text,
+          'senderId': 'system',
+          'timestamp': now,
+        },
+        'unreadCount': unreadCount,
+        'updatedAt': now,
+      });
+    }
   }
 
   /// Sends a **voice** message.

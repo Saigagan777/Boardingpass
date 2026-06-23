@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -171,17 +172,27 @@ class EventService {
   }
 
   /// Uploads an event flyer image and returns the download URL.
-  Future<String> uploadEventImage(String eventId, File imageFile) async {
+  Future<String> uploadEventImage(String eventId, Uint8List bytes) async {
     try {
       final ref = FirebaseStorage.instance
           .ref()
           .child('event_images')
           .child(eventId)
           .child('flyer_${DateTime.now().millisecondsSinceEpoch}.jpg');
-      final uploadTask = await ref.putFile(imageFile);
-      return await uploadTask.ref.getDownloadURL();
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      throw Exception('Failed to upload event image: $e');
+      try {
+        // Fallback to base64 data URL if Firebase Storage upload fails
+        final base64Str = base64Encode(bytes);
+        return 'data:image/jpeg;base64,$base64Str';
+      } catch (fallbackError) {
+        throw Exception('Failed to upload event image: $e');
+      }
     }
   }
 }

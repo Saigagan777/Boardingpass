@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -45,25 +47,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // 1. Cover Photo Banner
         Container(
           height: 140,
           width: double.infinity,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8E2DD),
-            image: coverUrl.isNotEmpty
-                ? DecorationImage(
-                    image: NetworkImage(coverUrl),
-                    fit: BoxFit.cover,
-                  )
-                : null,
-            gradient: coverUrl.isEmpty
-                ? const LinearGradient(
-                    colors: [Color(0xFF7A432D), Color(0xFF3E1F11)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
+          color: const Color(0xFFE8E2DD),
+          child: buildProfileImage(
+            coverUrl,
+            width: double.infinity,
+            height: 140,
+            fit: BoxFit.cover,
+            fallback: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF7A432D), Color(0xFF3E1F11)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
           ),
         ),
         // 2. Navigation Top Bar (back, share, edit)
@@ -1270,6 +1271,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   final TextEditingController _newSkillController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isProfileLoading = false;
+  bool _isCoverLoading = false;
   late List<Map<String, dynamic>> _localCareerTimeline;
   late List<Map<String, dynamic>> _localEducationTimeline;
   late List<String> _localSkills;
@@ -1642,20 +1645,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                       ),
                                     ),
                                     child: ClipOval(
-                                      child:
-                                          _profileImageUrlController
-                                              .text
-                                              .isNotEmpty
-                                          ? Image.network(
+                                      child: _isProfileLoading
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(12.0),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                              ),
+                                            )
+                                          : buildProfileImage(
                                               _profileImageUrlController.text,
                                               width: 50,
                                               height: 50,
                                               fit: BoxFit.cover,
-                                            )
-                                          : const Icon(
-                                              Icons.person,
-                                              size: 28,
-                                              color: Color(0xFF7A432D),
+                                              fallback: const Icon(
+                                                Icons.person,
+                                                size: 28,
+                                                color: Color(0xFF7A432D),
+                                              ),
                                             ),
                                     ),
                                   ),
@@ -1663,17 +1670,19 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                   Expanded(
                                     child: ElevatedButton(
                                       onPressed: () async {
+                                        XFile? pickedFile;
+                                        Uint8List? bytes;
                                         try {
                                           final ImagePicker picker =
                                               ImagePicker();
-                                          final XFile? pickedFile = await picker
+                                          pickedFile = await picker
                                               .pickImage(
                                                 source: ImageSource.gallery,
                                                 imageQuality: 70,
                                               );
                                           if (pickedFile == null) return;
-                                          setState(() => _isLoading = true);
-                                          final bytes = await pickedFile
+                                          setState(() => _isProfileLoading = true);
+                                          bytes = await pickedFile
                                               .readAsBytes();
                                           final storageRef = FirebaseStorage
                                               .instance
@@ -1694,20 +1703,41 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                           setState(() {
                                             _profileImageUrlController.text =
                                                 downloadUrl;
-                                            _isLoading = false;
+                                            _isProfileLoading = false;
                                           });
                                         } catch (e) {
-                                          setState(() => _isLoading = false);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Failed to upload image: $e',
+                                          try {
+                                            if (bytes != null || pickedFile != null) {
+                                              final fallbackBytes = bytes ?? await pickedFile!.readAsBytes();
+                                              final base64Str = base64Encode(fallbackBytes);
+                                              final dataUrl = 'data:image/jpeg;base64,$base64Str';
+                                              setState(() {
+                                                _profileImageUrlController.text = dataUrl;
+                                                _isProfileLoading = false;
+                                              });
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Storage upload failed. Image saved locally as base64 fallback.'),
+                                                  ),
+                                                );
+                                              }
+                                            } else {
+                                              rethrow;
+                                            }
+                                          } catch (fallbackError) {
+                                            setState(() => _isProfileLoading = false);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Failed to upload image: $e',
+                                                  ),
                                                 ),
-                                              ),
-                                            );
+                                              );
+                                            }
                                           }
                                         }
                                       },
@@ -1765,20 +1795,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(6),
-                                      child:
-                                          _coverImageUrlController
-                                              .text
-                                              .isNotEmpty
-                                          ? Image.network(
+                                      child: _isCoverLoading
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(12.0),
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                              ),
+                                            )
+                                          : buildProfileImage(
                                               _coverImageUrlController.text,
                                               width: 50,
                                               height: 50,
                                               fit: BoxFit.cover,
-                                            )
-                                          : const Icon(
-                                              Icons.image,
-                                              size: 28,
-                                              color: Color(0xFF7A432D),
+                                              fallback: const Icon(
+                                                Icons.image,
+                                                size: 28,
+                                                color: Color(0xFF7A432D),
+                                              ),
                                             ),
                                     ),
                                   ),
@@ -1786,22 +1820,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                   Expanded(
                                     child: ElevatedButton(
                                       onPressed: () async {
+                                        XFile? pickedFile;
+                                        Uint8List? bytes;
                                         try {
                                           final ImagePicker picker =
                                               ImagePicker();
-                                          final XFile? pickedFile = await picker
+                                          pickedFile = await picker
                                               .pickImage(
                                                 source: ImageSource.gallery,
                                                 imageQuality: 70,
                                               );
                                           if (pickedFile == null) return;
-                                          setState(() => _isLoading = true);
-                                          final bytes = await pickedFile
+                                          setState(() => _isCoverLoading = true);
+                                          bytes = await pickedFile
                                               .readAsBytes();
                                           final storageRef = FirebaseStorage
                                               .instance
                                               .ref()
-                                              .child('cover_images')
+                                              .child('profile_images')
                                               .child(
                                                 '${DateTime.now().millisecondsSinceEpoch}.jpg',
                                               );
@@ -1817,20 +1853,41 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                           setState(() {
                                             _coverImageUrlController.text =
                                                 downloadUrl;
-                                            _isLoading = false;
+                                            _isCoverLoading = false;
                                           });
                                         } catch (e) {
-                                          setState(() => _isLoading = false);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Failed to upload image: $e',
+                                          try {
+                                            if (bytes != null || pickedFile != null) {
+                                              final fallbackBytes = bytes ?? await pickedFile!.readAsBytes();
+                                              final base64Str = base64Encode(fallbackBytes);
+                                              final dataUrl = 'data:image/jpeg;base64,$base64Str';
+                                              setState(() {
+                                                _coverImageUrlController.text = dataUrl;
+                                                _isCoverLoading = false;
+                                              });
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Storage upload failed. Image saved locally as base64 fallback.'),
+                                                  ),
+                                                );
+                                              }
+                                            } else {
+                                              rethrow;
+                                            }
+                                          } catch (fallbackError) {
+                                            setState(() => _isCoverLoading = false);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Failed to upload image: $e',
+                                                  ),
                                                 ),
-                                              ),
-                                            );
+                                              );
+                                            }
                                           }
                                         }
                                       },
@@ -2171,7 +2228,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: DropdownButtonFormField<String>(
-                              value: _newEmploymentType,
+                              initialValue: _newEmploymentType,
                               decoration: InputDecoration(
                                 labelText: 'Employment Type',
                                 labelStyle: const TextStyle(

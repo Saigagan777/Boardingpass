@@ -339,12 +339,23 @@ class _MeetScreenState extends State<MeetScreen> {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       if (currentUid == null) throw Exception('User not signed in');
 
+      String? chatId;
+      if (_selectedGroup != null) {
+        chatId = _selectedGroup!['id'];
+      } else if (attendeeIds.isNotEmpty) {
+        chatId = await ChatService().getOrCreateChat(
+          userId1: currentUid,
+          userId2: attendeeIds.first,
+        );
+      }
+
       // Create Firestore meeting document
       final meetingId = await MeetingService().createMeeting(
         attendeeIds: attendeeIds,
         scheduledAt: scheduledAt,
         location: _selectedLocation,
         reminderMinutes: _selectedReminderMinutes,
+        chatId: chatId,
       );
 
       // Send text notifications in chats
@@ -360,12 +371,14 @@ class _MeetScreenState extends State<MeetScreen> {
       } else {
         // Otherwise, send a text notification to each participant's 1-to-1 chat
         for (final otherUserId in attendeeIds) {
-          final chatId = await ChatService().getOrCreateChat(
-            userId1: currentUid,
-            userId2: otherUserId,
-          );
+          final resolvedChatId = (otherUserId == attendeeIds.first && chatId != null)
+              ? chatId
+              : await ChatService().getOrCreateChat(
+                  userId1: currentUid,
+                  userId2: otherUserId,
+                );
           await ChatService().sendTextMessage(
-            chatId: chatId,
+            chatId: resolvedChatId,
             text: notificationMsg,
           );
         }
@@ -721,7 +734,8 @@ class _MeetScreenState extends State<MeetScreen> {
     final participants = List<String>.from(data['participants'] ?? []);
     final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
     
-    final statusStr = data['status'] as String? ?? 'pending';
+    final rawStatus = data['status'] as String? ?? 'pending';
+    final statusStr = rawStatus.toUpperCase();
     final location = data['location'] as String? ?? 'Not specified';
     final agenda = List<String>.from(data['suggestedAgenda'] ?? []);
     final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
@@ -748,31 +762,45 @@ class _MeetScreenState extends State<MeetScreen> {
     Color statusColor;
     String statusLabel;
     switch (statusStr) {
-      case 'confirmed':
+      case 'APPROVED':
+      case 'CONFIRMED':
         statusColor = const Color(0xFF2E7D32);
         statusLabel = 'Confirmed';
         break;
-      case 'cancelled':
+      case 'CANCELLED':
         statusColor = const Color(0xFFC62828);
         statusLabel = 'Cancelled';
         break;
-      case 'completed':
+      case 'REJECTED':
+        statusColor = const Color(0xFFC62828);
+        statusLabel = 'Rejected';
+        break;
+      case 'COMPLETED':
         statusColor = Colors.blueGrey;
         statusLabel = 'Completed';
         break;
-      case 'rescheduled':
+      case 'RESCHEDULE_APPROVED':
+      case 'RESCHEDULED':
         statusColor = const Color(0xFF007A87);
         statusLabel = 'Rescheduled';
         break;
-      case 'expired':
+      case 'RESCHEDULE_REQUESTED':
+        statusColor = const Color(0xFFEF6C00);
+        statusLabel = 'Reschedule Requested';
+        break;
+      case 'RESCHEDULE_REJECTED':
+        statusColor = const Color(0xFFC62828);
+        statusLabel = 'Reschedule Rejected';
+        break;
+      case 'EXPIRED':
         statusColor = Colors.grey;
         statusLabel = 'Expired';
         break;
-      case 'noshow':
+      case 'NOSHOW':
         statusColor = Colors.purple;
         statusLabel = 'No Show';
         break;
-      case 'pending':
+      case 'PENDING':
       default:
         statusColor = const Color(0xFFEF6C00);
         statusLabel = 'Pending';
@@ -2209,17 +2237,28 @@ class _MeetScreenState extends State<MeetScreen> {
 
         for (final doc in docs) {
           final data = doc.data();
-          final statusStr = data['status'] as String? ?? 'pending';
+          final rawStatus = data['status'] as String? ?? 'pending';
+          final statusStr = rawStatus.toUpperCase();
           final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
-          final myStatus = statusMap[currentUid] as String? ?? 'pending';
+          final rawMyStatus = statusMap[currentUid] as String? ?? 'pending';
+          final myStatus = rawMyStatus.toUpperCase();
           
           final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
           final scheduledAt = scheduledTimestamp?.toDate();
           final isPast = scheduledAt != null && scheduledAt.isBefore(now);
 
-          if (statusStr == 'cancelled' || statusStr == 'completed' || statusStr == 'expired' || statusStr == 'noshow' || isPast || myStatus == 'cancelled') {
+          if (statusStr == 'CANCELLED' ||
+              statusStr == 'COMPLETED' ||
+              statusStr == 'EXPIRED' ||
+              statusStr == 'NOSHOW' ||
+              statusStr == 'REJECTED' ||
+              statusStr == 'RESCHEDULE_REJECTED' ||
+              isPast ||
+              myStatus == 'CANCELLED' ||
+              myStatus == 'REJECTED' ||
+              myStatus == 'DECLINED') {
             historyList.add(doc);
-          } else if (statusStr == 'pending' && myStatus == 'pending') {
+          } else if (statusStr == 'PENDING' && myStatus == 'PENDING') {
             pendingList.add(doc);
           } else {
             confirmedList.add(doc);
