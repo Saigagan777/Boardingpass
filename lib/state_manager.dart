@@ -12,6 +12,7 @@ import 'models/checkin.dart';
 import 'models/event.dart';
 import 'models/message.dart';
 import 'models/user_profile.dart'; // Added import for CustomCard
+import 'utils/match_calculator.dart';
 
 enum AppScreen { hub, profile, checkin, events, discover, chat, meeting }
 
@@ -461,6 +462,17 @@ class AppStateManager extends ChangeNotifier {
           .limit(20)
           .get();
 
+      // 2.5 Fetch current user details to calculate dynamic match scores
+      final currentUserDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUid)
+          .get();
+      final currentUserData = currentUserDoc.data() ?? {};
+      final currentUserSkills = List<String>.from(currentUserData['skills'] ?? []);
+      final currentUserInterests = List<String>.from(currentUserData['interests'] ?? []);
+      final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
+      final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
+
       final loaded = querySnapshot.docs
           .where((doc) => doc.id != currentUid && !swipedUids.contains(doc.id))
           .map((doc) {
@@ -476,13 +488,26 @@ class AppStateManager extends ChangeNotifier {
                 )
                 .toList();
 
+            final computedScore = calculateMatchScore(
+              currentUid: currentUid,
+              targetUid: doc.id,
+              currentSkills: currentUserSkills,
+              currentInterests: currentUserInterests,
+              currentExpertise: currentUserExpertise,
+              currentIntents: currentUserIntents,
+              targetSkills: skills,
+              targetInterests: interests,
+              targetExpertise: expertise,
+              targetIntents: intents,
+            );
+
             return Candidate(
               uid: doc.id,
               name: data['name'] ?? '',
               role: data['role'] ?? '',
               org: data['company'] ?? '',
               loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
-              match: data['matchScore'] ?? 0,
+              match: computedScore,
               intent: intents.isNotEmpty ? intents.join(', ') : '',
               tags: expertise,
               interests: interests,

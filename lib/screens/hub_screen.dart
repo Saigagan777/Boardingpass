@@ -644,30 +644,7 @@ class _HubScreenState extends State<HubScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          _state.logOut();
-                        },
-                        icon: const Icon(Icons.logout, size: 14, color: Color(0xFF7A432D)),
-                        label: const Text(
-                          'Log Out',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF7A432D),
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          side: const BorderSide(color: Color(0xFF7A432D), width: 1.2),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
+
                     ],
                   ),
                 ],

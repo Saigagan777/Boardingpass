@@ -14,6 +14,8 @@ import '../models/user_profile.dart';
 import '../services/chat_service.dart';
 import '../services/meeting_service.dart';
 import '../utils/image_helper.dart';
+import '../services/user_service.dart';
+import '../utils/match_calculator.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? name;
@@ -1696,9 +1698,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: ChatService().streamUserChats(),
-                    builder: (context, snapshot) {
+                  child: StreamBuilder<UserProfile?>(
+                    stream: UserService().streamCurrentUserProfile(),
+                    builder: (context, currentUserSnapshot) {
+                      final currentUser = currentUserSnapshot.data;
+                      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: ChatService().streamUserChats(),
+                        builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(
                           child: CircularProgressIndicator(
@@ -1913,6 +1919,26 @@ class _ChatScreenState extends State<ChatScreen> {
                         final String role = userData?['role'] ?? 'Founder';
                         final String org = userData?['company'] ?? 'Startup';
                         final String profileImageUrl = userData?['profileImageUrl'] ?? '';
+                        
+                        final targetSkills = List<String>.from(userData?['skills'] ?? []);
+                        final targetInterests = List<String>.from(userData?['interests'] ?? []);
+                        final targetExpertise = List<String>.from(userData?['expertise'] ?? []);
+                        final targetIntents = List<String>.from(userData?['intents'] ?? []);
+                        
+                        final int? matchScore = currentUser != null
+                            ? calculateMatchScore(
+                                currentUid: currentUser.uid,
+                                targetUid: otherUid,
+                                currentSkills: currentUser.skills,
+                                currentInterests: currentUser.interests,
+                                currentExpertise: currentUser.expertise,
+                                currentIntents: currentUser.intents,
+                                targetSkills: targetSkills,
+                                targetInterests: targetInterests,
+                                targetExpertise: targetExpertise,
+                                targetIntents: targetIntents,
+                              )
+                            : (userData?['matchScore'] as int?);
                         final String initials = name.isNotEmpty
                             ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
                             : 'P';
@@ -1996,15 +2022,60 @@ class _ChatScreenState extends State<ChatScreen> {
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(
-                                            name,
-                                            style: TextStyle(
-                                              fontFamily: 'PlayfairDisplay',
-                                              fontSize: 15.5,
-                                              fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                                              color: const Color(0xFF3E1F11),
+                                          Expanded(
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    name,
+                                                    style: TextStyle(
+                                                      fontFamily: 'PlayfairDisplay',
+                                                      fontSize: 15.5,
+                                                      fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
+                                                      color: const Color(0xFF3E1F11),
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (matchScore != null && matchScore > 0) ...[
+                                                  const SizedBox(width: 6),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFE5A475).withValues(alpha: 0.15),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(
+                                                        color: const Color(0xFFE5A475).withValues(alpha: 0.4),
+                                                        width: 1,
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.star,
+                                                          color: Color(0xFF7A432D),
+                                                          size: 8,
+                                                        ),
+                                                        const SizedBox(width: 2),
+                                                        Text(
+                                                          '$matchScore% match',
+                                                          style: const TextStyle(
+                                                            fontFamily: 'PlusJakartaSans',
+                                                            fontSize: 8,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: Color(0xFF7A432D),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           ),
+                                          const SizedBox(width: 8),
                                           Text(
                                             lastTime,
                                             style: TextStyle(
@@ -2049,8 +2120,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 );
               },
-            ),
-          ),
+            );
+          },
+        ),
+      ),
         ],
       ),
     );

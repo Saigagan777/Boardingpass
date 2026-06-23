@@ -31,6 +31,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int _currentIndex = 0;
   bool _isLoading = false;
   late OnboardingView _currentView;
+  bool _obscurePassword = true;
 
   // Form Controllers
   final TextEditingController _emailController = TextEditingController();
@@ -634,6 +635,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     int maxLines = 1,
     bool readOnly = false,
     VoidCallback? onTap,
+    bool isPassword = false,
   }) {
     return TextFormField(
       controller: controller,
@@ -661,13 +663,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
         filled: true,
         fillColor: Colors.white,
-        suffixIcon: readOnly
-            ? const Icon(
-                Icons.calendar_today_outlined,
-                color: Color(0xFF7A432D),
-                size: 18,
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: const Color(0xFF7A432D),
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
               )
-            : null,
+            : (readOnly
+                ? const Icon(
+                    Icons.calendar_today_outlined,
+                    color: Color(0xFF7A432D),
+                    size: 18,
+                  )
+                : null),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -746,7 +761,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             controller: _passwordController,
             labelText: 'Password',
             hintText: 'Enter your password',
-            obscureText: true,
+            obscureText: _obscurePassword,
+            isPassword: true,
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -838,7 +854,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             controller: _passwordController,
             labelText: 'Password',
             hintText: 'Min 6 characters',
-            obscureText: true,
+            obscureText: _obscurePassword,
+            isPassword: true,
           ),
           const SizedBox(height: 24),
 

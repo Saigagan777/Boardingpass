@@ -83,6 +83,9 @@ class UserProfile {
   final bool resumeParsed;
   final DateTime? resumeParsedAt;
 
+  // Match score
+  final int? matchScore;
+
   const UserProfile({
     required this.uid,
     required this.name,
@@ -129,6 +132,7 @@ class UserProfile {
     this.linkedinSyncedAt,
     this.resumeParsed = false,
     this.resumeParsedAt,
+    this.matchScore,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -188,6 +192,7 @@ class UserProfile {
       linkedinSyncedAt: (data['linkedinSyncedAt'] as Timestamp?)?.toDate(),
       resumeParsed: data['resumeParsed'] ?? false,
       resumeParsedAt: (data['resumeParsedAt'] as Timestamp?)?.toDate(),
+      matchScore: data['matchScore'] as int?,
     );
   }
 
@@ -237,6 +242,7 @@ class UserProfile {
       'linkedinSyncedAt': linkedinSyncedAt != null ? Timestamp.fromDate(linkedinSyncedAt!) : null,
       'resumeParsed': resumeParsed,
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
+      'matchScore': matchScore,
     };
   }
 
@@ -284,6 +290,7 @@ class UserProfile {
     DateTime? linkedinSyncedAt,
     bool? resumeParsed,
     DateTime? resumeParsedAt,
+    int? matchScore,
   }) {
     return UserProfile(
       uid: uid,
@@ -331,6 +338,7 @@ class UserProfile {
       linkedinSyncedAt: linkedinSyncedAt ?? this.linkedinSyncedAt,
       resumeParsed: resumeParsed ?? this.resumeParsed,
       resumeParsedAt: resumeParsedAt ?? this.resumeParsedAt,
+      matchScore: matchScore ?? this.matchScore,
     );
   }
 }

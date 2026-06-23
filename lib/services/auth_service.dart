@@ -250,7 +250,7 @@ class AuthService {
       // 4. Save/Update Profile details in Firestore
       if (credential.user != null) {
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
-        final snapshot = await docRef.get().timeout(const Duration(seconds: 5));
+        final snapshot = await docRef.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 5));
 
         if (!snapshot.exists) {
           final profile = UserProfile(
@@ -351,7 +351,7 @@ class AuthService {
   }) async {
     try {
       final docRef = _firestore.collection('users').doc(uid);
-      final snapshot = await docRef.get();
+      final snapshot = await docRef.get(const GetOptions(source: Source.server));
 
       if (!snapshot.exists) {
         final profile = UserProfile(
