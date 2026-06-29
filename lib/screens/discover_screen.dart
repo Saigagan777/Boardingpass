@@ -638,21 +638,28 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  void _swipeLeft(List<Candidate> filteredList) {
+  Future<void> _swipeLeft(List<Candidate> filteredList) async {
     if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
     setState(() {
       _isAnimating = true;
       _dragDx = -400.0;
     });
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) {
-        setState(() {
-          _cardIndex = (_cardIndex + 1) % filteredList.length;
-          _dragDx = 0.0;
-          _dragDy = 0.0;
-          _isAnimating = false;
-        });
-      }
+
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
+
+    if (targetUid != null && targetUid.isNotEmpty) {
+      await _state.swipeCandidate(targetUid: targetUid, action: 'dislike');
+      _state.moveCandidateToBack(targetUid);
+    }
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
     });
   }
 
@@ -677,14 +684,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     final result = await _state.sendOrAcceptConnection(targetUid: targetUid);
     if (result != ConnectionRequestResult.failed) {
       await _state.swipeCandidate(targetUid: targetUid, action: 'like');
+      _state.removeCandidate(targetUid);
     }
 
-    if (!mounted) return;
-
     setState(() {
-      if (result != ConnectionRequestResult.failed) {
-        _cardIndex = (_cardIndex + 1) % filteredList.length;
-      }
       _dragDx = 0.0;
       _dragDy = 0.0;
       _isAnimating = false;
@@ -703,6 +706,89 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       case ConnectionRequestResult.failed:
         _showConnectionRequestError(currentCandidate);
         break;
+    }
+  }
+
+  Future<void> _swipeUp(List<Candidate> filteredList) async {
+    if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
+    if (targetUid == null || targetUid.isEmpty) {
+      _showConnectionRequestError(currentCandidate);
+      return;
+    }
+
+    setState(() {
+      _isAnimating = true;
+      _dragDy = -600.0;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
+
+    final result = await _state.sendOrAcceptConnection(targetUid: targetUid);
+    if (!mounted) return;
+    if (result != ConnectionRequestResult.failed) {
+      await _state.swipeCandidate(targetUid: targetUid, action: 'favorite');
+      _state.removeCandidate(targetUid);
+    }
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
+    });
+
+    if (!mounted) return;
+
+    // Show favorited notification feedback
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+          duration: const Duration(seconds: 3),
+          backgroundColor: const Color(0xFF7A432D),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFFE5A475), width: 0.8),
+          ),
+          content: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  color: Colors.white24,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.star_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Added ${currentCandidate.name} to Favorites and sent connection request!',
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+    if (result == ConnectionRequestResult.accepted) {
+      _triggerMatch(currentCandidate.name);
     }
   }
 
@@ -1392,6 +1478,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.star_rounded, color: Color(0xFF7A432D)),
+            tooltip: 'My Favorites',
+            onPressed: () => _showFavoritesBottomSheet(context),
+          ),
+          IconButton(
             icon: Stack(
               children: [
                 const Icon(Icons.tune_rounded, color: Color(0xFF3E1F11)),
@@ -1634,6 +1725,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                       top: 0,
                                       bottom: 20,
                                       child: GestureDetector(
+                                        onDoubleTap: () => _swipeRight(filtered),
+                                        onLongPress: () => _swipeUp(filtered),
                                         onPanUpdate: (details) {
                                           if (_isAnimating) return;
                                           setState(() {
@@ -1647,6 +1740,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                             _swipeRight(filtered);
                                           } else if (_dragDx < -120) {
                                             _swipeLeft(filtered);
+                                          } else if (_dragDy < -100) {
+                                            _swipeUp(filtered);
                                           } else {
                                             // Reset card position
                                             setState(() {
@@ -1719,14 +1814,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         ),
                         const SizedBox(width: 24),
 
-                        // Star Button
+                        // Star Button (Favorite)
                         _buildRoundButton(
                           icon: Icons.star_rounded,
                           iconColor: const Color(0xFFB06F4D),
                           backgroundColor: Colors.white,
                           borderColor: const Color(0xFFE8E2DD),
                           size: 56,
-                          onPressed: () => _swipeRight(filtered),
+                          onPressed: () => _swipeUp(filtered),
                         ),
                       ],
                     ),
@@ -2170,4 +2265,253 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       ),
     );
   }
+
+  void _showFavoritesBottomSheet(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFAF7F5),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Pull handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E2DD),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'My Favorites ⭐',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFFE8E2DD), height: 24),
+              Expanded(
+                child: FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('swipes')
+                      .where('fromUid', isEqualTo: currentUid)
+                      .where('action', isEqualTo: 'favorite')
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
+                    }
+                    if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.star_outline_rounded, size: 48, color: Color(0xFF8C736B)),
+                            SizedBox(height: 12),
+                            Text(
+                              'No favorited profiles yet',
+                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B), fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Swipe up or tap star on a profile card to add.',
+                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final favoriteDocs = snapshot.data!.docs;
+                    return ListView.builder(
+                      itemCount: favoriteDocs.length,
+                      itemBuilder: (context, index) {
+                        final fav = favoriteDocs[index].data() as Map<String, dynamic>;
+                        final targetUid = fav['toUid'] as String? ?? '';
+                        if (targetUid.isEmpty) return const SizedBox.shrink();
+
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance.collection('users').doc(targetUid).get(),
+                          builder: (context, userSnap) {
+                            if (!userSnap.hasData || !userSnap.data!.exists) {
+                              return const SizedBox.shrink();
+                            }
+                            final userData = userSnap.data!.data() as Map<String, dynamic>;
+                            final name = userData['name'] ?? 'Someone';
+                            final role = userData['role'] ?? 'Professional';
+                            final company = userData['company'] ?? '';
+                            final imageUrl = userData['profileImageUrl'] ?? '';
+                            final initials = (name as String).substring(0, 1).toUpperCase();
+
+                            // Construct a Candidate object for the detail view
+                            final c = Candidate(
+                              uid: targetUid,
+                              name: name,
+                              role: role,
+                              org: company,
+                              loc: userData['currentLocationName'] ?? userData['homeBase'] ?? '',
+                              match: 95, // Default high match for favorites
+                              intent: List<String>.from(userData['intents'] ?? []).join(', '),
+                              tags: List<String>.from(userData['expertise'] ?? []),
+                              interests: List<String>.from(userData['interests'] ?? []),
+                              skills: List<String>.from(userData['skills'] ?? []),
+                              homeBase: userData['homeBase'] ?? '',
+                              bio: userData['bio'] ?? '',
+                              initials: initials,
+                              profileImageUrl: imageUrl,
+                              primaryColor: const Color(0xFFE5A475),
+                            );
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                leading: CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: const Color(0xFFFAF0E6),
+                                  backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+                                  child: imageUrl.isEmpty
+                                      ? Text(initials, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A432D)))
+                                      : null,
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF3E1F11)),
+                                ),
+                                subtitle: Text(
+                                  '$role${company.isNotEmpty ? ' at $company' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                                ),
+                                trailing: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF7A432D),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.pop(context); // Close favorites sheet
+                                    _showFavoriteProfileDetailsSheet(context, c);
+                                  },
+                                  child: const Text(
+                                    'View Profile',
+                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFavoriteProfileDetailsSheet(BuildContext context, Candidate c) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFAF7F5),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(28),
+              topRight: Radius.circular(28),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Pull Handle
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8E2DD),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      'Favorite Profile Details',
+                      style: TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFFE8E2DD), height: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: _buildCard(c, isTop: true),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
+

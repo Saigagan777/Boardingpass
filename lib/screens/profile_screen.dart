@@ -7,6 +7,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:csc_picker_plus/csc_picker_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'linkedin_webview.dart';
+import '../services/resume_parser_service.dart';
+import '../services/linkedin_oauth_config.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
@@ -23,7 +27,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final AppStateManager _state = AppStateManager();
-  final bool _isLoading = false;
+  bool _isLoading = false;
 
   void _showEditProfileModal(BuildContext context, UserProfile profile) {
     showModalBottomSheet(
@@ -34,6 +38,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return _EditProfileSheet(profile: profile);
       },
     );
+  }
+
+  Future<void> _handleResumeUpload(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isLoading = true);
+    try {
+      final file = await ResumeParserService().pickResumeFile();
+      if (file == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      if (file.bytes == null) {
+        throw Exception('Could not read file bytes.');
+      }
+      final text = ResumeParserService().extractText(file.bytes!, file.name);
+      final parsedData = ResumeParserService().parseResumeText(text);
+
+      setState(() => _isLoading = false);
+
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => _ResumePreviewDialog(
+          parsedData: parsedData,
+          onSave: (updatedData) async {
+            Navigator.pop(dialogCtx);
+            setState(() => _isLoading = true);
+            try {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user != null) {
+                await ResumeParserService().saveResumeDataToProfile(user.uid, updatedData);
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Resume parsed and profile enriched!')),
+                );
+              }
+            } catch (e) {
+              messenger.showSnackBar(
+                SnackBar(content: Text('Failed to save resume data: $e')),
+              );
+            } finally {
+              setState(() => _isLoading = false);
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to parse resume: $e')),
+      );
+    }
+  }
+
+  Future<void> _handleLinkedInSync(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final String redirectUri = LinkedInOAuthConfig.redirectUri;
+    final String authUrl = LinkedInOAuthConfig.authorizationUrl(
+      redirectUri: redirectUri,
+    );
+    final String? authCode = await showLinkedInWebView(context, authUrl);
+    if (authCode == null) return;
+
+    if (authCode.startsWith('error:')) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('LinkedIn sync failed: ${authCode.replaceFirst('error:', '')}'),
+          backgroundColor: const Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await UserService().syncLinkedInProfile(user.uid, authCode, redirectUri: redirectUri);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('LinkedIn profile synced successfully!')),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to sync LinkedIn: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildProfileHeader(UserProfile profile, BuildContext context) {
@@ -229,13 +321,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return _buildSectionCard(
         icon: icon,
         title: title,
-        content: const Text(
-          'No details added yet. Sync LinkedIn or parse your resume to enrich profile.',
-          style: TextStyle(
-            fontFamily: 'PlusJakartaSans',
-            fontSize: 12,
-            color: Color(0xFF8C736B),
-          ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'No details added yet. Sync LinkedIn or parse your resume to enrich profile.',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: Color(0xFF8C736B),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (type == 'career') ...[
+                  ElevatedButton.icon(
+                    onPressed: () => _handleResumeUpload(context),
+                    icon: const Icon(Icons.upload_file, size: 14, color: Colors.white),
+                    label: const Text('Parse Resume'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7A432D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      textStyle: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                ElevatedButton.icon(
+                  onPressed: () => _handleLinkedInSync(context),
+                  icon: const Icon(Icons.sync, size: 14, color: Colors.white),
+                  label: const Text('Sync LinkedIn'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0A66C2),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    textStyle: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       );
     }
@@ -1480,8 +1621,124 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     super.dispose();
   }
 
+  Future<void> _handleResumeUploadInSheet(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isLoading = true);
+    try {
+      final file = await ResumeParserService().pickResumeFile();
+      if (file == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      if (file.bytes == null) {
+        throw Exception('Could not read file bytes.');
+      }
+      final text = ResumeParserService().extractText(file.bytes!, file.name);
+      final parsedData = ResumeParserService().parseResumeText(text);
+
+      setState(() => _isLoading = false);
+
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => _ResumePreviewDialog(
+          parsedData: parsedData,
+          onSave: (updatedData) {
+            setState(() {
+              _localSkills = List<String>.from(updatedData['skills'] ?? []);
+              _localCareerTimeline = List<Map<String, dynamic>>.from(updatedData['careerTimeline'] ?? []);
+              _localEducationTimeline = List<Map<String, dynamic>>.from(updatedData['educationTimeline'] ?? []);
+            });
+            Navigator.pop(dialogCtx);
+          },
+        ),
+      );
+    } catch (e) {
+      setState(() => _isLoading = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to parse resume: $e')),
+      );
+    }
+  }
+
+  Future<void> _handleLinkedInSyncInSheet(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final String redirectUri = LinkedInOAuthConfig.redirectUri;
+    final String authUrl = LinkedInOAuthConfig.authorizationUrl(
+      redirectUri: redirectUri,
+    );
+    final String? authCode = await showLinkedInWebView(context, authUrl);
+    if (authCode == null) return;
+
+    if (authCode.startsWith('error:')) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('LinkedIn sync failed: ${authCode.replaceFirst('error:', '')}'),
+          backgroundColor: const Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      await UserService().syncLinkedInProfile(widget.profile.uid, authCode, redirectUri: redirectUri);
+      
+      // Fetch the updated profile data to refresh local state in sheet
+      final updatedProfile = await UserService().getUserProfile(widget.profile.uid);
+      if (updatedProfile != null && context.mounted) {
+        setState(() {
+          _localSkills = List<String>.from(updatedProfile.skills);
+          _localCareerTimeline = List<Map<String, dynamic>>.from(updatedProfile.careerTimeline);
+          _localEducationTimeline = List<Map<String, dynamic>>.from(updatedProfile.educationTimeline);
+          if (updatedProfile.name.isNotEmpty) _nameController.text = updatedProfile.name;
+          if (updatedProfile.headline != null) _headlineController.text = updatedProfile.headline!;
+          if (updatedProfile.bio != null) _bioController.text = updatedProfile.bio!;
+          if (updatedProfile.company != null) _companyController.text = updatedProfile.company!;
+          if (updatedProfile.role != null) _roleController.text = updatedProfile.role!;
+          if (updatedProfile.profileImageUrl != null) _profileImageUrlController.text = updatedProfile.profileImageUrl!;
+          if (updatedProfile.coverImageUrl != null) _coverImageUrlController.text = updatedProfile.coverImageUrl!;
+          if (updatedProfile.linkedinProfileUrl != null) _linkedinUrlController.text = updatedProfile.linkedinProfileUrl!;
+        });
+      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('LinkedIn profile synced successfully!')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to sync LinkedIn: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
+
+    // Auto-add unsaved typed timeline inputs
+    if (_newCompanyController.text.trim().isNotEmpty && _newRoleController.text.trim().isNotEmpty) {
+      _localCareerTimeline.add({
+        'company': _newCompanyController.text.trim(),
+        'role': _newRoleController.text.trim(),
+        'employmentType': _newEmploymentType,
+        'location': _newLocationController.text.trim(),
+        'startDate': _newStartDateController.text.trim(),
+        'endDate': _newEndDateController.text.trim(),
+        'duration': '${_newStartDateController.text.trim()} to ${_newEndDateController.text.trim()}',
+        'description': _newDescController.text.trim(),
+      });
+    }
+
+    if (_newSchoolController.text.trim().isNotEmpty && _newDegreeController.text.trim().isNotEmpty) {
+      _localEducationTimeline.add({
+        'degree': _newDegreeController.text.trim(),
+        'school': _newSchoolController.text.trim(),
+        'startDate': _newEduStartDateController.text.trim(),
+        'endDate': _newEduEndDateController.text.trim(),
+        'duration': '${_newEduStartDateController.text.trim()} to ${_newEduEndDateController.text.trim()}',
+      });
+    }
 
     final finalIndustry = _selectedIndustry == 'Other'
         ? _industryController.text.trim()
@@ -1610,10 +1867,52 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             ),
             const SizedBox(height: 16),
             Flexible(
-              child: SingleChildScrollView(
+               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () => _handleResumeUploadInSheet(context),
+                          icon: const Icon(Icons.upload_file, size: 14, color: Colors.white),
+                          label: const Text('Parse Resume'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF7A432D),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _handleLinkedInSyncInSheet(context),
+                          icon: const Icon(Icons.sync, size: 14, color: Colors.white),
+                          label: const Text('Sync LinkedIn'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0A66C2),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         // Profile Photo Section
@@ -1990,7 +2289,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       showStates: true,
                       showCities: true,
                       flagState: CountryFlag.DISABLE,
-                      currentCountry: _homeBaseCountry,
+                      currentCountry: getCountryForPicker(_homeBaseCountry),
                       currentState: _homeBaseState,
                       currentCity: _homeBaseCity,
                       dropdownDecoration: BoxDecoration(
@@ -2058,7 +2357,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       showStates: true,
                       showCities: true,
                       flagState: CountryFlag.DISABLE,
-                      currentCountry: _currentLocationCountry,
+                      currentCountry: getCountryForPicker(_currentLocationCountry),
                       currentState: _currentLocationState,
                       currentCity: _currentLocationCity,
                       dropdownDecoration: BoxDecoration(
@@ -2763,7 +3062,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       }
     }
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -3617,4 +3916,200 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
       ),
     );
   }
+}
+
+String getCountryForPicker(String? countryName) {
+  if (countryName == null || countryName.isEmpty) return '🇮🇳   India';
+  if (countryName.contains('   ')) return countryName;
+  
+  final Map<String, String> countryToEmoji = {
+    'Afghanistan': '🇦🇫   Afghanistan',
+    'Albania': '🇦🇱   Albania',
+    'Algeria': '🇩🇿   Algeria',
+    'Andorra': '🇦🇩   Andorra',
+    'Angola': '🇦🇴   Angola',
+    'Argentina': '🇦🇷   Argentina',
+    'Armenia': '🇦🇲   Armenia',
+    'Australia': '🇦🇺   Australia',
+    'Austria': '🇦🇹   Austria',
+    'Azerbaijan': '🇦🇿   Azerbaijan',
+    'Bahamas': '🇧🇸   Bahamas',
+    'Bahrain': '🇧🇭   Bahrain',
+    'Bangladesh': '🇧🇩   Bangladesh',
+    'Barbados': '🇧🇧   Barbados',
+    'Belarus': '🇧🇾   Belarus',
+    'Belgium': '🇧🇪   Belgium',
+    'Belize': '🇧🇿   Belize',
+    'Benin': '🇧🇯   Benin',
+    'Bhutan': '🇧🇹   Bhutan',
+    'Bolivia': '🇧🇴   Bolivia',
+    'Bosnia and Herzegovina': '🇧🇦   Bosnia and Herzegovina',
+    'Botswana': '🇧🇼   Botswana',
+    'Brazil': '🇧🇷   Brazil',
+    'Brunei': '🇧🇳   Brunei',
+    'Bulgaria': '🇧🇬   Bulgaria',
+    'Burkina Faso': '🇧🇫   Burkina Faso',
+    'Burundi': '🇧🇮   Burundi',
+    'Cambodia': '🇰🇭   Cambodia',
+    'Cameroon': '🇨🇲   Cameroon',
+    'Canada': '🇨🇦   Canada',
+    'Cape Verde': '🇨🇻   Cape Verde',
+    'Central African Republic': '🇨🇫   Central African Republic',
+    'Chad': '🇹🇩   Chad',
+    'Chile': '🇨🇱   Chile',
+    'China': '🇨🇳   China',
+    'Colombia': '🇨🇴   Colombia',
+    'Comoros': '🇰🇲   Comoros',
+    'Congo': '🇨🇬   Congo',
+    'Costa Rica': '🇨🇷   Costa Rica',
+    'Croatia': '🇭🇷   Croatia',
+    'Cuba': '🇨🇺   Cuba',
+    'Cyprus': '🇨🇾   Cyprus',
+    'Czech Republic': '🇨🇿   Czech Republic',
+    'Denmark': '🇩🇰   Denmark',
+    'Djibouti': '🇩🇯   Djibouti',
+    'Dominica': '🇩🇲   Dominica',
+    'Dominican Republic': '🇩🇴   Dominican Republic',
+    'Ecuador': '🇪🇨   Ecuador',
+    'Egypt': '🇪🇬   Egypt',
+    'El Salvador': '🇸🇻   El Salvador',
+    'Equatorial Guinea': '🇬🇶   Equatorial Guinea',
+    'Eritrea': '🇪🇷   Eritrea',
+    'Estonia': '🇪🇪   Estonia',
+    'Ethiopia': '🇪🇹   Ethiopia',
+    'Fiji': '🇫🇯   Fiji',
+    'Finland': '🇫🇮   Finland',
+    'France': '🇫🇷   France',
+    'Gabon': '🇬🇦   Gabon',
+    'Gambia': '🇬🇲   Gambia',
+    'Georgia': '🇬🇪   Georgia',
+    'Germany': '🇩🇪   Germany',
+    'Ghana': '🇬🇭   Ghana',
+    'Greece': '🇬🇷   Greece',
+    'Grenada': '🇬🇩   Grenada',
+    'Guatemala': '🇬🇹   Guatemala',
+    'Guinea': '🇬🇳   Guinea',
+    'Guinea-Bissau': '🇬🇼   Guinea-Bissau',
+    'Guyana': '🇬🇾   Guyana',
+    'Haiti': '🇭🇹   Haiti',
+    'Honduras': '🇭🇳   Honduras',
+    'Hungary': '🇭🇺   Hungary',
+    'Iceland': '🇮🇸   Iceland',
+    'India': '🇮🇳   India',
+    'Indonesia': '🇮🇩   Indonesia',
+    'Iran': '🇮🇷   Iran',
+    'Iraq': '🇮🇶   Iraq',
+    'Ireland': '🇮🇪   Ireland',
+    'Israel': '🇮🇱   Israel',
+    'Italy': '🇮🇹   Italy',
+    'Jamaica': '🇯🇲   Jamaica',
+    'Japan': '🇯🇵   Japan',
+    'Jordan': '🇯🇴   Jordan',
+    'Kazakhstan': '🇰🇿   Kazakhstan',
+    'Kenya': '🇰🇪   Kenya',
+    'Kiribati': '🇰🇮   Kiribati',
+    'Kuwait': '🇰🇼   Kuwait',
+    'Kyrgyzstan': '🇰🇬   Kyrgyzstan',
+    'Laos': '🇱🇦   Laos',
+    'Latvia': '🇱🇻   Latvia',
+    'Lebanon': '🇱🇧   Lebanon',
+    'Lesotho': '🇱🇸   Lesotho',
+    'Liberia': '🇱🇷   Liberia',
+    'Libya': '🇱🇾   Libya',
+    'Liechtenstein': '🇱🇮   Liechtenstein',
+    'Lithuania': '🇱🇹   Lithuania',
+    'Luxembourg': '🇱🇺   Luxembourg',
+    'Macedonia': '🇲🇰   Macedonia',
+    'Madagascar': '🇲🇬   Madagascar',
+    'Malawi': '🇲🇼   Malawi',
+    'Malaysia': '🇲🇾   Malaysia',
+    'Maldives': '🇲🇻   Maldives',
+    'Mali': '🇲🇱   Mali',
+    'Malta': '🇲🇹   Malta',
+    'Marshall Islands': '🇲🇭   Marshall Islands',
+    'Mauritania': '🇲🇷   Mauritania',
+    'Mauritius': '🇲🇺   Mauritius',
+    'Mexico': '🇲🇽   Mexico',
+    'Micronesia': '🇫🇲   Micronesia',
+    'Moldova': '🇲🇩   Moldova',
+    'Monaco': '🇲🇨   Monaco',
+    'Mongolia': '🇲🇳   Mongolia',
+    'Montenegro': '🇲🇪   Montenegro',
+    'Morocco': '🇲🇦   Morocco',
+    'Mozambique': '🇲🇿   Mozambique',
+    'Myanmar': '🇲🇲   Myanmar',
+    'Namibia': '🇳🇦   Namibia',
+    'Nauru': '🇳🇷   Nauru',
+    'Nepal': '🇳🇵   Nepal',
+    'Netherlands': '🇳🇱   Netherlands',
+    'New Zealand': '🇳🇿   New Zealand',
+    'Nicaragua': '🇳🇮   Nicaragua',
+    'Niger': '🇳🇪   Niger',
+    'Nigeria': '🇳🇬   Nigeria',
+    'North Korea': '🇰🇵   North Korea',
+    'Norway': '🇳🇴   Norway',
+    'Oman': '🇴🇲   Oman',
+    'Pakistan': '🇵🇰   Pakistan',
+    'Palau': '🇵🇼   Palau',
+    'Panama': '🇵🇦   Panama',
+    'Papua New Guinea': '🇵🇬   Papua New Guinea',
+    'Paraguay': '🇵🇾   Paraguay',
+    'Peru': '🇵🇪   Peru',
+    'Philippines': '🇵🇭   Philippines',
+    'Poland': '🇵🇱   Poland',
+    'Portugal': '🇵🇹   Portugal',
+    'Qatar': '🇶🇦   Qatar',
+    'Romania': '🇷🇴   Romania',
+    'Russia': '🇷🇺   Russia',
+    'Rwanda': '🇷🇼   Rwanda',
+    'Samoa': '🇼🇸   Samoa',
+    'San Marino': '🇸🇲   San Marino',
+    'Saudi Arabia': '🇸🇦   Saudi Arabia',
+    'Senegal': '🇸🇳   Senegal',
+    'Serbia': '🇷🇸   Serbia',
+    'Seychelles': '🇸🇨   Seychelles',
+    'Sierra Leone': '🇸🇱   Sierra Leone',
+    'Singapore': '🇸🇬   Singapore',
+    'Slovakia': '🇸🇰   Slovakia',
+    'Slovenia': '🇸🇮   Slovenia',
+    'Solomon Islands': '🇸🇧   Solomon Islands',
+    'Somalia': '🇸🇴   Somalia',
+    'South Africa': '🇿🇦   South Africa',
+    'South Korea': '🇰🇷   South Korea',
+    'South Sudan': '🇸🇸   South Sudan',
+    'Spain': '🇪🇸   Spain',
+    'Sri Lanka': '🇱🇰   Sri Lanka',
+    'Sudan': '🇸🇩   Sudan',
+    'Suriname': '🇸🇷   Suriname',
+    'Swaziland': '🇸🇿   Swaziland',
+    'Sweden': '🇸🇪   Sweden',
+    'Switzerland': '🇨🇭   Switzerland',
+    'Syria': '🇸🇾   Syria',
+    'Taiwan': '🇹🇼   Taiwan',
+    'Tajikistan': '🇹🇯   Tajikistan',
+    'Tanzania': '🇹🇿   Tanzania',
+    'Thailand': '🇹🇭   Thailand',
+    'Togo': '🇹🇬   Togo',
+    'Tonga': '🇹🇴   Tonga',
+    'Trinidad and Tobago': '🇹🇹   Trinidad and Tobago',
+    'Tunisia': '🇹🇳   Tunisia',
+    'Turkey': '🇹🇷   Turkey',
+    'Turkmenistan': '🇹🇲   Turkmenistan',
+    'Tuvalu': '🇹🇻   Tuvalu',
+    'Uganda': '🇺🇬   Uganda',
+    'Ukraine': '🇺🇦   Ukraine',
+    'United Arab Emirates': '🇦🇪   United Arab Emirates',
+    'United Kingdom': '🇬🇧   United Kingdom',
+    'United States': '🇺🇸   United States',
+    'Uruguay': '🇺🇾   Uruguay',
+    'Uzbekistan': '🇺🇿   Uzbekistan',
+    'Vanuatu': '🇻🇺   Vanuatu',
+    'Vatican City': '🇻🇦   Vatican City',
+    'Venezuela': '🇻🇪   Venezuela',
+    'Vietnam': '🇻🇳   Vietnam',
+    'Yemen': '🇾🇪   Yemen',
+    'Zambia': '🇿🇲   Zambia',
+    'Zimbabwe': '🇿🇼   Zimbabwe',
+  };
+  return countryToEmoji[countryName] ?? countryName;
 }

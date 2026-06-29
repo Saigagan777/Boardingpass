@@ -46,3 +46,6 @@ app.*.map.json
 
 # Secrets
 /lib/services/linkedin_secret.dart
+
+# JVM / Android Profiling
+*.hprof

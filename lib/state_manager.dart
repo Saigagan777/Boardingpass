@@ -445,21 +445,45 @@ class AppStateManager extends ChangeNotifier {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       if (currentUid == null) return;
 
-      // 1. Fetch current user's swipes to exclude already swiped candidates
+      // 1. Fetch current user's swipes to partition them
       final swipesSnapshot = await FirebaseFirestore.instance
           .collection('swipes')
           .where('fromUid', isEqualTo: currentUid)
           .get();
 
-      final swipedUids = swipesSnapshot.docs
+      final permanentlyExcludedUids = swipesSnapshot.docs
+          .where((doc) =>
+              doc.data()['action'] == 'like' ||
+              doc.data()['action'] == 'favorite')
           .map((doc) => doc.data()['toUid'] as String)
           .toSet();
+
+      final dislikedUids = swipesSnapshot.docs
+          .where((doc) =>
+              doc.data()['action'] == 'dislike' ||
+              doc.data()['action'] == 'reject')
+          .map((doc) => doc.data()['toUid'] as String)
+          .toSet();
+
+      // Fetch connected user IDs
+      final connSnap1 = await FirebaseFirestore.instance
+          .collection('connections')
+          .where('userA', isEqualTo: currentUid)
+          .get();
+      final connSnap2 = await FirebaseFirestore.instance
+          .collection('connections')
+          .where('userB', isEqualTo: currentUid)
+          .get();
+      final connectedUids = {
+        ...connSnap1.docs.map((doc) => doc.data()['userB'] as String),
+        ...connSnap2.docs.map((doc) => doc.data()['userA'] as String),
+      };
 
       // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('isDiscoverable', isEqualTo: true)
-          .limit(20)
+          .limit(100)
           .get();
 
       // 2.5 Fetch current user details to calculate dynamic match scores
@@ -473,8 +497,11 @@ class AppStateManager extends ChangeNotifier {
       final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
       final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
 
-      final loaded = querySnapshot.docs
-          .where((doc) => doc.id != currentUid && !swipedUids.contains(doc.id))
+      final allProfiles = querySnapshot.docs
+          .where((doc) =>
+              doc.id != currentUid &&
+              !permanentlyExcludedUids.contains(doc.id) &&
+              !connectedUids.contains(doc.id))
           .map((doc) {
             final data = doc.data();
             final expertise = List<String>.from(data['expertise'] ?? []);
@@ -530,12 +557,39 @@ class AppStateManager extends ChangeNotifier {
           })
           .toList();
 
+      // Separate non-swiped and disliked profiles so disliked ones are at the back of the deck
+      final nonSwipedProfiles = allProfiles
+          .where((c) => !dislikedUids.contains(c.uid))
+          .toList();
+      final dislikedProfiles = allProfiles
+          .where((c) => dislikedUids.contains(c.uid))
+          .toList();
+
       _candidates.clear();
-      _candidates.addAll(loaded);
+      _candidates.addAll([...nonSwipedProfiles, ...dislikedProfiles]);
       _activeCandidateIndex = 0;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
+    }
+  }
+
+  /// Instantly moves a candidate to the back of the local list in memory
+  void moveCandidateToBack(String targetUid) {
+    final index = _candidates.indexWhere((c) => c.uid == targetUid);
+    if (index != -1) {
+      final candidate = _candidates.removeAt(index);
+      _candidates.add(candidate);
+      notifyListeners();
+    }
+  }
+
+  /// Instantly removes a candidate from the local list in memory (e.g. once liked/favorited)
+  void removeCandidate(String targetUid) {
+    final index = _candidates.indexWhere((c) => c.uid == targetUid);
+    if (index != -1) {
+      _candidates.removeAt(index);
+      notifyListeners();
     }
   }
 
