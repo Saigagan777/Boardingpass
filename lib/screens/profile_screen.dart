@@ -7,7 +7,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:csc_picker_plus/csc_picker_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'linkedin_webview.dart';
 import '../services/resume_parser_service.dart';
 import '../services/linkedin_oauth_config.dart';
@@ -38,94 +37,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return _EditProfileSheet(profile: profile);
       },
     );
-  }
-
-  Future<void> _handleResumeUpload(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _isLoading = true);
-    try {
-      final file = await ResumeParserService().pickResumeFile();
-      if (file == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-      if (file.bytes == null) {
-        throw Exception('Could not read file bytes.');
-      }
-      final text = ResumeParserService().extractText(file.bytes!, file.name);
-      final parsedData = ResumeParserService().parseResumeText(text);
-
-      setState(() => _isLoading = false);
-
-      if (!context.mounted) return;
-      showDialog(
-        context: context,
-        builder: (dialogCtx) => _ResumePreviewDialog(
-          parsedData: parsedData,
-          onSave: (updatedData) async {
-            Navigator.pop(dialogCtx);
-            setState(() => _isLoading = true);
-            try {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user != null) {
-                await ResumeParserService().saveResumeDataToProfile(user.uid, updatedData);
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('Resume parsed and profile enriched!')),
-                );
-              }
-            } catch (e) {
-              messenger.showSnackBar(
-                SnackBar(content: Text('Failed to save resume data: $e')),
-              );
-            } finally {
-              setState(() => _isLoading = false);
-            }
-          },
-        ),
-      );
-    } catch (e) {
-      setState(() => _isLoading = false);
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to parse resume: $e')),
-      );
-    }
-  }
-
-  Future<void> _handleLinkedInSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final String redirectUri = LinkedInOAuthConfig.redirectUri;
-    final String authUrl = LinkedInOAuthConfig.authorizationUrl(
-      redirectUri: redirectUri,
-    );
-    final String? authCode = await showLinkedInWebView(context, authUrl);
-    if (authCode == null) return;
-
-    if (authCode.startsWith('error:')) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('LinkedIn sync failed: ${authCode.replaceFirst('error:', '')}'),
-          backgroundColor: const Color(0xFF7A432D),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await UserService().syncLinkedInProfile(user.uid, authCode, redirectUri: redirectUri);
-        messenger.showSnackBar(
-          const SnackBar(content: Text('LinkedIn profile synced successfully!')),
-        );
-      }
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to sync LinkedIn: $e')),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
   }
 
   Widget _buildProfileHeader(UserProfile profile, BuildContext context) {
@@ -318,65 +229,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String type, // 'career' or 'education'
   }) {
     if (items.isEmpty) {
+      final placeholderText = type == 'career'
+          ? 'No work experience added yet.'
+          : 'No education details added yet.';
       return _buildSectionCard(
         icon: icon,
         title: title,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'No details added yet. Sync LinkedIn or parse your resume to enrich profile.',
-              style: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 12,
-                color: Color(0xFF8C736B),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                if (type == 'career') ...[
-                  ElevatedButton.icon(
-                    onPressed: () => _handleResumeUpload(context),
-                    icon: const Icon(Icons.upload_file, size: 14, color: Colors.white),
-                    label: const Text('Parse Resume'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7A432D),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      textStyle: const TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                ElevatedButton.icon(
-                  onPressed: () => _handleLinkedInSync(context),
-                  icon: const Icon(Icons.sync, size: 14, color: Colors.white),
-                  label: const Text('Sync LinkedIn'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0A66C2),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    textStyle: const TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+        content: Text(
+          placeholderText,
+          style: const TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontSize: 12,
+            color: Color(0xFF8C736B),
+          ),
         ),
       );
     }
