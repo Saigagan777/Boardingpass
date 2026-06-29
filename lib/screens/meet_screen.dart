@@ -155,6 +155,7 @@ class _MeetScreenState extends State<MeetScreen> {
         _loadingConnections = false;
       });
       _checkConflicts();
+      _updateDetectedCity();
     } catch (e) {
       setState(() {
         _loadingConnections = false;
@@ -164,8 +165,9 @@ class _MeetScreenState extends State<MeetScreen> {
   }
 
   Future<void> _updateDetectedCity() async {
-    if (_selectedConnections.isEmpty) return;
-    final ids = _selectedConnections.map((c) => c.uid).toList();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ids = [uid, ..._selectedConnections.map((c) => c.uid)];
     final result = await RecommendationEngine().detectMeetingCity(ids);
     if (mounted) {
       setState(() {

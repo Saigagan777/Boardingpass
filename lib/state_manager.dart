@@ -451,19 +451,79 @@ class AppStateManager extends ChangeNotifier {
           .where('fromUid', isEqualTo: currentUid)
           .get();
 
-      final permanentlyExcludedUids = swipesSnapshot.docs
-          .where((doc) =>
-              doc.data()['action'] == 'like' ||
-              doc.data()['action'] == 'favorite')
-          .map((doc) => doc.data()['toUid'] as String)
-          .toSet();
+      // Fetch connection requests involving the current user
+      final outgoingReqs = await FirebaseFirestore.instance
+          .collection('connection_requests')
+          .where('fromUid', isEqualTo: currentUid)
+          .get();
+      final incomingReqs = await FirebaseFirestore.instance
+          .collection('connection_requests')
+          .where('toUid', isEqualTo: currentUid)
+          .get();
 
-      final dislikedUids = swipesSnapshot.docs
-          .where((doc) =>
-              doc.data()['action'] == 'dislike' ||
-              doc.data()['action'] == 'reject')
-          .map((doc) => doc.data()['toUid'] as String)
-          .toSet();
+      final pendingReqUids = <String>{};
+      final rejectedReqUids = <String>{};
+
+      for (final doc in outgoingReqs.docs) {
+        final data = doc.data();
+        final toUid = data['toUid'] as String?;
+        final status = data['status'] as String?;
+        if (toUid == null) continue;
+        if (status == 'pending') {
+          pendingReqUids.add(toUid);
+        } else if (status == 'rejected') {
+          rejectedReqUids.add(toUid);
+        }
+      }
+
+      for (final doc in incomingReqs.docs) {
+        final data = doc.data();
+        final fromUid = data['fromUid'] as String?;
+        final status = data['status'] as String?;
+        if (fromUid == null) continue;
+        if (status == 'pending') {
+          pendingReqUids.add(fromUid);
+        } else if (status == 'rejected') {
+          rejectedReqUids.add(fromUid);
+        }
+      }
+
+      final permanentlyExcludedUids = <String>{};
+      final temporaryExcludedUids = <String>{};
+
+      final now = DateTime.now();
+
+      for (final doc in swipesSnapshot.docs) {
+        final data = doc.data();
+        final action = data['action'] as String?;
+        final toUid = data['toUid'] as String?;
+        if (toUid == null) continue;
+
+        if (action == 'like') {
+          if (!rejectedReqUids.contains(toUid)) {
+            permanentlyExcludedUids.add(toUid);
+          }
+        } else if (action == 'dislike' || action == 'reject') {
+          // Check if swipe is within 30 days
+          final timestampField = data['timestamp'] ?? data['createdAt'];
+          DateTime? swipeTime;
+          if (timestampField is Timestamp) {
+            swipeTime = timestampField.toDate();
+          } else if (timestampField is String) {
+            swipeTime = DateTime.tryParse(timestampField);
+          }
+
+          if (swipeTime != null) {
+            final difference = now.difference(swipeTime).inDays;
+            if (difference < 30) {
+              temporaryExcludedUids.add(toUid);
+            }
+          } else {
+            // Default to excluding if timestamp is missing
+            temporaryExcludedUids.add(toUid);
+          }
+        }
+      }
 
       // Fetch connected user IDs
       final connSnap1 = await FirebaseFirestore.instance
@@ -501,6 +561,8 @@ class AppStateManager extends ChangeNotifier {
           .where((doc) =>
               doc.id != currentUid &&
               !permanentlyExcludedUids.contains(doc.id) &&
+              !temporaryExcludedUids.contains(doc.id) &&
+              !pendingReqUids.contains(doc.id) &&
               !connectedUids.contains(doc.id))
           .map((doc) {
             final data = doc.data();
@@ -557,16 +619,8 @@ class AppStateManager extends ChangeNotifier {
           })
           .toList();
 
-      // Separate non-swiped and disliked profiles so disliked ones are at the back of the deck
-      final nonSwipedProfiles = allProfiles
-          .where((c) => !dislikedUids.contains(c.uid))
-          .toList();
-      final dislikedProfiles = allProfiles
-          .where((c) => dislikedUids.contains(c.uid))
-          .toList();
-
       _candidates.clear();
-      _candidates.addAll([...nonSwipedProfiles, ...dislikedProfiles]);
+      _candidates.addAll(allProfiles);
       _activeCandidateIndex = 0;
       notifyListeners();
     } catch (e) {
