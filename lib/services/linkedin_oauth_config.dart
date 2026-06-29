@@ -4,7 +4,7 @@ import 'linkedin_secret.dart';
 class LinkedInOAuthConfig {
   static const String clientId = linkedinClientId;
   static const String state = 'boardingpass_linkedin_oauth_state';
-  static const String mobileRedirectUri = '';
+  static const String mobileRedirectUri = 'https://www.google.com';
 
   static String get redirectUri {
     if (!kIsWeb) {

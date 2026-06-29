@@ -1,9 +1,25 @@
+import com.android.build.gradle.BaseExtension
+
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
 }
+
+subprojects {
+    afterEvaluate {
+        if (extensions.findByName("android") != null) {
+            extensions.configure<BaseExtension> {
+                compileSdkVersion(36)
+            }
+        }
+    }
+}
+
+
+
+
 
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
