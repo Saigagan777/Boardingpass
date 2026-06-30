@@ -82,6 +82,7 @@ class UserProfile {
   final DateTime? linkedinSyncedAt;
   final bool resumeParsed;
   final DateTime? resumeParsedAt;
+  final bool directPasswordSet;
 
   // Match score
   final int? matchScore;
@@ -132,6 +133,7 @@ class UserProfile {
     this.linkedinSyncedAt,
     this.resumeParsed = false,
     this.resumeParsedAt,
+    this.directPasswordSet = false,
     this.matchScore,
   });
 
@@ -192,6 +194,7 @@ class UserProfile {
       linkedinSyncedAt: (data['linkedinSyncedAt'] as Timestamp?)?.toDate(),
       resumeParsed: data['resumeParsed'] ?? false,
       resumeParsedAt: (data['resumeParsedAt'] as Timestamp?)?.toDate(),
+      directPasswordSet: data['directPasswordSet'] ?? false,
       matchScore: data['matchScore'] as int?,
     );
   }
@@ -242,6 +245,7 @@ class UserProfile {
       'linkedinSyncedAt': linkedinSyncedAt != null ? Timestamp.fromDate(linkedinSyncedAt!) : null,
       'resumeParsed': resumeParsed,
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
+      'directPasswordSet': directPasswordSet,
       'matchScore': matchScore,
     };
   }
@@ -290,6 +294,7 @@ class UserProfile {
     DateTime? linkedinSyncedAt,
     bool? resumeParsed,
     DateTime? resumeParsedAt,
+    bool? directPasswordSet,
     int? matchScore,
   }) {
     return UserProfile(
@@ -338,6 +343,7 @@ class UserProfile {
       linkedinSyncedAt: linkedinSyncedAt ?? this.linkedinSyncedAt,
       resumeParsed: resumeParsed ?? this.resumeParsed,
       resumeParsedAt: resumeParsedAt ?? this.resumeParsedAt,
+      directPasswordSet: directPasswordSet ?? this.directPasswordSet,
       matchScore: matchScore ?? this.matchScore,
     );
   }

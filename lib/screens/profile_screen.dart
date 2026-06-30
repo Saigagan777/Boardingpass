@@ -3,13 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:csc_picker_plus/csc_picker_plus.dart';
-import 'linkedin_webview.dart';
-import '../services/resume_parser_service.dart';
-import '../services/linkedin_oauth_config.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
@@ -26,7 +24,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final AppStateManager _state = AppStateManager();
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   void _showEditProfileModal(BuildContext context, UserProfile profile) {
     showModalBottomSheet(
@@ -39,6 +37,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  double _calculateProfileCompleteness(UserProfile profile) {
+    int total = 0;
+    int completed = 0;
+
+    // 1. Name
+    total++;
+    if (profile.name.trim().isNotEmpty) completed++;
+
+    // 2. Email
+    total++;
+    if (profile.email.trim().isNotEmpty) completed++;
+
+    // 3. Profile Image
+    total++;
+    if ((profile.profileImageUrl ?? '').trim().isNotEmpty) completed++;
+
+    // 4. Role
+    total++;
+    if ((profile.role ?? '').trim().isNotEmpty) completed++;
+
+    // 5. Company
+    total++;
+    if ((profile.company ?? '').trim().isNotEmpty) completed++;
+
+    // 6. Headline
+    total++;
+    if ((profile.headline ?? '').trim().isNotEmpty) completed++;
+
+    // 7. Expertise / Skills
+    total++;
+    if (profile.expertise.isNotEmpty || profile.skills.isNotEmpty) completed++;
+
+    // 8. Industry
+    total++;
+    if ((profile.industry ?? '').trim().isNotEmpty && profile.industry != 'Select Industry') completed++;
+
+    // 9. Experience Years
+    total++;
+    if ((profile.experience ?? '').trim().isNotEmpty) completed++;
+
+    // 10. Bio
+    total++;
+    if ((profile.bio ?? '').trim().isNotEmpty) completed++;
+
+    // 11. Intents
+    total++;
+    if (profile.intents.isNotEmpty) completed++;
+
+    // 12. Travel Frequency
+    total++;
+    if ((profile.travelFrequency ?? '').trim().isNotEmpty && profile.travelFrequency != 'Select Frequency') completed++;
+
+    // 13. Home Base
+    total++;
+    if ((profile.homeBase ?? '').trim().isNotEmpty) completed++;
+
+    // 14. Current Location
+    total++;
+    if ((profile.currentLocationName ?? '').trim().isNotEmpty) completed++;
+
+    // 15. Work Experience (Optional)
+    total++;
+    if (profile.careerTimeline.isNotEmpty) completed++;
+
+    // 16. Education (Optional)
+    total++;
+    if (profile.educationTimeline.isNotEmpty) completed++;
+
+    return total == 0 ? 0.0 : (completed / total) * 100.0;
+  }
+
   Widget _buildProfileHeader(UserProfile profile, BuildContext context) {
     final coverUrl = profile.coverImageUrl ?? '';
     final pictureUrl = profile.profileImageUrl ?? '';
@@ -46,6 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final initials = name.isNotEmpty
         ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
         : 'U';
+    final completeness = _calculateProfileCompleteness(profile);
 
     return Stack(
       clipBehavior: Clip.none,
@@ -162,57 +232,140 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
-        // 3. Overlapping Circular Avatar
+        // 3. Overlapping Circular Avatar & Completeness Percentage
         Positioned(
           top: 90,
           left: 20,
-          child: Stack(
+          right: 20,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Container(
+              SizedBox(
                 width: 90,
                 height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipOval(
-                  child: buildProfileImage(
-                    pictureUrl,
-                    fit: BoxFit.cover,
-                    fallback: Container(
-                      color: const Color(0xFFE8E2DD),
-                      alignment: Alignment.center,
-                      child: Text(
-                        initials,
-                        style: const TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF7A432D),
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 90,
+                        height: 90,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
+                    Center(
+                      child: SizedBox(
+                        width: 90,
+                        height: 90,
+                        child: CircularProgressIndicator(
+                          value: completeness / 100.0,
+                          strokeWidth: 4.0,
+                          backgroundColor: const Color(0xFFD6F0DB),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2E7D32)),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: Container(
+                        width: 83,
+                        height: 83,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: Container(
+                        width: 75,
+                        height: 75,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFFE8E2DD),
+                        ),
+                        child: ClipOval(
+                          child: buildProfileImage(
+                            pictureUrl,
+                            width: 75,
+                            height: 75,
+                            fit: BoxFit.cover,
+                            fallback: Container(
+                              color: const Color(0xFFE8E2DD),
+                              alignment: Alignment.center,
+                              child: Text(
+                                initials,
+                                style: const TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF7A432D),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 2,
+                      right: 2,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E7D32),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Positioned(
-                bottom: 2,
-                right: 2,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E7D32),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 12,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${completeness.toInt()}% Complete',
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -467,6 +620,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: Color(0xFF5C473E),
                                 ),
                               ),
+                              if (profile.email.isNotEmpty) ...
+                              [
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.email_outlined,
+                                      size: 13,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      profile.email,
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 12,
+                                        color: Color(0xFF8C736B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                               const SizedBox(height: 6),
                               Row(
                                 children: [
@@ -874,6 +1049,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   title: 'Help & Support',
                                   onTap: () {},
                                 ),
+                                // Set / Change Password — shown for all users
+                                Builder(builder: (_) {
+                                  final fbEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+                                  final isLinkedInSynthetic = fbEmail.startsWith('linkedin_') && fbEmail.contains('@boardingpass.com');
+                                  final hasPassword = !isLinkedInSynthetic || profile.directPasswordSet;
+                                  return _buildMenuItem(
+                                    icon: hasPassword ? Icons.lock_reset_rounded : Icons.lock_open_rounded,
+                                    title: hasPassword ? 'Change Password' : 'Set Password',
+                                    onTap: () => _showPasswordDialogFromProfile(context, profile, !hasPassword),
+                                  );
+                                }),
                                 _buildMenuItem(
                                   icon: Icons.logout_rounded,
                                   title: 'Logout',
@@ -894,6 +1080,232 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  /// Shows the Set Password / Change Password dialog from the profile screen settings.
+  Future<void> _showPasswordDialogFromProfile(
+    BuildContext context,
+    UserProfile profile,
+    bool isSettingNew,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final newPasswordCtrl = TextEditingController();
+    final confirmPasswordCtrl = TextEditingController();
+    final currentPasswordCtrl = TextEditingController();
+    bool obscureNew = true;
+    bool obscureCurrent = true;
+    bool obscureConfirm = true;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFFFAF7F5),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(
+                  isSettingNew ? Icons.lock_open_rounded : Icons.lock_reset_rounded,
+                  color: const Color(0xFF7A432D),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isSettingNew ? 'Set Password' : 'Change Password',
+                  style: const TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3E1F11),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isSettingNew) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline, size: 14, color: Color(0xFF2E7D32)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'After setting a password, you can sign in with ${profile.email} directly — no LinkedIn needed.',
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 11,
+                                color: Color(0xFF2E7D32),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ] else ...[
+                    TextField(
+                      controller: currentPasswordCtrl,
+                      obscureText: obscureCurrent,
+                      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14),
+                      decoration: InputDecoration(
+                        labelText: 'Current Password',
+                        labelStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18, color: const Color(0xFF8C736B)),
+                          onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(
+                    controller: newPasswordCtrl,
+                    obscureText: obscureNew,
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      labelStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                      helperText: 'Minimum 6 characters',
+                      helperStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, color: Color(0xFF8C736B)),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18, color: const Color(0xFF8C736B)),
+                        onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmPasswordCtrl,
+                    obscureText: obscureConfirm,
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      labelStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18, color: const Color(0xFF8C736B)),
+                        onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Cancel', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B))),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7A432D),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                onPressed: () async {
+                  final newPass = newPasswordCtrl.text.trim();
+                  final confirmPass = confirmPasswordCtrl.text.trim();
+                  if (newPass.length < 6) {
+                    messenger.showSnackBar(const SnackBar(content: Text('Password must be at least 6 characters.')));
+                    return;
+                  }
+                  if (newPass != confirmPass) {
+                    messenger.showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
+                    return;
+                  }
+                  Navigator.of(dialogCtx).pop();
+                  try {
+                    final firebaseUser = FirebaseAuth.instance.currentUser;
+                    if (firebaseUser == null) throw Exception('Not logged in.');
+                    if (isSettingNew) {
+                      // LinkedIn user — re-authenticate with synthetic credentials, then
+                      // update to real email + set new password so direct sign-in works.
+                      final sub = profile.linkedinId ?? '';
+                      final syntheticEmail = 'linkedin_$sub@boardingpass.com';
+                      final syntheticPassword = 'linkedin_user_$sub';
+                      final synthCred = EmailAuthProvider.credential(
+                        email: syntheticEmail,
+                        password: syntheticPassword,
+                      );
+                      await firebaseUser.reauthenticateWithCredential(synthCred);
+                      await firebaseUser.verifyBeforeUpdateEmail(profile.email);
+                      await firebaseUser.updatePassword(newPass);
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(firebaseUser.uid)
+                          .update({'directPasswordSet': true});
+                      messenger.showSnackBar(const SnackBar(
+                        content: Text('Password set! Verify the email sent to your inbox, then sign in directly.'),
+                        backgroundColor: Color(0xFF2E7D32),
+                        duration: Duration(seconds: 5),
+                      ));
+                    } else {
+                      final currentPass = currentPasswordCtrl.text.trim();
+                      if (currentPass.isEmpty) {
+                        messenger.showSnackBar(const SnackBar(content: Text('Please enter your current password.')));
+                        return;
+                      }
+                      final credential = EmailAuthProvider.credential(
+                        email: firebaseUser.email ?? profile.email,
+                        password: currentPass,
+                      );
+                      await firebaseUser.reauthenticateWithCredential(credential);
+                      await firebaseUser.updatePassword(newPass);
+                      messenger.showSnackBar(const SnackBar(
+                        content: Text('Password changed successfully.'),
+                        backgroundColor: Color(0xFF2E7D32),
+                      ));
+                    }
+                  } on FirebaseAuthException catch (e) {
+                    String msg = 'Failed to update password.';
+                    if (e.code == 'wrong-password' || e.code == 'invalid-credential') msg = 'Current password is incorrect.';
+                    if (e.code == 'requires-recent-login') msg = 'Session expired. Please log out and back in first.';
+                    if (e.code == 'email-already-in-use') msg = 'That email is already in use by another account.';
+                    if (e.code == 'invalid-email') msg = 'The email address is not valid.';
+                    messenger.showSnackBar(SnackBar(content: Text(msg)));
+                  } catch (e) {
+                    messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                },
+                child: Text(
+                  isSettingNew ? 'Set Password' : 'Update',
+                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    currentPasswordCtrl.dispose();
+    newPasswordCtrl.dispose();
+    confirmPasswordCtrl.dispose();
   }
 
   Widget _buildStatsCard({
@@ -1358,6 +1770,107 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       widget.profile.educationTimeline,
     );
     _localSkills = List<String>.from(widget.profile.skills);
+
+    // Add listeners for real-time progress update in sheet
+    _nameController.addListener(_onFieldChanged);
+    _headlineController.addListener(_onFieldChanged);
+    _bioController.addListener(_onFieldChanged);
+    _companyController.addListener(_onFieldChanged);
+    _roleController.addListener(_onFieldChanged);
+    _industryController.addListener(_onFieldChanged);
+    _experienceController.addListener(_onFieldChanged);
+    _profileImageUrlController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  double _calculateLocalCompleteness() {
+    int total = 0;
+    int completed = 0;
+
+    // 1. Name
+    total++;
+    if (_nameController.text.trim().isNotEmpty) completed++;
+
+    // 2. Email
+    total++;
+    if (widget.profile.email.trim().isNotEmpty) completed++;
+
+    // 3. Profile Image
+    total++;
+    if (_profileImageUrlController.text.trim().isNotEmpty) completed++;
+
+    // 4. Role
+    total++;
+    if (_roleController.text.trim().isNotEmpty) completed++;
+
+    // 5. Company
+    total++;
+    if (_companyController.text.trim().isNotEmpty) completed++;
+
+    // 6. Headline
+    total++;
+    if (_headlineController.text.trim().isNotEmpty) completed++;
+
+    // 7. Expertise / Skills
+    total++;
+    if (_localSkills.isNotEmpty) completed++;
+
+    // 8. Industry
+    total++;
+    if (_selectedIndustry != null &&
+        _selectedIndustry!.isNotEmpty &&
+        _selectedIndustry != 'Select Industry') {
+      if (_selectedIndustry == 'Other') {
+        if (_industryController.text.trim().isNotEmpty) {
+          completed++;
+        }
+      } else {
+        completed++;
+      }
+    }
+
+    // 9. Experience Years
+    total++;
+    if (_experienceController.text.trim().isNotEmpty) completed++;
+
+    // 10. Bio
+    total++;
+    if (_bioController.text.trim().isNotEmpty) completed++;
+
+    // 11. Intents
+    total++;
+    if (widget.profile.intents.isNotEmpty) completed++;
+
+    // 12. Travel Frequency
+    total++;
+    if (_selectedTravelFrequency != null &&
+        _selectedTravelFrequency!.isNotEmpty &&
+        _selectedTravelFrequency != 'Select Frequency') {
+      completed++;
+    }
+
+    // 13. Home Base
+    total++;
+    if (_homeBaseCountry.isNotEmpty || _homeBaseCity.isNotEmpty) completed++;
+
+    // 14. Current Location
+    total++;
+    if (_currentLocationCountry.isNotEmpty || _currentLocationCity.isNotEmpty) completed++;
+
+    // 15. Work Experience (Optional)
+    total++;
+    if (_localCareerTimeline.isNotEmpty) completed++;
+
+    // 16. Education (Optional)
+    total++;
+    if (_localEducationTimeline.isNotEmpty) completed++;
+
+    return total == 0 ? 0.0 : (completed / total) * 100.0;
   }
 
   void _parseHomeBase(String? homeBaseStr) {
@@ -1458,6 +1971,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
   @override
   void dispose() {
+    _nameController.removeListener(_onFieldChanged);
+    _headlineController.removeListener(_onFieldChanged);
+    _bioController.removeListener(_onFieldChanged);
+    _companyController.removeListener(_onFieldChanged);
+    _roleController.removeListener(_onFieldChanged);
+    _industryController.removeListener(_onFieldChanged);
+    _experienceController.removeListener(_onFieldChanged);
+    _profileImageUrlController.removeListener(_onFieldChanged);
+
     _nameController.dispose();
     _headlineController.dispose();
     _bioController.dispose();
@@ -1486,97 +2008,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     super.dispose();
   }
 
-  Future<void> _handleResumeUploadInSheet(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    setState(() => _isLoading = true);
-    try {
-      final file = await ResumeParserService().pickResumeFile();
-      if (file == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-      if (file.bytes == null) {
-        throw Exception('Could not read file bytes.');
-      }
-      final text = ResumeParserService().extractText(file.bytes!, file.name);
-      final parsedData = ResumeParserService().parseResumeText(text);
-
-      setState(() => _isLoading = false);
-
-      if (!context.mounted) return;
-      showDialog(
-        context: context,
-        builder: (dialogCtx) => _ResumePreviewDialog(
-          parsedData: parsedData,
-          onSave: (updatedData) {
-            setState(() {
-              _localSkills = List<String>.from(updatedData['skills'] ?? []);
-              _localCareerTimeline = List<Map<String, dynamic>>.from(updatedData['careerTimeline'] ?? []);
-              _localEducationTimeline = List<Map<String, dynamic>>.from(updatedData['educationTimeline'] ?? []);
-            });
-            Navigator.pop(dialogCtx);
-          },
-        ),
-      );
-    } catch (e) {
-      setState(() => _isLoading = false);
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to parse resume: $e')),
-      );
-    }
-  }
-
-  Future<void> _handleLinkedInSyncInSheet(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final String redirectUri = LinkedInOAuthConfig.redirectUri;
-    final String authUrl = LinkedInOAuthConfig.authorizationUrl(
-      redirectUri: redirectUri,
-    );
-    final String? authCode = await showLinkedInWebView(context, authUrl);
-    if (authCode == null) return;
-
-    if (authCode.startsWith('error:')) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('LinkedIn sync failed: ${authCode.replaceFirst('error:', '')}'),
-          backgroundColor: const Color(0xFF7A432D),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      await UserService().syncLinkedInProfile(widget.profile.uid, authCode, redirectUri: redirectUri);
-      
-      // Fetch the updated profile data to refresh local state in sheet
-      final updatedProfile = await UserService().getUserProfile(widget.profile.uid);
-      if (updatedProfile != null && context.mounted) {
-        setState(() {
-          _localSkills = List<String>.from(updatedProfile.skills);
-          _localCareerTimeline = List<Map<String, dynamic>>.from(updatedProfile.careerTimeline);
-          _localEducationTimeline = List<Map<String, dynamic>>.from(updatedProfile.educationTimeline);
-          if (updatedProfile.name.isNotEmpty) _nameController.text = updatedProfile.name;
-          if (updatedProfile.headline != null) _headlineController.text = updatedProfile.headline!;
-          if (updatedProfile.bio != null) _bioController.text = updatedProfile.bio!;
-          if (updatedProfile.company != null) _companyController.text = updatedProfile.company!;
-          if (updatedProfile.role != null) _roleController.text = updatedProfile.role!;
-          if (updatedProfile.profileImageUrl != null) _profileImageUrlController.text = updatedProfile.profileImageUrl!;
-          if (updatedProfile.coverImageUrl != null) _coverImageUrlController.text = updatedProfile.coverImageUrl!;
-          if (updatedProfile.linkedinProfileUrl != null) _linkedinUrlController.text = updatedProfile.linkedinProfileUrl!;
-        });
-      }
-      messenger.showSnackBar(
-        const SnackBar(content: Text('LinkedIn profile synced successfully!')),
-      );
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to sync LinkedIn: $e')),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
 
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
@@ -1736,47 +2167,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () => _handleResumeUploadInSheet(context),
-                          icon: const Icon(Icons.upload_file, size: 14, color: Colors.white),
-                          label: const Text('Parse Resume'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF7A432D),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            textStyle: const TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _handleLinkedInSyncInSheet(context),
-                          icon: const Icon(Icons.sync, size: 14, color: Colors.white),
-                          label: const Text('Sync LinkedIn'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0A66C2),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            textStyle: const TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -1785,9 +2175,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'PROFILE PHOTO',
-                                style: TextStyle(
+                              Text(
+                                'PROFILE PHOTO (${_calculateLocalCompleteness().toInt()}% COMPLETE)',
+                                style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -1797,38 +2187,49 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color(0xFFE8E2DD),
-                                      border: Border.all(
-                                        color: const Color(0xFF7A432D),
-                                        width: 1.5,
+                                  Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 60,
+                                        height: 60,
+                                        child: CircularProgressIndicator(
+                                          value: _calculateLocalCompleteness() / 100.0,
+                                          strokeWidth: 3,
+                                          backgroundColor: const Color(0xFFE8E2DD),
+                                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                        ),
                                       ),
-                                    ),
-                                    child: ClipOval(
-                                      child: _isProfileLoading
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(12.0),
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
-                                              ),
-                                            )
-                                          : buildProfileImage(
-                                              _profileImageUrlController.text,
-                                              width: 50,
-                                              height: 50,
-                                              fit: BoxFit.cover,
-                                              fallback: const Icon(
-                                                Icons.person,
-                                                size: 28,
-                                                color: Color(0xFF7A432D),
-                                              ),
-                                            ),
-                                    ),
+                                      Container(
+                                        width: 50,
+                                        height: 50,
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Color(0xFFE8E2DD),
+                                        ),
+                                        child: ClipOval(
+                                          child: _isProfileLoading
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(12.0),
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                                  ),
+                                                )
+                                              : buildProfileImage(
+                                                  _profileImageUrlController.text,
+                                                  width: 50,
+                                                  height: 50,
+                                                  fit: BoxFit.cover,
+                                                  fallback: const Icon(
+                                                    Icons.person,
+                                                    size: 28,
+                                                    color: Color(0xFF7A432D),
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -2459,23 +2860,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           ),
                           _buildTextField('Location', _newLocationController),
                           _buildTextField(
-                            'From',
-                            _newStartDateController,
-                            readOnly: true,
-                            onTap: () =>
-                                _selectDate(context, _newStartDateController),
-                          ),
-                          _buildTextField(
-                            'To',
-                            _newEndDateController,
-                            readOnly: true,
-                            onTap: () => _selectDate(
-                              context,
-                              _newEndDateController,
-                              isEndDate: true,
-                            ),
-                          ),
-                          _buildTextField(
                             'Description',
                             _newDescController,
                             maxLines: 2,
@@ -2507,12 +2891,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                     'employmentType': _newEmploymentType,
                                     'location': _newLocationController.text
                                         .trim(),
-                                    'startDate': _newStartDateController.text
-                                        .trim(),
-                                    'endDate': _newEndDateController.text
-                                        .trim(),
-                                    'duration':
-                                        '${_newStartDateController.text.trim()} to ${_newEndDateController.text.trim()}',
+                                    'startDate': '',
+                                    'endDate': '',
+                                    'duration': '',
                                     'description': _newDescController.text
                                         .trim(),
                                   });
@@ -2631,25 +3012,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             'School / University',
                             _newSchoolController,
                           ),
-                          _buildTextField(
-                            'From',
-                            _newEduStartDateController,
-                            readOnly: true,
-                            onTap: () => _selectDate(
-                              context,
-                              _newEduStartDateController,
-                            ),
-                          ),
-                          _buildTextField(
-                            'To',
-                            _newEduEndDateController,
-                            readOnly: true,
-                            onTap: () => _selectDate(
-                              context,
-                              _newEduEndDateController,
-                              isEndDate: true,
-                            ),
-                          ),
                           const SizedBox(height: 8),
                           SizedBox(
                             width: double.infinity,
@@ -2658,42 +3020,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                 backgroundColor: const Color(0xFF7A432D),
                               ),
                               onPressed: () {
-                                if (_newDegreeController.text.trim().isEmpty ||
-                                    _newSchoolController.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Please fill Degree and School',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                if (_newEduStartDateController.text
-                                        .trim()
-                                        .isEmpty ||
-                                    _newEduEndDateController.text
-                                        .trim()
-                                        .isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Please fill From and To dates',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
                                 setState(() {
                                   _localEducationTimeline.add({
                                     'degree': _newDegreeController.text.trim(),
                                     'school': _newSchoolController.text.trim(),
-                                    'startDate': _newEduStartDateController.text
-                                        .trim(),
-                                    'endDate': _newEduEndDateController.text
-                                        .trim(),
-                                    'duration':
-                                        '${_newEduStartDateController.text.trim()} to ${_newEduEndDateController.text.trim()}',
+                                    'startDate': '',
+                                    'endDate': '',
+                                    'duration': '',
                                   });
                                   _newDegreeController.clear();
                                   _newSchoolController.clear();
@@ -2873,103 +3206,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  Future<void> _selectDate(
-    BuildContext context,
-    TextEditingController controller, {
-    bool isEndDate = false,
-  }) async {
-    if (isEndDate) {
-      final String? result = await showDialog<String>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text(
-              'Select End Date',
-              style: TextStyle(
-                fontFamily: 'PlayfairDisplay',
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: const Text(
-              'Choose if this is your current position or select a specific date.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'Present'),
-                child: const Text(
-                  'Present',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'Select'),
-                child: const Text(
-                  'Select Date',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-      if (result == 'Present') {
-        controller.text = 'Present';
-        return;
-      } else if (result == null) {
-        return;
-      }
-    }
 
-    if (!context.mounted) return;
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(1950),
-      lastDate: DateTime(2100),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF7A432D),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF3E1F11),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF7A432D),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      controller.text = '${months[picked.month - 1]} ${picked.year}';
-    }
-  }
 
   Widget _buildDropdownField({
     required String label,
@@ -3390,16 +3627,6 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               val,
                             ) {
                               item['location'] = val;
-                            }),
-                            _buildField('Start Date', item['startDate'] ?? '', (
-                              val,
-                            ) {
-                              item['startDate'] = val;
-                            }),
-                            _buildField('End Date', item['endDate'] ?? '', (
-                              val,
-                            ) {
-                              item['endDate'] = val;
                             }),
                             _buildField(
                               'Description',

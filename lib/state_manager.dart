@@ -490,6 +490,7 @@ class AppStateManager extends ChangeNotifier {
 
       final permanentlyExcludedUids = <String>{};
       final temporaryExcludedUids = <String>{};
+      final dislikeTimes = <String, DateTime>{};
 
       final now = DateTime.now();
 
@@ -517,10 +518,15 @@ class AppStateManager extends ChangeNotifier {
             final difference = now.difference(swipeTime).inDays;
             if (difference < 30) {
               temporaryExcludedUids.add(toUid);
+              final existingTime = dislikeTimes[toUid];
+              if (existingTime == null || swipeTime.isAfter(existingTime)) {
+                dislikeTimes[toUid] = swipeTime;
+              }
             }
           } else {
             // Default to excluding if timestamp is missing
             temporaryExcludedUids.add(toUid);
+            dislikeTimes[toUid] = DateTime.fromMillisecondsSinceEpoch(0);
           }
         }
       }
@@ -561,7 +567,6 @@ class AppStateManager extends ChangeNotifier {
           .where((doc) =>
               doc.id != currentUid &&
               !permanentlyExcludedUids.contains(doc.id) &&
-              !temporaryExcludedUids.contains(doc.id) &&
               !pendingReqUids.contains(doc.id) &&
               !connectedUids.contains(doc.id))
           .map((doc) {
@@ -620,7 +625,27 @@ class AppStateManager extends ChangeNotifier {
           .toList();
 
       _candidates.clear();
-      _candidates.addAll(allProfiles);
+      
+      // Partition into non-disliked and disliked/rejected candidates
+      final nonDisliked = <Candidate>[];
+      final disliked = <Candidate>[];
+
+      for (final candidate in allProfiles) {
+        if (temporaryExcludedUids.contains(candidate.uid)) {
+          disliked.add(candidate);
+        } else {
+          nonDisliked.add(candidate);
+        }
+      }
+
+      // Sort disliked candidates chronologically by swipe time (older dislikes first, newer dislikes last)
+      disliked.sort((a, b) {
+        final timeA = dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB = dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return timeA.compareTo(timeB);
+      });
+
+      _candidates.addAll([...nonDisliked, ...disliked]);
       _activeCandidateIndex = 0;
       notifyListeners();
     } catch (e) {

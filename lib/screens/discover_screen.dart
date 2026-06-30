@@ -654,7 +654,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     if (targetUid != null && targetUid.isNotEmpty) {
       // Optimistic local update
-      _state.removeCandidate(targetUid);
+      _state.moveCandidateToBack(targetUid);
       // Background Firestore write
       _state.swipeCandidate(targetUid: targetUid, action: 'dislike');
     }
@@ -1971,7 +1971,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.65),
+                      color: Colors.black.withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -2007,7 +2007,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.65),
+                        color: Colors.black.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -2050,7 +2050,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
+                          color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: Colors.white30),
                         ),

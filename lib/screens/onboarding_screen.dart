@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/linkedin_oauth_config.dart';
@@ -197,10 +198,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
       }
     }
+
+    // Add listeners for real-time progress update
+    _nameController.addListener(_onFieldChanged);
+    _emailController.addListener(_onFieldChanged);
+    _profileImageUrlController.addListener(_onFieldChanged);
+    _roleController.addListener(_onFieldChanged);
+    _companyController.addListener(_onFieldChanged);
+    _headlineController.addListener(_onFieldChanged);
+    _expertiseController.addListener(_onFieldChanged);
+    _experienceController.addListener(_onFieldChanged);
+    _bioController.addListener(_onFieldChanged);
+    _industryController.addListener(_onFieldChanged);
   }
 
   @override
   void dispose() {
+    _nameController.removeListener(_onFieldChanged);
+    _emailController.removeListener(_onFieldChanged);
+    _profileImageUrlController.removeListener(_onFieldChanged);
+    _roleController.removeListener(_onFieldChanged);
+    _companyController.removeListener(_onFieldChanged);
+    _headlineController.removeListener(_onFieldChanged);
+    _expertiseController.removeListener(_onFieldChanged);
+    _experienceController.removeListener(_onFieldChanged);
+    _bioController.removeListener(_onFieldChanged);
+    _industryController.removeListener(_onFieldChanged);
+
     _pageController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -308,17 +332,75 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
+      // First try normal email/password sign-in
       await AuthService().signInWithEmail(email: email, password: password);
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (firstError) {
+      // If normal sign-in fails with invalid credential, check if this is a
+      // LinkedIn user who set a password (their Firebase email is still
+      // synthetic: linkedin_{sub}@boardingpass.com but their real email is
+      // stored in Firestore). Retry with the synthetic email + same password.
+      if (firstError.code == 'invalid-credential' ||
+          firstError.code == 'wrong-password' ||
+          firstError.code == 'user-not-found') {
+        try {
+          // Look up the Firestore user record whose real email matches
+          final snapshot = await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isEqualTo: email)
+              .limit(1)
+              .get();
+
+          if (snapshot.docs.isNotEmpty) {
+            final data = snapshot.docs.first.data();
+            final linkedinId = data['linkedinId'] as String?;
+            if (linkedinId != null && linkedinId.isNotEmpty) {
+              // This is a LinkedIn user — retry with synthetic Firebase email
+              final syntheticEmail = 'linkedin_$linkedinId@boardingpass.com';
+              await AuthService().signInWithEmail(
+                email: syntheticEmail,
+                password: password,
+              );
+              // Success — exit without showing any error
+              return;
+            }
+          }
+        } on FirebaseAuthException catch (retryError) {
+          // Synthetic email retry also failed — show a clear message
+          if (mounted) {
+            String msg = 'Incorrect password. Please try again.';
+            if (retryError.code == 'wrong-password' ||
+                retryError.code == 'invalid-credential') {
+              msg = 'Incorrect password. Please try again.';
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg),
+                backgroundColor: const Color(0xFF7A432D),
+              ),
+            );
+          }
+          return;
+        } catch (_) {
+          // Fallthrough to show the original error
+        }
+      }
+      // Show the original Firebase error
       if (mounted) {
+        String msg = firstError.message ?? 'Authentication failed';
+        if (firstError.code == 'invalid-credential' ||
+            firstError.code == 'wrong-password') {
+          msg = 'Incorrect email or password.';
+        } else if (firstError.code == 'user-not-found') {
+          msg = 'No account found with that email.';
+        } else if (firstError.code == 'user-disabled') {
+          msg = 'This account has been disabled.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.message ?? 'Authentication failed'),
+            content: Text(msg),
             backgroundColor: const Color(0xFF7A432D),
           ),
         );
@@ -327,17 +409,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Authentication failed: $e'),
+            content: Text('Sign in failed: $e'),
             backgroundColor: const Color(0xFF7A432D),
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -605,6 +683,97 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  void _onFieldChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  double _calculateCompletionPercentage() {
+    int total = 0;
+    int completed = 0;
+
+    // 1. Name
+    total++;
+    if (_nameController.text.trim().isNotEmpty) completed++;
+
+    // 2. Email
+    total++;
+    if (_emailController.text.trim().isNotEmpty) completed++;
+
+    // 3. Profile Image
+    total++;
+    if (_profileImageUrlController.text.trim().isNotEmpty) completed++;
+
+    // 4. Role
+    total++;
+    if (_roleController.text.trim().isNotEmpty) completed++;
+
+    // 5. Company
+    total++;
+    if (_companyController.text.trim().isNotEmpty) completed++;
+
+    // 6. Headline
+    total++;
+    if (_headlineController.text.trim().isNotEmpty) completed++;
+
+    // 7. Expertise / Skills
+    total++;
+    if (_expertiseController.text.trim().isNotEmpty) completed++;
+
+    // 8. Industry
+    total++;
+    if (_selectedIndustry != null &&
+        _selectedIndustry!.isNotEmpty &&
+        _selectedIndustry != 'Select Industry') {
+      if (_selectedIndustry == 'Other') {
+        if (_industryController.text.trim().isNotEmpty) {
+          completed++;
+        }
+      } else {
+        completed++;
+      }
+    }
+
+    // 9. Experience Years
+    total++;
+    if (_experienceController.text.trim().isNotEmpty) completed++;
+
+    // 10. Bio
+    total++;
+    if (_bioController.text.trim().isNotEmpty) completed++;
+
+    // 11. Intents
+    total++;
+    if (_intentsSelection.any((item) => item['selected'] == true)) completed++;
+
+    // 12. Travel Frequency
+    total++;
+    if (_selectedTravelFrequency != null &&
+        _selectedTravelFrequency!.isNotEmpty &&
+        _selectedTravelFrequency != 'Select Frequency') {
+      completed++;
+    }
+
+    // 13. Home Base
+    total++;
+    if (_homeBaseCountry.isNotEmpty || _homeBaseCity.isNotEmpty) completed++;
+
+    // 14. Current Location
+    total++;
+    if (_currentLocationCountry.isNotEmpty || _currentLocationCity.isNotEmpty) completed++;
+
+    // 15. Work Experience (Optional)
+    total++;
+    if (_careerTimeline.isNotEmpty) completed++;
+
+    // 16. Education (Optional)
+    total++;
+    if (_educationTimeline.isNotEmpty) completed++;
+
+    return total == 0 ? 0.0 : (completed / total) * 100.0;
+  }
+
   Widget _buildStepIndicator(int step) {
     return Row(
       children: List.generate(2, (index) {
@@ -784,6 +953,53 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: TextButton(
+              onPressed: () async {
+                final email = _emailController.text.trim();
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Enter your email address above first.'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                try {
+                  await AuthService().sendPasswordResetEmail(email);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Password reset email sent to $email'),
+                        backgroundColor: const Color(0xFF2E7D32),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Could not send reset email: $e'),
+                        backgroundColor: const Color(0xFF7A432D),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 14,
+                  color: Color(0xFF7A432D),
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
                 ),
               ),
             ),
@@ -1049,6 +1265,102 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               fontSize: 14,
               color: Color(0xFF5C473E),
             ),
+          ),
+          const SizedBox(height: 24),
+
+          // Profile Completeness Widget
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _pickProfileImage,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: CircularProgressIndicator(
+                        value: _calculateCompletionPercentage() / 100.0,
+                        strokeWidth: 4,
+                        backgroundColor: const Color(0xFFE8E2DD),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                      ),
+                    ),
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFE8E2DD),
+                      ),
+                      child: ClipOval(
+                        child: _isLoading
+                            ? const Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                ),
+                              )
+                            : buildProfileImage(
+                                _profileImageUrlController.text,
+                                width: 68,
+                                height: 68,
+                                fit: BoxFit.cover,
+                                fallback: const Icon(
+                                  Icons.person,
+                                  size: 34,
+                                  color: Color(0xFF7A432D),
+                                ),
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF7A432D),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 10,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Profile Completeness: ${_calculateCompletionPercentage().toInt()}%',
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap photo to upload or change picture.',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        color: Color(0xFF8C736B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
 
@@ -1479,26 +1791,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
-                  controller: _workStartDateController,
-                  labelText: 'From',
-                  hintText: 'Select From date',
-                  readOnly: true,
-                  onTap: () => _selectDate(context, _workStartDateController),
-                ),
-                const SizedBox(height: 8),
-                _buildTextField(
-                  controller: _workEndDateController,
-                  labelText: 'To',
-                  hintText: 'Select To date',
-                  readOnly: true,
-                  onTap: () => _selectDate(
-                    context,
-                    _workEndDateController,
-                    isEndDate: true,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildTextField(
                   controller: _workDescController,
                   labelText: 'Description',
                   hintText: 'Describe key accomplishments...',
@@ -1528,10 +1820,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           'role': _workRoleController.text.trim(),
                           'employmentType': _workEmploymentType,
                           'location': _workLocationController.text.trim(),
-                          'startDate': _workStartDateController.text.trim(),
-                          'endDate': _workEndDateController.text.trim(),
-                          'duration':
-                              '${_workStartDateController.text.trim()} to ${_workEndDateController.text.trim()}',
+                          'startDate': '',
+                          'endDate': '',
+                          'duration': '',
                           'description': _workDescController.text.trim(),
                         });
                         _workCompanyController.clear();
@@ -1641,26 +1932,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   hintText: 'e.g. Stanford University',
                 ),
                 const SizedBox(height: 8),
-                _buildTextField(
-                  controller: _eduStartDateController,
-                  labelText: 'From',
-                  hintText: 'Select From date',
-                  readOnly: true,
-                  onTap: () => _selectDate(context, _eduStartDateController),
-                ),
-                const SizedBox(height: 8),
-                _buildTextField(
-                  controller: _eduEndDateController,
-                  labelText: 'To',
-                  hintText: 'Select To date',
-                  readOnly: true,
-                  onTap: () => _selectDate(
-                    context,
-                    _eduEndDateController,
-                    isEndDate: true,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -1678,23 +1949,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         );
                         return;
                       }
-                      if (_eduStartDateController.text.trim().isEmpty ||
-                          _eduEndDateController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please fill From and To dates'),
-                          ),
-                        );
-                        return;
-                      }
                       setState(() {
                         _educationTimeline.add({
                           'degree': _eduDegreeController.text.trim(),
                           'school': _eduSchoolController.text.trim(),
-                          'startDate': _eduStartDateController.text.trim(),
-                          'endDate': _eduEndDateController.text.trim(),
-                          'duration':
-                              '${_eduStartDateController.text.trim()} to ${_eduEndDateController.text.trim()}',
+                          'startDate': '',
+                          'endDate': '',
+                          'duration': '',
                           'description': '',
                         });
                         _eduDegreeController.clear();
@@ -1769,103 +2030,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Future<void> _selectDate(
-    BuildContext context,
-    TextEditingController controller, {
-    bool isEndDate = false,
-  }) async {
-    if (isEndDate) {
-      final String? result = await showDialog<String>(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text(
-              'Select End Date',
-              style: TextStyle(
-                fontFamily: 'PlayfairDisplay',
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: const Text(
-              'Choose if this is your current position or select a specific date.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'Present'),
-                child: const Text(
-                  'Present',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'Select'),
-                child: const Text(
-                  'Select Date',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ],
-          );
-        },
-      );
-      if (result == 'Present') {
-        controller.text = 'Present';
-        return;
-      } else if (result == null) {
-        return;
-      }
-    }
 
-    if (!mounted) return;
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(1950),
-      lastDate: DateTime(2100),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF7A432D),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF3E1F11),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF7A432D),
-              ),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      controller.text = '${months[picked.month - 1]} ${picked.year}';
-    }
-  }
 
   Widget _buildDropdownField({
     required String label,
@@ -2385,197 +2550,197 @@ class OnboardingPage extends StatelessWidget {
 }
 
 String getCountryForPicker(String? countryName) {
-  if (countryName == null || countryName.isEmpty) return '🇮🇳   India';
+  if (countryName == null || countryName.isEmpty) return 'ðŸ‡®ðŸ‡³   India';
   if (countryName.contains('   ')) return countryName;
   
   final Map<String, String> countryToEmoji = {
-    'Afghanistan': '🇦🇫   Afghanistan',
-    'Albania': '🇦🇱   Albania',
-    'Algeria': '🇩🇿   Algeria',
-    'Andorra': '🇦🇩   Andorra',
-    'Angola': '🇦🇴   Angola',
-    'Argentina': '🇦🇷   Argentina',
-    'Armenia': '🇦🇲   Armenia',
-    'Australia': '🇦🇺   Australia',
-    'Austria': '🇦🇹   Austria',
-    'Azerbaijan': '🇦🇿   Azerbaijan',
-    'Bahamas': '🇧🇸   Bahamas',
-    'Bahrain': '🇧🇭   Bahrain',
-    'Bangladesh': '🇧🇩   Bangladesh',
-    'Barbados': '🇧🇧   Barbados',
-    'Belarus': '🇧🇾   Belarus',
-    'Belgium': '🇧🇪   Belgium',
-    'Belize': '🇧🇿   Belize',
-    'Benin': '🇧🇯   Benin',
-    'Bhutan': '🇧🇹   Bhutan',
-    'Bolivia': '🇧🇴   Bolivia',
-    'Bosnia and Herzegovina': '🇧🇦   Bosnia and Herzegovina',
-    'Botswana': '🇧🇼   Botswana',
-    'Brazil': '🇧🇷   Brazil',
-    'Brunei': '🇧🇳   Brunei',
-    'Bulgaria': '🇧🇬   Bulgaria',
-    'Burkina Faso': '🇧🇫   Burkina Faso',
-    'Burundi': '🇧🇮   Burundi',
-    'Cambodia': '🇰🇭   Cambodia',
-    'Cameroon': '🇨🇲   Cameroon',
-    'Canada': '🇨🇦   Canada',
-    'Cape Verde': '🇨🇻   Cape Verde',
-    'Central African Republic': '🇨🇫   Central African Republic',
-    'Chad': '🇹🇩   Chad',
-    'Chile': '🇨🇱   Chile',
-    'China': '🇨🇳   China',
-    'Colombia': '🇨🇴   Colombia',
-    'Comoros': '🇰🇲   Comoros',
-    'Congo': '🇨🇬   Congo',
-    'Costa Rica': '🇨🇷   Costa Rica',
-    'Croatia': '🇭🇷   Croatia',
-    'Cuba': '🇨🇺   Cuba',
-    'Cyprus': '🇨🇾   Cyprus',
-    'Czech Republic': '🇨🇿   Czech Republic',
-    'Denmark': '🇩🇰   Denmark',
-    'Djibouti': '🇩🇯   Djibouti',
-    'Dominica': '🇩🇲   Dominica',
-    'Dominican Republic': '🇩🇴   Dominican Republic',
-    'Ecuador': '🇪🇨   Ecuador',
-    'Egypt': '🇪🇬   Egypt',
-    'El Salvador': '🇸🇻   El Salvador',
-    'Equatorial Guinea': '🇬🇶   Equatorial Guinea',
-    'Eritrea': '🇪🇷   Eritrea',
-    'Estonia': '🇪🇪   Estonia',
-    'Ethiopia': '🇪🇹   Ethiopia',
-    'Fiji': '🇫🇯   Fiji',
-    'Finland': '🇫🇮   Finland',
-    'France': '🇫🇷   France',
-    'Gabon': '🇬🇦   Gabon',
-    'Gambia': '🇬🇲   Gambia',
-    'Georgia': '🇬🇪   Georgia',
-    'Germany': '🇩🇪   Germany',
-    'Ghana': '🇬🇭   Ghana',
-    'Greece': '🇬🇷   Greece',
-    'Grenada': '🇬🇩   Grenada',
-    'Guatemala': '🇬🇹   Guatemala',
-    'Guinea': '🇬🇳   Guinea',
-    'Guinea-Bissau': '🇬🇼   Guinea-Bissau',
-    'Guyana': '🇬🇾   Guyana',
-    'Haiti': '🇭🇹   Haiti',
-    'Honduras': '🇭🇳   Honduras',
-    'Hungary': '🇭🇺   Hungary',
-    'Iceland': '🇮🇸   Iceland',
-    'India': '🇮🇳   India',
-    'Indonesia': '🇮🇩   Indonesia',
-    'Iran': '🇮🇷   Iran',
-    'Iraq': '🇮🇶   Iraq',
-    'Ireland': '🇮🇪   Ireland',
-    'Israel': '🇮🇱   Israel',
-    'Italy': '🇮🇹   Italy',
-    'Jamaica': '🇯🇲   Jamaica',
-    'Japan': '🇯🇵   Japan',
-    'Jordan': '🇯🇴   Jordan',
-    'Kazakhstan': '🇰🇿   Kazakhstan',
-    'Kenya': '🇰🇪   Kenya',
-    'Kiribati': '🇰🇮   Kiribati',
-    'Kuwait': '🇰🇼   Kuwait',
-    'Kyrgyzstan': '🇰🇬   Kyrgyzstan',
-    'Laos': '🇱🇦   Laos',
-    'Latvia': '🇱🇻   Latvia',
-    'Lebanon': '🇱🇧   Lebanon',
-    'Lesotho': '🇱🇸   Lesotho',
-    'Liberia': '🇱🇷   Liberia',
-    'Libya': '🇱🇾   Libya',
-    'Liechtenstein': '🇱🇮   Liechtenstein',
-    'Lithuania': '🇱🇹   Lithuania',
-    'Luxembourg': '🇱🇺   Luxembourg',
-    'Macedonia': '🇲🇰   Macedonia',
-    'Madagascar': '🇲🇬   Madagascar',
-    'Malawi': '🇲🇼   Malawi',
-    'Malaysia': '🇲🇾   Malaysia',
-    'Maldives': '🇲🇻   Maldives',
-    'Mali': '🇲🇱   Mali',
-    'Malta': '🇲🇹   Malta',
-    'Marshall Islands': '🇲🇭   Marshall Islands',
-    'Mauritania': '🇲🇷   Mauritania',
-    'Mauritius': '🇲🇺   Mauritius',
-    'Mexico': '🇲🇽   Mexico',
-    'Micronesia': '🇫🇲   Micronesia',
-    'Moldova': '🇲🇩   Moldova',
-    'Monaco': '🇲🇨   Monaco',
-    'Mongolia': '🇲🇳   Mongolia',
-    'Montenegro': '🇲🇪   Montenegro',
-    'Morocco': '🇲🇦   Morocco',
-    'Mozambique': '🇲🇿   Mozambique',
-    'Myanmar': '🇲🇲   Myanmar',
-    'Namibia': '🇳🇦   Namibia',
-    'Nauru': '🇳🇷   Nauru',
-    'Nepal': '🇳🇵   Nepal',
-    'Netherlands': '🇳🇱   Netherlands',
-    'New Zealand': '🇳🇿   New Zealand',
-    'Nicaragua': '🇳🇮   Nicaragua',
-    'Niger': '🇳🇪   Niger',
-    'Nigeria': '🇳🇬   Nigeria',
-    'North Korea': '🇰🇵   North Korea',
-    'Norway': '🇳🇴   Norway',
-    'Oman': '🇴🇲   Oman',
-    'Pakistan': '🇵🇰   Pakistan',
-    'Palau': '🇵🇼   Palau',
-    'Panama': '🇵🇦   Panama',
-    'Papua New Guinea': '🇵🇬   Papua New Guinea',
-    'Paraguay': '🇵🇾   Paraguay',
-    'Peru': '🇵🇪   Peru',
-    'Philippines': '🇵🇭   Philippines',
-    'Poland': '🇵🇱   Poland',
-    'Portugal': '🇵🇹   Portugal',
-    'Qatar': '🇶🇦   Qatar',
-    'Romania': '🇷🇴   Romania',
-    'Russia': '🇷🇺   Russia',
-    'Rwanda': '🇷🇼   Rwanda',
-    'Samoa': '🇼🇸   Samoa',
-    'San Marino': '🇸🇲   San Marino',
-    'Saudi Arabia': '🇸🇦   Saudi Arabia',
-    'Senegal': '🇸🇳   Senegal',
-    'Serbia': '🇷🇸   Serbia',
-    'Seychelles': '🇸🇨   Seychelles',
-    'Sierra Leone': '🇸🇱   Sierra Leone',
-    'Singapore': '🇸🇬   Singapore',
-    'Slovakia': '🇸🇰   Slovakia',
-    'Slovenia': '🇸🇮   Slovenia',
-    'Solomon Islands': '🇸🇧   Solomon Islands',
-    'Somalia': '🇸🇴   Somalia',
-    'South Africa': '🇿🇦   South Africa',
-    'South Korea': '🇰🇷   South Korea',
-    'South Sudan': '🇸🇸   South Sudan',
-    'Spain': '🇪🇸   Spain',
-    'Sri Lanka': '🇱🇰   Sri Lanka',
-    'Sudan': '🇸🇩   Sudan',
-    'Suriname': '🇸🇷   Suriname',
-    'Swaziland': '🇸🇿   Swaziland',
-    'Sweden': '🇸🇪   Sweden',
-    'Switzerland': '🇨🇭   Switzerland',
-    'Syria': '🇸🇾   Syria',
-    'Taiwan': '🇹🇼   Taiwan',
-    'Tajikistan': '🇹🇯   Tajikistan',
-    'Tanzania': '🇹🇿   Tanzania',
-    'Thailand': '🇹🇭   Thailand',
-    'Togo': '🇹🇬   Togo',
-    'Tonga': '🇹🇴   Tonga',
-    'Trinidad and Tobago': '🇹🇹   Trinidad and Tobago',
-    'Tunisia': '🇹🇳   Tunisia',
-    'Turkey': '🇹🇷   Turkey',
-    'Turkmenistan': '🇹🇲   Turkmenistan',
-    'Tuvalu': '🇹🇻   Tuvalu',
-    'Uganda': '🇺🇬   Uganda',
-    'Ukraine': '🇺🇦   Ukraine',
-    'United Arab Emirates': '🇦🇪   United Arab Emirates',
-    'United Kingdom': '🇬🇧   United Kingdom',
-    'United States': '🇺🇸   United States',
-    'Uruguay': '🇺🇾   Uruguay',
-    'Uzbekistan': '🇺🇿   Uzbekistan',
-    'Vanuatu': '🇻🇺   Vanuatu',
-    'Vatican City': '🇻🇦   Vatican City',
-    'Venezuela': '🇻🇪   Venezuela',
-    'Vietnam': '🇻🇳   Vietnam',
-    'Yemen': '🇾🇪   Yemen',
-    'Zambia': '🇿🇲   Zambia',
-    'Zimbabwe': '🇿🇼   Zimbabwe',
+    'Afghanistan': 'ðŸ‡¦ðŸ‡«   Afghanistan',
+    'Albania': 'ðŸ‡¦ðŸ‡±   Albania',
+    'Algeria': 'ðŸ‡©ðŸ‡¿   Algeria',
+    'Andorra': 'ðŸ‡¦ðŸ‡©   Andorra',
+    'Angola': 'ðŸ‡¦ðŸ‡´   Angola',
+    'Argentina': 'ðŸ‡¦ðŸ‡·   Argentina',
+    'Armenia': 'ðŸ‡¦ðŸ‡²   Armenia',
+    'Australia': 'ðŸ‡¦ðŸ‡º   Australia',
+    'Austria': 'ðŸ‡¦ðŸ‡¹   Austria',
+    'Azerbaijan': 'ðŸ‡¦ðŸ‡¿   Azerbaijan',
+    'Bahamas': 'ðŸ‡§ðŸ‡¸   Bahamas',
+    'Bahrain': 'ðŸ‡§ðŸ‡­   Bahrain',
+    'Bangladesh': 'ðŸ‡§ðŸ‡©   Bangladesh',
+    'Barbados': 'ðŸ‡§ðŸ‡§   Barbados',
+    'Belarus': 'ðŸ‡§ðŸ‡¾   Belarus',
+    'Belgium': 'ðŸ‡§ðŸ‡ª   Belgium',
+    'Belize': 'ðŸ‡§ðŸ‡¿   Belize',
+    'Benin': 'ðŸ‡§ðŸ‡¯   Benin',
+    'Bhutan': 'ðŸ‡§ðŸ‡¹   Bhutan',
+    'Bolivia': 'ðŸ‡§ðŸ‡´   Bolivia',
+    'Bosnia and Herzegovina': 'ðŸ‡§ðŸ‡¦   Bosnia and Herzegovina',
+    'Botswana': 'ðŸ‡§ðŸ‡¼   Botswana',
+    'Brazil': 'ðŸ‡§ðŸ‡·   Brazil',
+    'Brunei': 'ðŸ‡§ðŸ‡³   Brunei',
+    'Bulgaria': 'ðŸ‡§ðŸ‡¬   Bulgaria',
+    'Burkina Faso': 'ðŸ‡§ðŸ‡«   Burkina Faso',
+    'Burundi': 'ðŸ‡§ðŸ‡®   Burundi',
+    'Cambodia': 'ðŸ‡°ðŸ‡­   Cambodia',
+    'Cameroon': 'ðŸ‡¨ðŸ‡²   Cameroon',
+    'Canada': 'ðŸ‡¨ðŸ‡¦   Canada',
+    'Cape Verde': 'ðŸ‡¨ðŸ‡»   Cape Verde',
+    'Central African Republic': 'ðŸ‡¨ðŸ‡«   Central African Republic',
+    'Chad': 'ðŸ‡¹ðŸ‡©   Chad',
+    'Chile': 'ðŸ‡¨ðŸ‡±   Chile',
+    'China': 'ðŸ‡¨ðŸ‡³   China',
+    'Colombia': 'ðŸ‡¨ðŸ‡´   Colombia',
+    'Comoros': 'ðŸ‡°ðŸ‡²   Comoros',
+    'Congo': 'ðŸ‡¨ðŸ‡¬   Congo',
+    'Costa Rica': 'ðŸ‡¨ðŸ‡·   Costa Rica',
+    'Croatia': 'ðŸ‡­ðŸ‡·   Croatia',
+    'Cuba': 'ðŸ‡¨ðŸ‡º   Cuba',
+    'Cyprus': 'ðŸ‡¨ðŸ‡¾   Cyprus',
+    'Czech Republic': 'ðŸ‡¨ðŸ‡¿   Czech Republic',
+    'Denmark': 'ðŸ‡©ðŸ‡°   Denmark',
+    'Djibouti': 'ðŸ‡©ðŸ‡¯   Djibouti',
+    'Dominica': 'ðŸ‡©ðŸ‡²   Dominica',
+    'Dominican Republic': 'ðŸ‡©ðŸ‡´   Dominican Republic',
+    'Ecuador': 'ðŸ‡ªðŸ‡¨   Ecuador',
+    'Egypt': 'ðŸ‡ªðŸ‡¬   Egypt',
+    'El Salvador': 'ðŸ‡¸ðŸ‡»   El Salvador',
+    'Equatorial Guinea': 'ðŸ‡¬ðŸ‡¶   Equatorial Guinea',
+    'Eritrea': 'ðŸ‡ªðŸ‡·   Eritrea',
+    'Estonia': 'ðŸ‡ªðŸ‡ª   Estonia',
+    'Ethiopia': 'ðŸ‡ªðŸ‡¹   Ethiopia',
+    'Fiji': 'ðŸ‡«ðŸ‡¯   Fiji',
+    'Finland': 'ðŸ‡«ðŸ‡®   Finland',
+    'France': 'ðŸ‡«ðŸ‡·   France',
+    'Gabon': 'ðŸ‡¬ðŸ‡¦   Gabon',
+    'Gambia': 'ðŸ‡¬ðŸ‡²   Gambia',
+    'Georgia': 'ðŸ‡¬ðŸ‡ª   Georgia',
+    'Germany': 'ðŸ‡©ðŸ‡ª   Germany',
+    'Ghana': 'ðŸ‡¬ðŸ‡­   Ghana',
+    'Greece': 'ðŸ‡¬ðŸ‡·   Greece',
+    'Grenada': 'ðŸ‡¬ðŸ‡©   Grenada',
+    'Guatemala': 'ðŸ‡¬ðŸ‡¹   Guatemala',
+    'Guinea': 'ðŸ‡¬ðŸ‡³   Guinea',
+    'Guinea-Bissau': 'ðŸ‡¬ðŸ‡¼   Guinea-Bissau',
+    'Guyana': 'ðŸ‡¬ðŸ‡¾   Guyana',
+    'Haiti': 'ðŸ‡­ðŸ‡¹   Haiti',
+    'Honduras': 'ðŸ‡­ðŸ‡³   Honduras',
+    'Hungary': 'ðŸ‡­ðŸ‡º   Hungary',
+    'Iceland': 'ðŸ‡®ðŸ‡¸   Iceland',
+    'India': 'ðŸ‡®ðŸ‡³   India',
+    'Indonesia': 'ðŸ‡®ðŸ‡©   Indonesia',
+    'Iran': 'ðŸ‡®ðŸ‡·   Iran',
+    'Iraq': 'ðŸ‡®ðŸ‡¶   Iraq',
+    'Ireland': 'ðŸ‡®ðŸ‡ª   Ireland',
+    'Israel': 'ðŸ‡®ðŸ‡±   Israel',
+    'Italy': 'ðŸ‡®ðŸ‡¹   Italy',
+    'Jamaica': 'ðŸ‡¯ðŸ‡²   Jamaica',
+    'Japan': 'ðŸ‡¯ðŸ‡µ   Japan',
+    'Jordan': 'ðŸ‡¯ðŸ‡´   Jordan',
+    'Kazakhstan': 'ðŸ‡°ðŸ‡¿   Kazakhstan',
+    'Kenya': 'ðŸ‡°ðŸ‡ª   Kenya',
+    'Kiribati': 'ðŸ‡°ðŸ‡®   Kiribati',
+    'Kuwait': 'ðŸ‡°ðŸ‡¼   Kuwait',
+    'Kyrgyzstan': 'ðŸ‡°ðŸ‡¬   Kyrgyzstan',
+    'Laos': 'ðŸ‡±ðŸ‡¦   Laos',
+    'Latvia': 'ðŸ‡±ðŸ‡»   Latvia',
+    'Lebanon': 'ðŸ‡±ðŸ‡§   Lebanon',
+    'Lesotho': 'ðŸ‡±ðŸ‡¸   Lesotho',
+    'Liberia': 'ðŸ‡±ðŸ‡·   Liberia',
+    'Libya': 'ðŸ‡±ðŸ‡¾   Libya',
+    'Liechtenstein': 'ðŸ‡±ðŸ‡®   Liechtenstein',
+    'Lithuania': 'ðŸ‡±ðŸ‡¹   Lithuania',
+    'Luxembourg': 'ðŸ‡±ðŸ‡º   Luxembourg',
+    'Macedonia': 'ðŸ‡²ðŸ‡°   Macedonia',
+    'Madagascar': 'ðŸ‡²ðŸ‡¬   Madagascar',
+    'Malawi': 'ðŸ‡²ðŸ‡¼   Malawi',
+    'Malaysia': 'ðŸ‡²ðŸ‡¾   Malaysia',
+    'Maldives': 'ðŸ‡²ðŸ‡»   Maldives',
+    'Mali': 'ðŸ‡²ðŸ‡±   Mali',
+    'Malta': 'ðŸ‡²ðŸ‡¹   Malta',
+    'Marshall Islands': 'ðŸ‡²ðŸ‡­   Marshall Islands',
+    'Mauritania': 'ðŸ‡²ðŸ‡·   Mauritania',
+    'Mauritius': 'ðŸ‡²ðŸ‡º   Mauritius',
+    'Mexico': 'ðŸ‡²ðŸ‡½   Mexico',
+    'Micronesia': 'ðŸ‡«ðŸ‡²   Micronesia',
+    'Moldova': 'ðŸ‡²ðŸ‡©   Moldova',
+    'Monaco': 'ðŸ‡²ðŸ‡¨   Monaco',
+    'Mongolia': 'ðŸ‡²ðŸ‡³   Mongolia',
+    'Montenegro': 'ðŸ‡²ðŸ‡ª   Montenegro',
+    'Morocco': 'ðŸ‡²ðŸ‡¦   Morocco',
+    'Mozambique': 'ðŸ‡²ðŸ‡¿   Mozambique',
+    'Myanmar': 'ðŸ‡²ðŸ‡²   Myanmar',
+    'Namibia': 'ðŸ‡³ðŸ‡¦   Namibia',
+    'Nauru': 'ðŸ‡³ðŸ‡·   Nauru',
+    'Nepal': 'ðŸ‡³ðŸ‡µ   Nepal',
+    'Netherlands': 'ðŸ‡³ðŸ‡±   Netherlands',
+    'New Zealand': 'ðŸ‡³ðŸ‡¿   New Zealand',
+    'Nicaragua': 'ðŸ‡³ðŸ‡®   Nicaragua',
+    'Niger': 'ðŸ‡³ðŸ‡ª   Niger',
+    'Nigeria': 'ðŸ‡³ðŸ‡¬   Nigeria',
+    'North Korea': 'ðŸ‡°ðŸ‡µ   North Korea',
+    'Norway': 'ðŸ‡³ðŸ‡´   Norway',
+    'Oman': 'ðŸ‡´ðŸ‡²   Oman',
+    'Pakistan': 'ðŸ‡µðŸ‡°   Pakistan',
+    'Palau': 'ðŸ‡µðŸ‡¼   Palau',
+    'Panama': 'ðŸ‡µðŸ‡¦   Panama',
+    'Papua New Guinea': 'ðŸ‡µðŸ‡¬   Papua New Guinea',
+    'Paraguay': 'ðŸ‡µðŸ‡¾   Paraguay',
+    'Peru': 'ðŸ‡µðŸ‡ª   Peru',
+    'Philippines': 'ðŸ‡µðŸ‡­   Philippines',
+    'Poland': 'ðŸ‡µðŸ‡±   Poland',
+    'Portugal': 'ðŸ‡µðŸ‡¹   Portugal',
+    'Qatar': 'ðŸ‡¶ðŸ‡¦   Qatar',
+    'Romania': 'ðŸ‡·ðŸ‡´   Romania',
+    'Russia': 'ðŸ‡·ðŸ‡º   Russia',
+    'Rwanda': 'ðŸ‡·ðŸ‡¼   Rwanda',
+    'Samoa': 'ðŸ‡¼ðŸ‡¸   Samoa',
+    'San Marino': 'ðŸ‡¸ðŸ‡²   San Marino',
+    'Saudi Arabia': 'ðŸ‡¸ðŸ‡¦   Saudi Arabia',
+    'Senegal': 'ðŸ‡¸ðŸ‡³   Senegal',
+    'Serbia': 'ðŸ‡·ðŸ‡¸   Serbia',
+    'Seychelles': 'ðŸ‡¸ðŸ‡¨   Seychelles',
+    'Sierra Leone': 'ðŸ‡¸ðŸ‡±   Sierra Leone',
+    'Singapore': 'ðŸ‡¸ðŸ‡¬   Singapore',
+    'Slovakia': 'ðŸ‡¸ðŸ‡°   Slovakia',
+    'Slovenia': 'ðŸ‡¸ðŸ‡®   Slovenia',
+    'Solomon Islands': 'ðŸ‡¸ðŸ‡§   Solomon Islands',
+    'Somalia': 'ðŸ‡¸ðŸ‡´   Somalia',
+    'South Africa': 'ðŸ‡¿ðŸ‡¦   South Africa',
+    'South Korea': 'ðŸ‡°ðŸ‡·   South Korea',
+    'South Sudan': 'ðŸ‡¸ðŸ‡¸   South Sudan',
+    'Spain': 'ðŸ‡ªðŸ‡¸   Spain',
+    'Sri Lanka': 'ðŸ‡±ðŸ‡°   Sri Lanka',
+    'Sudan': 'ðŸ‡¸ðŸ‡©   Sudan',
+    'Suriname': 'ðŸ‡¸ðŸ‡·   Suriname',
+    'Swaziland': 'ðŸ‡¸ðŸ‡¿   Swaziland',
+    'Sweden': 'ðŸ‡¸ðŸ‡ª   Sweden',
+    'Switzerland': 'ðŸ‡¨ðŸ‡­   Switzerland',
+    'Syria': 'ðŸ‡¸ðŸ‡¾   Syria',
+    'Taiwan': 'ðŸ‡¹ðŸ‡¼   Taiwan',
+    'Tajikistan': 'ðŸ‡¹ðŸ‡¯   Tajikistan',
+    'Tanzania': 'ðŸ‡¹ðŸ‡¿   Tanzania',
+    'Thailand': 'ðŸ‡¹ðŸ‡­   Thailand',
+    'Togo': 'ðŸ‡¹ðŸ‡¬   Togo',
+    'Tonga': 'ðŸ‡¹ðŸ‡´   Tonga',
+    'Trinidad and Tobago': 'ðŸ‡¹ðŸ‡¹   Trinidad and Tobago',
+    'Tunisia': 'ðŸ‡¹ðŸ‡³   Tunisia',
+    'Turkey': 'ðŸ‡¹ðŸ‡·   Turkey',
+    'Turkmenistan': 'ðŸ‡¹ðŸ‡²   Turkmenistan',
+    'Tuvalu': 'ðŸ‡¹ðŸ‡»   Tuvalu',
+    'Uganda': 'ðŸ‡ºðŸ‡¬   Uganda',
+    'Ukraine': 'ðŸ‡ºðŸ‡¦   Ukraine',
+    'United Arab Emirates': 'ðŸ‡¦ðŸ‡ª   United Arab Emirates',
+    'United Kingdom': 'ðŸ‡¬ðŸ‡§   United Kingdom',
+    'United States': 'ðŸ‡ºðŸ‡¸   United States',
+    'Uruguay': 'ðŸ‡ºðŸ‡¾   Uruguay',
+    'Uzbekistan': 'ðŸ‡ºðŸ‡¿   Uzbekistan',
+    'Vanuatu': 'ðŸ‡»ðŸ‡º   Vanuatu',
+    'Vatican City': 'ðŸ‡»ðŸ‡¦   Vatican City',
+    'Venezuela': 'ðŸ‡»ðŸ‡ª   Venezuela',
+    'Vietnam': 'ðŸ‡»ðŸ‡³   Vietnam',
+    'Yemen': 'ðŸ‡¾ðŸ‡ª   Yemen',
+    'Zambia': 'ðŸ‡¿ðŸ‡²   Zambia',
+    'Zimbabwe': 'ðŸ‡¿ðŸ‡¼   Zimbabwe',
   };
   return countryToEmoji[countryName] ?? countryName;
 }
