@@ -2482,22 +2482,23 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _buildTextField('Name', _nameController),
-                    _buildTextField('Headline', _headlineController),
+                    _buildTextField('Name', _nameController, hintText: 'Enter your full name'),
+                    _buildTextField('Headline', _headlineController, hintText: 'e.g. VP Engineering at Stripe'),
                     _buildTextField(
                       'Bio / Description',
                       _bioController,
                       maxLines: 3,
+                      hintText: 'Tell us about yourself…',
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _buildTextField('Company', _companyController),
+                          child: _buildTextField('Company', _companyController, hintText: 'e.g. Google, Stripe'),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _buildTextField('Role', _roleController),
+                          child: _buildTextField('Role', _roleController, hintText: 'e.g. Software Engineer'),
                         ),
                       ],
                     ),
@@ -2515,6 +2516,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                                 ? _buildTextField(
                                     'Custom Industry',
                                     _industryController,
+                                    hintText: 'e.g. BioTech',
                                   )
                                 : null,
                           ),
@@ -2524,6 +2526,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           child: _buildTextField(
                             'Experience',
                             _experienceController,
+                            hintText: 'e.g. 5 years',
                           ),
                         ),
                       ],
@@ -2533,6 +2536,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     _buildTextField(
                       'LinkedIn Profile URL',
                       _linkedinUrlController,
+                      hintText: 'https://linkedin.com/in/yourprofile',
                     ),
                     const SizedBox(height: 12),
 
@@ -2784,10 +2788,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          _buildTextField('Company', _newCompanyController),
+                          _buildTextField('Company', _newCompanyController, hintText: 'e.g. Google, Stripe'),
                           _buildTextField(
                             'Role / Job Title',
                             _newRoleController,
+                            hintText: 'e.g. Software Engineer',
                           ),
                           // Employment Type Dropdown
                           Padding(
@@ -2858,11 +2863,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               },
                             ),
                           ),
-                          _buildTextField('Location', _newLocationController),
+                          _buildTextField('Location', _newLocationController, hintText: 'e.g. San Francisco, CA'),
                           _buildTextField(
                             'Description',
                             _newDescController,
                             maxLines: 2,
+                            hintText: 'Describe your key accomplishments…',
                           ),
                           const SizedBox(height: 8),
                           SizedBox(
@@ -3007,10 +3013,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           _buildTextField(
                             'Degree / Course',
                             _newDegreeController,
+                            hintText: 'e.g. B.S. in Computer Science',
                           ),
                           _buildTextField(
                             'School / University',
                             _newSchoolController,
+                            hintText: 'e.g. Stanford University',
                           ),
                           const SizedBox(height: 8),
                           SizedBox(
@@ -3097,6 +3105,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                           child: _buildTextField(
                             'Add Skill',
                             _newSkillController,
+                            hintText: 'Type a skill…',
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -3145,6 +3154,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     bool readOnly = false,
     VoidCallback? onTap,
     Widget? suffixIcon,
+    String? hintText,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -3173,6 +3183,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
               color: Color(0xFF3E1F11),
             ),
             decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 14,
+                color: const Color(0xFF3E1F11).withValues(alpha: 0.35),
+              ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -3345,6 +3361,7 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
     String value,
     Function(String) onChanged, {
     int maxLines = 1,
+    String? hintText,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -3371,6 +3388,12 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
               color: Color(0xFF3E1F11),
             ),
             decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                color: const Color(0xFF3E1F11).withValues(alpha: 0.35),
+              ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -3608,13 +3631,14 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               val,
                             ) {
                               item['company'] = val;
-                            }),
+                            }, hintText: 'Enter company name'),
                             _buildField(
                               'Job Title / Role',
                               item['role'] ?? '',
                               (val) {
                                 item['role'] = val;
                               },
+                              hintText: 'e.g. Software Engineer',
                             ),
                             _buildField(
                               'Employment Type',
@@ -3622,12 +3646,13 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               (val) {
                                 item['employmentType'] = val;
                               },
+                              hintText: 'e.g. Full-time, Contract',
                             ),
                             _buildField('Location', item['location'] ?? '', (
                               val,
                             ) {
                               item['location'] = val;
-                            }),
+                            }, hintText: 'e.g. San Francisco, CA'),
                             _buildField(
                               'Description',
                               item['description'] ?? '',
@@ -3635,6 +3660,7 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                                 item['description'] = val;
                               },
                               maxLines: 2,
+                              hintText: 'Describe your key accomplishments…',
                             ),
                           ],
                         ),
@@ -3716,6 +3742,7 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               (val) {
                                 item['degree'] = val;
                               },
+                              hintText: 'e.g. B.S. in Computer Science',
                             ),
                             _buildField(
                               'School / Institution',
@@ -3723,12 +3750,13 @@ class _ResumePreviewDialogState extends State<_ResumePreviewDialog> {
                               (val) {
                                 item['school'] = val;
                               },
+                              hintText: 'e.g. Stanford University',
                             ),
                             _buildField('Duration', item['duration'] ?? '', (
                               val,
                             ) {
                               item['duration'] = val;
-                            }),
+                            }, hintText: 'e.g. 2020 - 2024'),
                           ],
                         ),
                       );
