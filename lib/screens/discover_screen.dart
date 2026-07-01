@@ -46,6 +46,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   void initState() {
     super.initState();
     _cardIndex = _state.activeCandidateIndex;
+    // Listen for state-manager notifications so we rebuild when
+    // loadCandidates() finishes and populates _state.candidates.
+    _state.addListener(_onStateChanged);
     _state.loadCandidates();
     _searchQuery.addListener(() {
       if (mounted) {
@@ -56,8 +59,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     });
   }
 
+  /// Called whenever AppStateManager.notifyListeners() fires (e.g. after
+  /// loadCandidates completes). Triggers a rebuild so filteredCandidates
+  /// reflects the newly loaded data — identical to what Reset Filters does.
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _state.removeListener(_onStateChanged);
     _connectTimer?.cancel();
     _searchQuery.dispose();
     super.dispose();
