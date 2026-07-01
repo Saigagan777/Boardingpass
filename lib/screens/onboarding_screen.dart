@@ -48,6 +48,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _profileImageUrlController =
       TextEditingController();
   final TextEditingController _linkedinUrlController = TextEditingController();
+  String _emailErrorText = '';
+  String _passwordErrorText = '';
 
 
   // Career & Education timelines state
@@ -219,6 +221,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // Add listeners for real-time progress update
     _nameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
+    _emailController.addListener(_onEmailChanged);
+    _passwordController.addListener(_onPasswordChanged);
     _profileImageUrlController.addListener(_onFieldChanged);
     _linkedinUrlController.addListener(_onFieldChanged);
     _roleController.addListener(_onFieldChanged);
@@ -234,6 +238,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void dispose() {
     _nameController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onFieldChanged);
+    _emailController.removeListener(_onEmailChanged);
+    _passwordController.removeListener(_onPasswordChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
     _linkedinUrlController.removeListener(_onFieldChanged);
     _roleController.removeListener(_onFieldChanged);
@@ -338,6 +344,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+  }
+
   void _handleEmailSignIn() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
@@ -346,6 +356,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter both email and password'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address'),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -441,7 +461,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _handleEmailSignUp() async {
     final email = _emailController.text.trim();
+    if (!_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
     final password = _passwordController.text;
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password must be at least 6 characters.'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
     final name = _nameController.text.trim();
     final headline = _headlineController.text.trim();
     final company = _companyController.text.trim();
@@ -704,6 +744,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  void _onEmailChanged() {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      _emailErrorText = '';
+    } else if (!_isValidEmail(email)) {
+      _emailErrorText = 'Please enter a valid email address';
+    } else {
+      _emailErrorText = '';
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _onPasswordChanged() {
+    final password = _passwordController.text;
+    if (password.isEmpty) {
+      _passwordErrorText = '';
+    } else if (password.length < 6) {
+      _passwordErrorText = 'Password must be at least 6 characters';
+    } else {
+      _passwordErrorText = '';
+    }
+    if (mounted) setState(() {});
+  }
+
   double _calculateCompletionPercentage() {
     int total = 0;
     int completed = 0;
@@ -940,6 +1004,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             hintText: 'e.g. rohan@example.com',
             keyboardType: TextInputType.emailAddress,
           ),
+          if (_emailErrorText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                _emailErrorText,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFC62828),
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           _buildTextField(
             controller: _passwordController,
@@ -1080,6 +1156,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             hintText: 'e.g. rohan@example.com',
             keyboardType: TextInputType.emailAddress,
           ),
+          if (_emailErrorText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                _emailErrorText,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFC62828),
+                ),
+              ),
+            ),
           const SizedBox(height: 16),
           _buildTextField(
             controller: _passwordController,
@@ -1088,6 +1176,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             obscureText: _obscurePassword,
             isPassword: true,
           ),
+          if (_passwordErrorText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                _passwordErrorText,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFC62828),
+                ),
+              ),
+            ),
           const SizedBox(height: 24),
 
           // Profile Image Picker Section

@@ -1103,8 +1103,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool obscureNew = true;
     bool obscureCurrent = true;
     bool obscureConfirm = true;
+    String newPassError = '';
+    String confirmPassError = '';
 
     await showDialog(
+
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => StatefulBuilder(
@@ -1201,7 +1204,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPressed: () => setDialogState(() => obscureNew = !obscureNew),
                       ),
                     ),
+                    onChanged: (_) {
+                      final p = newPasswordCtrl.text;
+                      if (p.isEmpty) {
+                        newPassError = '';
+                      } else if (p.length < 6) {
+                        newPassError = 'Must be at least 6 characters';
+                      } else {
+                        newPassError = '';
+                      }
+                      setDialogState(() {});
+                    },
                   ),
+                  if (newPassError.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, left: 4),
+                      child: Text(
+                        newPassError,
+                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFFC62828)),
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: confirmPasswordCtrl,
@@ -1219,7 +1241,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
                       ),
                     ),
+                    onChanged: (_) {
+                      final p = confirmPasswordCtrl.text;
+                      if (p.isEmpty) {
+                        confirmPassError = '';
+                      } else if (newPasswordCtrl.text.isNotEmpty && p != newPasswordCtrl.text) {
+                        confirmPassError = 'Passwords do not match';
+                      } else {
+                        confirmPassError = '';
+                      }
+                      setDialogState(() {});
+                    },
                   ),
+                  if (confirmPassError.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2, left: 4),
+                      child: Text(
+                        confirmPassError,
+                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFFC62828)),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1239,11 +1280,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final newPass = newPasswordCtrl.text.trim();
                   final confirmPass = confirmPasswordCtrl.text.trim();
                   if (newPass.length < 6) {
-                    messenger.showSnackBar(const SnackBar(content: Text('Password must be at least 6 characters.')));
+                    newPassError = 'Must be at least 6 characters';
+                    setDialogState(() {});
                     return;
                   }
                   if (newPass != confirmPass) {
-                    messenger.showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
+                    confirmPassError = 'Passwords do not match';
+                    setDialogState(() {});
                     return;
                   }
                   Navigator.of(dialogCtx).pop();
