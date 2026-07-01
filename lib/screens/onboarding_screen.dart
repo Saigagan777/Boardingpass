@@ -672,17 +672,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  Widget _buildIndicatorDot({required bool isActive}) {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isActive ? const Color(0xFFB06F4D) : const Color(0xFFE8E2DD),
-      ),
-    );
-  }
-
   void _onFieldChanged() {
     if (mounted) {
       setState(() {});
@@ -2169,24 +2158,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isSmallScreen = screenHeight < 700;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAF7F5),
       body: Stack(
         children: [
+          // Subtle warm gradient background
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFFFF8F4),
+                    Color(0xFFFAF7F5),
+                    Color(0xFFF5EDE6),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: screenWidth * 0.08,
-                vertical: screenHeight * 0.03,
+                horizontal: screenWidth * 0.06,
+                vertical: isSmallScreen ? screenHeight * 0.02 : screenHeight * 0.03,
               ),
               child: _currentView == OnboardingView.slides
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Header text
-                        const AppLogo(size: 28),
-                        SizedBox(height: screenHeight * 0.015),
+                        // Header logo
+                        const AppLogo(size: 26),
+                        SizedBox(height: isSmallScreen ? screenHeight * 0.01 : screenHeight * 0.015),
 
                         // PageView for onboarding slides
                         Expanded(
@@ -2221,60 +2228,79 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             },
                           ),
                         ),
-                        SizedBox(height: screenHeight * 0.02),
+                        SizedBox(height: isSmallScreen ? 8 : 16),
 
                         // Bottom control bar
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // Dot indicators
+                            // Pill-style dot indicators
                             Row(
                               children: List.generate(
                                 _onboardingData.length,
-                                (index) => Padding(
-                                  padding: const EdgeInsets.only(right: 6.0),
-                                  child: _buildIndicatorDot(
-                                    isActive: _currentIndex == index,
+                                (index) => AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeInOut,
+                                  margin: const EdgeInsets.only(right: 5),
+                                  height: 6,
+                                  width: _currentIndex == index ? 20 : 6,
+                                  decoration: BoxDecoration(
+                                    color: _currentIndex == index
+                                        ? const Color(0xFF7A432D)
+                                        : const Color(0xFFD5C4BB),
+                                    borderRadius: BorderRadius.circular(3),
                                   ),
                                 ),
                               ),
                             ),
 
-                            // Next Button
+                            // Next / Skip buttons
                             if (_currentIndex < _onboardingData.length - 1)
                               Row(
                                 children: [
-                                  TextButton(
-                                    onPressed: () {
+                                  GestureDetector(
+                                    onTap: () {
                                       _pageController.jumpToPage(
                                         _onboardingData.length - 1,
                                       );
                                     },
-                                    child: const Text(
-                                      'Skip',
-                                      style: TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF8C736B),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                      child: Text(
+                                        'Skip',
+                                        style: TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF8C736B),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
+                                  const SizedBox(width: 10),
+                                  GestureDetector(
                                     onTap: () {
                                       _pageController.nextPage(
-                                        duration: const Duration(
-                                          milliseconds: 300,
-                                        ),
+                                        duration: const Duration(milliseconds: 350),
                                         curve: Curves.easeInOut,
                                       );
                                     },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Padding(
+                                    child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF7A432D),
+                                        borderRadius: BorderRadius.circular(28),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF7A432D).withValues(alpha: 0.30),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -2283,16 +2309,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                             'Next',
                                             style: TextStyle(
                                               fontFamily: 'PlusJakartaSans',
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w600,
-                                              color: Color(0xFF3E1F11),
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
                                             ),
                                           ),
-                                          SizedBox(width: 8),
+                                          SizedBox(width: 6),
                                           Icon(
                                             Icons.arrow_forward_rounded,
-                                            color: Color(0xFF3E1F11),
-                                            size: 20,
+                                            color: Colors.white,
+                                            size: 16,
                                           ),
                                         ],
                                       ),
@@ -2313,42 +2339,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           // Loading Overlay during Sign In
           if (_isLoading)
             Container(
-              color: Colors.black.withValues(alpha: 0.4),
+              color: Colors.black.withValues(alpha: 0.45),
               child: Center(
-                child: Card(
-                  color: const Color(0xFFFAF7F5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(
-                      color: Color(0xFF7A432D),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF7F5),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: const Color(0xFF7A432D).withValues(alpha: 0.3),
                       width: 1.5,
                     ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 24,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF7A432D),
-                          ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                        strokeWidth: 2.5,
+                      ),
+                      SizedBox(height: 18),
+                      Text(
+                        'Processing...',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF3E1F11),
                         ),
-                        SizedBox(height: 16),
-                        Text(
-                          'Processing...',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF3E1F11),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2383,67 +2410,119 @@ class OnboardingPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isSmallScreen = screenHeight < 700;
+    final double titleSize = screenHeight < 640
+        ? 26.0
+        : screenHeight < 700
+            ? 30.0
+            : 36.0;
+    final double imageRatio = isSmallScreen ? 0.27 : 0.32;
+
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Illustration image
-          SizedBox(
-            height: screenHeight * 0.35,
-            child: Center(child: Image.asset(imagePath, fit: BoxFit.contain)),
-          ),
-          SizedBox(height: screenHeight * 0.03),
-
-          // Title Header
-          Text(
-            title,
-            style: const TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 40,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF3E1F11),
-              height: 1.15,
+          // Illustration image with subtle drop shadow card
+          Container(
+            height: screenHeight * imageRatio,
+            margin: EdgeInsets.only(bottom: screenHeight * 0.025),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              color: const Color(0xFFFFF5EE),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Image.asset(
+                    imagePath,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
             ),
           ),
-          SizedBox(height: screenHeight * 0.015),
 
-          // Subtitle
+          // Title Header — responsive font size
+          Text(
+            title,
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontSize: titleSize,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF3E1F11),
+              height: 1.2,
+              letterSpacing: -0.5,
+            ),
+          ),
+          SizedBox(height: screenHeight * 0.012),
+
+          // Subtitle with better line-height
           Text(
             subtitle,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'PlusJakartaSans',
-              fontSize: 16,
-              color: Color(0xFF5C473E),
-              height: 1.5,
+              fontSize: isSmallScreen ? 14 : 15,
+              color: const Color(0xFF6B5148),
+              height: 1.6,
               fontWeight: FontWeight.w400,
             ),
           ),
 
           // Final Page Sign In/Up options
           if (isFinalPage) ...[
-            SizedBox(height: screenHeight * 0.03),
+            SizedBox(height: isSmallScreen ? screenHeight * 0.025 : screenHeight * 0.035),
             _buildLinkedInButton(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Row(
               children: [
-                Expanded(child: Divider(color: const Color(0xFFE8E2DD))),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFFAF7F5), Color(0xFFD5C4BB)],
+                      ),
+                    ),
+                  ),
+                ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  padding: EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                     'OR',
                     style: TextStyle(
                       fontFamily: 'PlusJakartaSans',
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF8C736B),
+                      letterSpacing: 1.5,
                     ),
                   ),
                 ),
-                Expanded(child: Divider(color: const Color(0xFFE8E2DD))),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFD5C4BB), Color(0xFFFAF7F5)],
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _buildEmailButtons(),
+            const SizedBox(height: 8),
           ],
         ],
       ),
@@ -2453,17 +2532,24 @@ class OnboardingPage extends StatelessWidget {
   Widget _buildLinkedInButton() {
     return Container(
       width: double.infinity,
-      height: 52,
+      height: 54,
       decoration: BoxDecoration(
         color: const Color(0xFF7A432D),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7A432D).withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         onPressed: onLinkedInTap,
@@ -2474,7 +2560,7 @@ class OnboardingPage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(4),
               ),
               child: const Text(
                 'in',
@@ -2509,38 +2595,56 @@ class OnboardingPage extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           height: 52,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFAF7F5),
-              elevation: 0,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
             onPressed: onSignUpEmailTap,
-            child: const Text(
-              'Sign Up with Email',
-              style: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF7A432D),
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                Icon(Icons.mail_outline_rounded, color: Color(0xFF7A432D), size: 18),
+                SizedBox(width: 10),
+                Text(
+                  'Sign Up with Email',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF7A432D),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        TextButton(
-          onPressed: onSignInEmailTap,
-          child: const Text(
-            'Already have an account? Sign In',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF7A432D),
-              decoration: TextDecoration.underline,
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: onSignInEmailTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: RichText(
+              text: const TextSpan(
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 14,
+                  color: Color(0xFF8C736B),
+                ),
+                children: [
+                  TextSpan(text: 'Already have an account? '),
+                  TextSpan(
+                    text: 'Sign In',
+                    style: TextStyle(
+                      color: Color(0xFF7A432D),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

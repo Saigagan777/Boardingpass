@@ -2325,12 +2325,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                     Row(
                                       children: [
-                                        Text(
-                                          "$role · $org",
-                                          style: const TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10,
-                                            color: Color(0xFF8C736B),
+                                        Flexible(
+                                          child: Text(
+                                            "$role · $org",
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontFamily: 'PlusJakartaSans',
+                                              fontSize: 10,
+                                              color: Color(0xFF8C736B),
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(width: 4),

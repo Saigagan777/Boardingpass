@@ -824,10 +824,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8E2DD),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF7A432D).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF7A432D).withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -838,16 +842,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               fontFamily: 'PlusJakartaSans',
               fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+              color: Color(0xFF7A432D),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           GestureDetector(
             onTap: onClear,
             child: const Icon(
               Icons.close_rounded,
-              size: 14,
-              color: Color(0xFF3E1F11),
+              size: 13,
+              color: Color(0xFF7A432D),
             ),
           ),
         ],
@@ -1477,9 +1481,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     final filteredCount = filtered.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF7F5),
+      backgroundColor: const Color(0xFFF5EFE9),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFAF7F5),
+        backgroundColor: const Color(0xFFF5EFE9),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF3E1F11)),
@@ -1550,14 +1554,21 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Container(
-                    height: 44,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: const Color(0xFFE8E2DD),
-                        width: 1,
+                        color: const Color(0xFFE0D4CB),
+                        width: 1.2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF7A432D).withValues(alpha: 0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: TextField(
                       controller: _searchQuery,
@@ -1566,16 +1577,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         hintStyle: const TextStyle(
                           fontFamily: 'PlusJakartaSans',
                           fontSize: 13,
-                          color: Color(0xFF8C736B),
+                          color: Color(0xFFAA9488),
                         ),
                         prefixIcon: const Icon(
                           Icons.search_rounded,
                           color: Color(0xFF8C736B),
-                          size: 18,
+                          size: 20,
                         ),
                         suffixIcon: _searchQuery.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 16),
+                                icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF8C736B)),
                                 onPressed: () {
                                   _searchQuery.clear();
                                 },
@@ -1583,7 +1594,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10,
+                          vertical: 12,
                         ),
                       ),
                       style: const TextStyle(
@@ -1798,8 +1809,18 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                 // Button controls (only visible if filtered list is not empty)
                 if (filteredCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24, top: 12),
+                  Container(
+                    padding: const EdgeInsets.only(bottom: 20, top: 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFFF5EFE9).withValues(alpha: 0),
+                          const Color(0xFFF5EFE9),
+                        ],
+                      ),
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1808,24 +1829,24 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           icon: Icons.close,
                           iconColor: const Color(0xFF8C736B),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE8E2DD),
-                          size: 56,
+                          borderColor: const Color(0xFFE0D4CB),
+                          size: 58,
                           onPressed: () => _swipeLeft(filtered),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 20),
 
                         // Handshake/Connect Button
                         Container(
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: LinearGradient(
+                            gradient: const LinearGradient(
                               colors: [Color(0xFF7A432D), Color(0xFFB06F4D)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 8,
-                                offset: Offset(0, 3),
+                                color: const Color(0xFF7A432D).withValues(alpha: 0.4),
+                                blurRadius: 16,
+                                offset: const Offset(0, 5),
                               ),
                             ],
                           ),
@@ -1834,19 +1855,19 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             iconColor: Colors.white,
                             backgroundColor: Colors.transparent,
                             borderColor: Colors.transparent,
-                            size: 68,
+                            size: 70,
                             onPressed: () => _swipeUp(filtered),
                           ),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 20),
 
                         // Star Button (Favorite)
                         _buildRoundButton(
                           icon: Icons.star_rounded,
                           iconColor: const Color(0xFFB06F4D),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE8E2DD),
-                          size: 56,
+                          borderColor: const Color(0xFFE0D4CB),
+                          size: 58,
                           onPressed: () => _swipeRight(filtered),
                         ),
                       ],

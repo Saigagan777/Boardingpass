@@ -510,10 +510,11 @@ class _HubScreenState extends State<HubScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
+            Color(0xFFFFF8F4),
             Color(0xFFFAF7F5),
-            Color(0xFFFAF7F5),
-            Color(0xFFE8E2DD),
+            Color(0xFFEFE8E3),
           ],
+          stops: [0.0, 0.5, 1.0],
         ),
       ),
       child: SafeArea(
@@ -535,18 +536,25 @@ class _HubScreenState extends State<HubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const AppLogo(size: 22),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'ACTIVITY HUB',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2.5,
-                            color: Color(0xFF8C736B),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'ACTIVITY HUB',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2.5,
+                              color: Color(0xFF7A432D),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
                         Text(
                           '${_getGreeting()}, $userName',
                           style: TextStyle(
@@ -609,25 +617,32 @@ class _HubScreenState extends State<HubScreen> {
                           _state.currentScreen = AppScreen.profile;
                         },
                         child: Container(
-                          width: 44,
-                          height: 44,
+                          width: 46,
+                          height: 46,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0xFFE8E2DD),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFFFFE8D6),
+                                Color(0xFFE8D5C4),
+                              ],
+                            ),
                             boxShadow: const [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 4,
-                                offset: Offset(0, 2),
+                                color: Color(0x22000000),
+                                blurRadius: 8,
+                                offset: Offset(0, 3),
                               )
                             ],
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(color: Colors.white, width: 2.5),
                           ),
                           child: ClipOval(
                             child: buildProfileImage(
                               _state.profileData?['picture'] ?? '',
-                              width: 44,
-                              height: 44,
+                              width: 46,
+                              height: 46,
                               fit: BoxFit.cover,
                               fallback: Center(
                                 child: Text(
@@ -892,17 +907,17 @@ class _HubScreenState extends State<HubScreen> {
 
             // Ad / Notifications Carousel
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.06),
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
               child: _buildAdNotifCarousel(),
             ),
 
-            SizedBox(height: screenHeight < 650 ? 4 : 12),
+            SizedBox(height: screenHeight < 650 ? 4 : 10),
 
             // Location Strip
             Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: screenWidth * 0.06,
-                vertical: screenHeight < 650 ? screenHeight * 0.008 : screenHeight * 0.02,
+                horizontal: screenWidth * 0.05,
+                vertical: screenHeight < 650 ? screenHeight * 0.006 : screenHeight * 0.015,
               ),
               child: GestureDetector(
                 onTap: () {
@@ -910,68 +925,91 @@ class _HubScreenState extends State<HubScreen> {
                 },
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFFAF0E6), width: 1.5),
+                    gradient: const LinearGradient(
+                      colors: [Colors.white, Color(0xFFFFF8F2)],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFEDD8C4), width: 1.5),
                     boxShadow: const [
                       BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 8,
-                        offset: Offset(0, 2),
+                        color: Color(0x10000000),
+                        blurRadius: 12,
+                        offset: Offset(0, 3),
                       )
                     ],
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Color(0xFFFDF1E6),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.location_on,
-                              color: Color(0xFF7A432D),
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'LIVE CONTEXT',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF8C736B),
-                                  letterSpacing: 1.2,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [Color(0xFFFDF1E6), Color(0xFFFFE4CC)],
                                 ),
                               ),
-                              Text(
-                                liveContextText,
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF3E1F11),
-                                ),
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Color(0xFF7A432D),
+                                size: 18,
                               ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'LIVE CONTEXT',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF8C736B),
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    liveContextText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF3E1F11),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const Icon(
-                        Icons.access_time_rounded,
-                        color: Color(0xFF8C736B),
-                        size: 20,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Update',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -1158,21 +1196,33 @@ class _HubScreenState extends State<HubScreen> {
   }) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0.05, 0),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
       child: Container(
         key: ValueKey(keyVal),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFFAF0E6), width: 1.5),
-          boxShadow: const [
+          gradient: const LinearGradient(
+            colors: [Colors.white, Color(0xFFFFF8F2)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFEDD8C4), width: 1.5),
+          boxShadow: [
             BoxShadow(
-              color: Colors.black12,
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            )
+              color: const Color(0xFF7A432D).withValues(alpha: 0.10),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           children: [
             Row(

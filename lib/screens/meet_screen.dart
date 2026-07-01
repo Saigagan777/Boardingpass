@@ -1478,23 +1478,23 @@ class _MeetScreenState extends State<MeetScreen> {
                             ),
                           ],
                         ] else ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               // Reschedule (Host only)
                               if (hosts.contains(currentUid)) ...[
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF7A432D),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   ),
                                   icon: const Icon(Icons.edit_calendar, size: 16, color: Colors.white),
                                   label: const Text(
                                     'Reschedule',
                                     style: TextStyle(
                                       fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
@@ -1512,6 +1512,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                     );
                                   },
                                 ),
+                                const SizedBox(height: 10),
                               ],
 
                               // My Attendance dropdown/actions
@@ -1519,48 +1520,58 @@ class _MeetScreenState extends State<MeetScreen> {
                                 Row(
                                   children: [
                                     const Text(
-                                      'Response: ',
+                                      'Your Response:',
                                       style: TextStyle(
                                         fontFamily: 'PlusJakartaSans',
-                                        fontSize: 11,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xFF8C736B),
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    DropdownButton<String>(
-                                      value: statusMap[currentUid] as String? ?? 'pending',
-                                      dropdownColor: Colors.white,
-                                      underline: const SizedBox(),
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF3E1F11),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: const Color(0xFFE0D4CB)),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: DropdownButton<String>(
+                                          value: statusMap[currentUid] as String? ?? 'pending',
+                                          dropdownColor: Colors.white,
+                                          underline: const SizedBox(),
+                                          isExpanded: true,
+                                          style: const TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF3E1F11),
+                                          ),
+                                          items: const [
+                                            DropdownMenuItem(
+                                              value: 'pending',
+                                              child: Text('Pending', style: TextStyle(color: Colors.grey)),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'accepted',
+                                              child: Text('Accept', style: TextStyle(color: Color(0xFF2E7D32))),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'tentative',
+                                              child: Text('Tentative', style: TextStyle(color: Color(0xFFEF6C00))),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'cancelled',
+                                              child: Text('Cancel', style: TextStyle(color: Color(0xFFC62828))),
+                                            ),
+                                          ],
+                                          onChanged: (val) {
+                                            if (val != null) {
+                                              _updateMyStatus(meetingId, val, location, timeStr);
+                                            }
+                                          },
+                                        ),
                                       ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: 'pending',
-                                          child: Text('Pending', style: TextStyle(color: Colors.grey)),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'accepted',
-                                          child: Text('Accept', style: TextStyle(color: Color(0xFF2E7D32))),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'tentative',
-                                          child: Text('Tentative', style: TextStyle(color: Color(0xFFEF6C00))),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'cancelled',
-                                          child: Text('Cancel', style: TextStyle(color: Color(0xFFC62828))),
-                                        ),
-                                      ],
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          _updateMyStatus(meetingId, val, location, timeStr);
-                                        }
-                                      },
                                     ),
                                   ],
                                 ),
