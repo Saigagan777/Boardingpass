@@ -86,6 +86,13 @@ class AppStateManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _meetingInitialTab = 0;
+  int get meetingInitialTab => _meetingInitialTab;
+  set meetingInitialTab(int val) {
+    _meetingInitialTab = val;
+    notifyListeners();
+  }
+
   // Authentication State
   bool _isLoggedIn = false;
   bool _isAuthCallbackInProgress = false;

@@ -2337,22 +2337,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          width: 3,
-                                          height: 3,
-                                          decoration: const BoxDecoration(color: Color(0xFF8C736B), shape: BoxShape.circle),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          isOnline ? "Online" : "Offline",
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10,
-                                            color: isOnline ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
                                       ],
                                     ),
                                   ],

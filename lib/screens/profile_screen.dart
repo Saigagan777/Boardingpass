@@ -670,9 +670,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               InkWell(
                                 onTap: () {
                                   final url = profile.linkedinProfileUrl;
+                                  final bool isLinkedInSynced = profile.linkedinSynced ||
+                                      (profile.linkedinId != null && profile.linkedinId!.isNotEmpty);
+
                                   if (url != null && url.isNotEmpty) {
                                     launchUrl(
                                       Uri.parse(url),
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                  } else if (isLinkedInSynced) {
+                                    launchUrl(
+                                      Uri.parse('https://www.linkedin.com/me'),
                                       mode: LaunchMode.externalApplication,
                                     );
                                   } else {
@@ -706,10 +714,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        profile.linkedinProfileUrl != null &&
-                                                profile
-                                                    .linkedinProfileUrl!
-                                                    .isNotEmpty
+                                        (profile.linkedinProfileUrl != null &&
+                                                profile.linkedinProfileUrl!.isNotEmpty) ||
+                                                profile.linkedinSynced ||
+                                                (profile.linkedinId != null && profile.linkedinId!.isNotEmpty)
                                             ? 'View LinkedIn'
                                             : 'Connect LinkedIn',
                                         style: const TextStyle(

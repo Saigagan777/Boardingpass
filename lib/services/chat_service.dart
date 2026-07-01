@@ -703,6 +703,9 @@ class ChatService {
             ? '@$senderName mentioned you: $previewText'
             : '$senderName: $previewText';
 
+        final currentUnread = currentUnreadMap[p] ?? 0;
+        final shouldShowBanner = currentUnread == 0;
+
         // Write directly to root notifications collection for the recipient
         await _firestore.collection('notifications').add({
           'userId': p,
@@ -710,6 +713,7 @@ class ChatService {
           'body': alertBody,
           'type': 'group_activity',
           'isRead': false,
+          'shouldShowBanner': shouldShowBanner,
           'metadata': {
             'chatId': chatId,
             'senderId': uid,
@@ -761,6 +765,27 @@ class ChatService {
       });
 
       await batch.commit();
+
+      // Also mark notifications for this chat as read in Firestore
+      final notifSnap = await _firestore
+          .collection('notifications')
+          .where('userId', isEqualTo: uid)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      final notifBatch = _firestore.batch();
+      bool hasNotifs = false;
+      for (final doc in notifSnap.docs) {
+        final data = doc.data();
+        final metadata = data['metadata'] as Map<String, dynamic>?;
+        if (metadata != null && metadata['chatId'] == chatId) {
+          notifBatch.update(doc.reference, {'isRead': true});
+          hasNotifs = true;
+        }
+      }
+      if (hasNotifs) {
+        await notifBatch.commit();
+      }
     } catch (e) {
       throw Exception('Failed to mark messages as read: $e');
     }

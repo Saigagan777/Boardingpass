@@ -47,6 +47,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _experienceController = TextEditingController();
   final TextEditingController _profileImageUrlController =
       TextEditingController();
+  final TextEditingController _linkedinUrlController = TextEditingController();
+
 
   // Career & Education timelines state
   final List<Map<String, dynamic>> _careerTimeline = [];
@@ -159,6 +161,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
   ];
 
+  bool get _isLinkedInUser {
+    final profile = AppStateManager().currentUserProfile;
+    if (profile != null) {
+      return (profile.linkedinId != null && profile.linkedinId!.isNotEmpty) ||
+          profile.linkedinSynced;
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final email = user.email ?? '';
+      return email.startsWith('linkedin_') && email.endsWith('@boardingpass.com');
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -177,6 +193,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _headlineController.text = profile.headline ?? '';
         _bioController.text = profile.bio ?? '';
         _experienceController.text = profile.experience ?? '';
+        _linkedinUrlController.text = profile.linkedinProfileUrl ?? '';
         if (profile.expertise.isNotEmpty) {
           _expertiseController.text = profile.expertise.join(', ');
         }
@@ -203,6 +220,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
     _profileImageUrlController.addListener(_onFieldChanged);
+    _linkedinUrlController.addListener(_onFieldChanged);
     _roleController.addListener(_onFieldChanged);
     _companyController.addListener(_onFieldChanged);
     _headlineController.addListener(_onFieldChanged);
@@ -217,6 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onFieldChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
+    _linkedinUrlController.removeListener(_onFieldChanged);
     _roleController.removeListener(_onFieldChanged);
     _companyController.removeListener(_onFieldChanged);
     _headlineController.removeListener(_onFieldChanged);
@@ -237,6 +256,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _industryController.dispose();
     _experienceController.dispose();
     _profileImageUrlController.dispose();
+    _linkedinUrlController.dispose();
     _workRoleController.dispose();
     _workCompanyController.dispose();
     _workLocationController.dispose();
@@ -512,6 +532,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         interests: selectedIntents,
         careerTimeline: _careerTimeline,
         educationTimeline: _educationTimeline,
+        linkedinProfileUrl: _linkedinUrlController.text.trim().isNotEmpty
+            ? _linkedinUrlController.text.trim()
+            : null,
       );
       final user = FirebaseAuth.instance.currentUser;
       AppStateManager().isRegistering = false;
@@ -642,6 +665,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           interests: selectedIntents,
           careerTimeline: _careerTimeline,
           educationTimeline: _educationTimeline,
+          linkedinProfileUrl: !_isLinkedInUser && _linkedinUrlController.text.trim().isNotEmpty
+              ? _linkedinUrlController.text.trim()
+              : null,
         );
         await AppStateManager().syncSignedInUser(user);
         AppStateManager().currentScreen = AppScreen.hub;
@@ -1373,6 +1399,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             labelText: 'Professional Headline',
             hintText: 'e.g. Scaling payments infra, Investing in Fintech',
           ),
+          if (!_isLinkedInUser) ...[
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _linkedinUrlController,
+              labelText: 'LinkedIn Profile Link (Optional)',
+              hintText: 'e.g. https://linkedin.com/in/username',
+            ),
+          ],
           const SizedBox(height: 24),
 
           // Section 2: Skills & Experience

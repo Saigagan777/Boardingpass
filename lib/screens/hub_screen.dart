@@ -1146,6 +1146,7 @@ class _HubScreenState extends State<HubScreen> {
                     isAd: false,
                     ctaText: 'View',
                     onCtaPressed: () {
+                      _state.meetingInitialTab = 1;
                       _state.currentScreen = AppScreen.meeting;
                     },
                     dotsCount: carouselItems.length,
