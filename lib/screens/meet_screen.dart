@@ -14,7 +14,7 @@ import '../services/recommendation_engine.dart';
 import 'location_search_section.dart';
 import 'create_poll_dialog.dart';
 import 'poll_widget.dart';
-import 'meeting_history_timeline.dart';
+
 
 class MeetScreen extends StatefulWidget {
   final String? name;
@@ -56,6 +56,9 @@ class _MeetScreenState extends State<MeetScreen> {
   @override
   void initState() {
     super.initState();
+    _activeTab = _state.meetingInitialTab;
+    // Reset initial tab in state manager so future navigations default to 0
+    _state.meetingInitialTab = 0;
     final now = DateTime.now();
     _meetingDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     _meetingTime = "${(now.hour + 1).toString().padLeft(2, '0')}:00";
@@ -735,7 +738,6 @@ class _MeetScreenState extends State<MeetScreen> {
     final rawStatus = data['status'] as String? ?? 'pending';
     final statusStr = rawStatus.toUpperCase();
     final location = data['location'] as String? ?? 'Not specified';
-    final agenda = List<String>.from(data['suggestedAgenda'] ?? []);
     final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
     final scheduledAt = scheduledTimestamp?.toDate();
     final reminderMinutes = data['reminderMinutes'] as int?;
@@ -975,93 +977,11 @@ class _MeetScreenState extends State<MeetScreen> {
                   }
                   final profiles = snapshot.data ?? [];
 
-                  // Calculate interest overlap
-                  final myInterests = _currentUserProfile?.interests ?? [];
-                  final otherInterests = profiles
-                      .where((p) => p.uid != currentUid)
-                      .expand((p) => p.interests)
-                      .toSet();
-                  final common = myInterests.toSet().intersection(otherInterests).toList();
-
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Smart Context Box
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAF7F5),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE8E2DD)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: const [
-                                Icon(Icons.lightbulb_outline, color: Color(0xFF7A432D), size: 16),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Smart Meeting Context',
-                                  style: TextStyle(
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: Color(0xFF3E1F11),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            if (common.isNotEmpty) ...[
-                              Text(
-                                '💡 Common Interests: ${common.join(", ")}',
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  color: Color(0xFF3E1F11),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-                            if (agenda.isNotEmpty) ...[
-                              const Text(
-                                'Suggested AI Agenda:',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF8C736B),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              ...agenda.map((item) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 2),
-                                    child: Text(
-                                      item,
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 11.5,
-                                        color: Color(0xFF3E1F11),
-                                      ),
-                                    ),
-                                  )),
-                            ] else ...[
-                              const Text(
-                                'No specific agenda suggested.',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11.5,
-                                  color: Color(0xFF8C736B),
-                                ),
-                              ),
-                            ]
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+
                       // Active Proposals Section
                       if ((data['proposals'] as List?)?.isNotEmpty == true) ...[
                         Builder(builder: (context) {
@@ -1576,8 +1496,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                   ],
                                 ),
                               ],
-                              const SizedBox(height: 16),
-                              MeetingHistoryTimeline(meetingId: meetingId),
+
                             ],
                           ),
                         ],

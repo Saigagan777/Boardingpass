@@ -68,6 +68,7 @@ class AuthService {
     List<String> interests = const [],
     List<Map<String, dynamic>> careerTimeline = const [],
     List<Map<String, dynamic>> educationTimeline = const [],
+    String? linkedinProfileUrl,
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -100,6 +101,7 @@ class AuthService {
           interests: interests,
           careerTimeline: careerTimeline,
           educationTimeline: educationTimeline,
+          linkedinProfileUrl: linkedinProfileUrl,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
         );
