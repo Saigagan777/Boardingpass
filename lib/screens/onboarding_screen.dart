@@ -50,6 +50,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _linkedinUrlController = TextEditingController();
   String _emailErrorText = '';
   String _passwordErrorText = '';
+  List<({String label, bool met})> _passwordReqs = [];
 
 
   // Career & Education timelines state
@@ -472,10 +473,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
 
     final password = _passwordController.text;
-    if (password.length < 6) {
+    if (!_isPasswordValid(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Password must be at least 6 characters.'),
+          content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -756,12 +757,62 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (mounted) setState(() {});
   }
 
+  bool _isPasswordValid(String p) {
+    return p.length >= 8 &&
+        p.contains(RegExp(r'[A-Z]')) &&
+        p.contains(RegExp(r'[a-z]')) &&
+        p.contains(RegExp(r'[0-9]')) &&
+        p.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+  }
+
+  List<({String label, bool met})> _checkPasswordReqs(String p) {
+    return [
+      (label: 'At least 8 characters', met: p.length >= 8),
+      (label: '1 uppercase letter', met: p.contains(RegExp(r'[A-Z]'))),
+      (label: '1 lowercase letter', met: p.contains(RegExp(r'[a-z]'))),
+      (label: '1 number', met: p.contains(RegExp(r'[0-9]'))),
+      (label: '1 special character', met: p.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))),
+    ];
+  }
+
+  Widget _buildPasswordReqs(List<({String label, bool met})> reqs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: reqs.map((r) {
+        final ok = r.met;
+        return Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                ok ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 14,
+                color: ok ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                r.label,
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 11,
+                  color: ok ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   void _onPasswordChanged() {
     final password = _passwordController.text;
+    _passwordReqs = _checkPasswordReqs(password);
     if (password.isEmpty) {
       _passwordErrorText = '';
-    } else if (password.length < 6) {
-      _passwordErrorText = 'Password must be at least 6 characters';
+    } else if (!_isPasswordValid(password)) {
+      _passwordErrorText = 'Password does not meet all requirements';
     } else {
       _passwordErrorText = '';
     }
@@ -1172,21 +1223,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _buildTextField(
             controller: _passwordController,
             labelText: 'Password',
-            hintText: 'Min 6 characters',
+            hintText: 'Create a strong password',
             obscureText: _obscurePassword,
             isPassword: true,
           ),
-          if (_passwordErrorText.isNotEmpty)
+          if (_passwordReqs.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 4, left: 4),
-              child: Text(
-                _passwordErrorText,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 12,
-                  color: Color(0xFFC62828),
-                ),
-              ),
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: _buildPasswordReqs(_passwordReqs),
             ),
           const SizedBox(height: 24),
 

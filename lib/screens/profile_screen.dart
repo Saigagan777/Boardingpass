@@ -1103,8 +1103,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
     bool obscureNew = true;
     bool obscureCurrent = true;
     bool obscureConfirm = true;
-    String newPassError = '';
     String confirmPassError = '';
+    List<({String label, bool met})> newPassReqs = [];
+
+    bool _isPasswordValid(String p) {
+      return p.length >= 8 &&
+          p.contains(RegExp(r'[A-Z]')) &&
+          p.contains(RegExp(r'[a-z]')) &&
+          p.contains(RegExp(r'[0-9]')) &&
+          p.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+    }
+
+    List<({String label, bool met})> _checkPasswordReqs(String p) {
+      return [
+        (label: 'At least 8 characters', met: p.length >= 8),
+        (label: '1 uppercase letter', met: p.contains(RegExp(r'[A-Z]'))),
+        (label: '1 lowercase letter', met: p.contains(RegExp(r'[a-z]'))),
+        (label: '1 number', met: p.contains(RegExp(r'[0-9]'))),
+        (label: '1 special character', met: p.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))),
+      ];
+    }
+
+    Widget _buildPasswordReqsCtx(List<({String label, bool met})> reqs) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: reqs.map((r) {
+          final ok = r.met;
+          return Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  ok ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 14,
+                  color: ok ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  r.label,
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 11,
+                    color: ok ? const Color(0xFF2E7D32) : const Color(0xFF8C736B),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      );
+    }
 
     await showDialog(
 
@@ -1193,7 +1242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     decoration: InputDecoration(
                       labelText: 'New Password',
                       labelStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
-                      helperText: 'Minimum 6 characters',
+                      helperText: '8+ chars, upper, lower, number & special',
                       helperStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, color: Color(0xFF8C736B)),
                       filled: true,
                       fillColor: Colors.white,
@@ -1206,23 +1255,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     onChanged: (_) {
                       final p = newPasswordCtrl.text;
-                      if (p.isEmpty) {
-                        newPassError = '';
-                      } else if (p.length < 6) {
-                        newPassError = 'Must be at least 6 characters';
-                      } else {
-                        newPassError = '';
-                      }
+                      newPassReqs = p.isEmpty
+                          ? []
+                          : _checkPasswordReqs(p);
                       setDialogState(() {});
                     },
                   ),
-                  if (newPassError.isNotEmpty)
+                  if (newPassReqs.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 2, left: 4),
-                      child: Text(
-                        newPassError,
-                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFFC62828)),
-                      ),
+                      padding: const EdgeInsets.only(top: 6, left: 4),
+                      child: _buildPasswordReqsCtx(newPassReqs),
                     ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1279,8 +1321,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: () async {
                   final newPass = newPasswordCtrl.text.trim();
                   final confirmPass = confirmPasswordCtrl.text.trim();
-                  if (newPass.length < 6) {
-                    newPassError = 'Must be at least 6 characters';
+                  if (!_isPasswordValid(newPass)) {
+                    confirmPassError = 'Must be 8+ chars with upper, lower, number & special';
                     setDialogState(() {});
                     return;
                   }
