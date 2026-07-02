@@ -46,6 +46,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   void initState() {
     super.initState();
     _cardIndex = _state.activeCandidateIndex;
+    // Listen for state-manager notifications so we rebuild when
+    // loadCandidates() finishes and populates _state.candidates.
+    _state.addListener(_onStateChanged);
+    _state.loadCandidates();
     _searchQuery.addListener(() {
       if (mounted) {
         setState(() {
@@ -55,8 +59,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     });
   }
 
+  /// Called whenever AppStateManager.notifyListeners() fires (e.g. after
+  /// loadCandidates completes). Triggers a rebuild so filteredCandidates
+  /// reflects the newly loaded data — identical to what Reset Filters does.
+  void _onStateChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _state.removeListener(_onStateChanged);
     _connectTimer?.cancel();
     _searchQuery.dispose();
     super.dispose();
@@ -638,21 +650,30 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  void _swipeLeft(List<Candidate> filteredList) {
+  Future<void> _swipeLeft(List<Candidate> filteredList) async {
     if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
     setState(() {
       _isAnimating = true;
       _dragDx = -400.0;
     });
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (mounted) {
-        setState(() {
-          _cardIndex = (_cardIndex + 1) % filteredList.length;
-          _dragDx = 0.0;
-          _dragDy = 0.0;
-          _isAnimating = false;
-        });
-      }
+
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
+
+    if (targetUid != null && targetUid.isNotEmpty) {
+      // Optimistic local update
+      _state.moveCandidateToBack(targetUid);
+      // Background Firestore write
+      _state.swipeCandidate(targetUid: targetUid, action: 'dislike');
+    }
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
     });
   }
 
@@ -674,21 +695,112 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     await Future.delayed(const Duration(milliseconds: 200));
     if (!mounted) return;
 
+    // Optimistic local update: move to back
+    _state.moveCandidateToBack(targetUid);
+    // Background Firestore write
+    _state.swipeCandidate(targetUid: targetUid, action: 'favorite');
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
+    });
+
+    if (!mounted) return;
+
+    // Show favorited notification feedback (other user is not notified)
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+          duration: const Duration(seconds: 3),
+          backgroundColor: const Color(0xFF7A432D),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0xFFE5A475), width: 0.8),
+          ),
+          content: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  color: Colors.white24,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.star_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Added to Favorites',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'You can view ${currentCandidate.name} later in Favorites.',
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 11,
+                        color: Color(0xFFFAF1EC),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+
+  Future<void> _swipeUp(List<Candidate> filteredList) async {
+    if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
+    if (targetUid == null || targetUid.isEmpty) {
+      _showConnectionRequestError(currentCandidate);
+      return;
+    }
+
+    setState(() {
+      _isAnimating = true;
+      _dragDy = -600.0;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!mounted) return;
+
+    // Optimistic local update
+    _state.removeCandidate(targetUid);
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
+    });
+
     final result = await _state.sendOrAcceptConnection(targetUid: targetUid);
     if (result != ConnectionRequestResult.failed) {
       await _state.swipeCandidate(targetUid: targetUid, action: 'like');
     }
 
     if (!mounted) return;
-
-    setState(() {
-      if (result != ConnectionRequestResult.failed) {
-        _cardIndex = (_cardIndex + 1) % filteredList.length;
-      }
-      _dragDx = 0.0;
-      _dragDy = 0.0;
-      _isAnimating = false;
-    });
 
     switch (result) {
       case ConnectionRequestResult.sent:
@@ -712,10 +824,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }) {
     return Container(
       margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8E2DD),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF7A432D).withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF7A432D).withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -726,16 +842,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               fontFamily: 'PlusJakartaSans',
               fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+              color: Color(0xFF7A432D),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           GestureDetector(
             onTap: onClear,
             child: const Icon(
               Icons.close_rounded,
-              size: 14,
-              color: Color(0xFF3E1F11),
+              size: 13,
+              color: Color(0xFF7A432D),
             ),
           ),
         ],
@@ -1365,9 +1481,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     final filteredCount = filtered.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF7F5),
+      backgroundColor: const Color(0xFFF5EFE9),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFFAF7F5),
+        backgroundColor: const Color(0xFFF5EFE9),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF3E1F11)),
@@ -1391,6 +1507,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.star_rounded, color: Color(0xFF7A432D)),
+            tooltip: 'My Favorites',
+            onPressed: () => _showFavoritesBottomSheet(context),
+          ),
           IconButton(
             icon: Stack(
               children: [
@@ -1433,14 +1554,21 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Container(
-                    height: 44,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: const Color(0xFFE8E2DD),
-                        width: 1,
+                        color: const Color(0xFFE0D4CB),
+                        width: 1.2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF7A432D).withValues(alpha: 0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: TextField(
                       controller: _searchQuery,
@@ -1449,16 +1577,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         hintStyle: const TextStyle(
                           fontFamily: 'PlusJakartaSans',
                           fontSize: 13,
-                          color: Color(0xFF8C736B),
+                          color: Color(0xFFAA9488),
                         ),
                         prefixIcon: const Icon(
                           Icons.search_rounded,
                           color: Color(0xFF8C736B),
-                          size: 18,
+                          size: 20,
                         ),
                         suffixIcon: _searchQuery.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 16),
+                                icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF8C736B)),
                                 onPressed: () {
                                   _searchQuery.clear();
                                 },
@@ -1466,7 +1594,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
-                          vertical: 10,
+                          vertical: 12,
                         ),
                       ),
                       style: const TextStyle(
@@ -1634,6 +1762,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                       top: 0,
                                       bottom: 20,
                                       child: GestureDetector(
+                                        onDoubleTap: () => _swipeUp(filtered),
+                                        onLongPress: () => _swipeRight(filtered),
                                         onPanUpdate: (details) {
                                           if (_isAnimating) return;
                                           setState(() {
@@ -1647,6 +1777,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                             _swipeRight(filtered);
                                           } else if (_dragDx < -120) {
                                             _swipeLeft(filtered);
+                                          } else if (_dragDy < -100) {
+                                            _swipeUp(filtered);
                                           } else {
                                             // Reset card position
                                             setState(() {
@@ -1677,8 +1809,18 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                 // Button controls (only visible if filtered list is not empty)
                 if (filteredCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 24, top: 12),
+                  Container(
+                    padding: const EdgeInsets.only(bottom: 20, top: 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFFF5EFE9).withValues(alpha: 0),
+                          const Color(0xFFF5EFE9),
+                        ],
+                      ),
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1687,24 +1829,24 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           icon: Icons.close,
                           iconColor: const Color(0xFF8C736B),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE8E2DD),
-                          size: 56,
+                          borderColor: const Color(0xFFE0D4CB),
+                          size: 58,
                           onPressed: () => _swipeLeft(filtered),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 20),
 
                         // Handshake/Connect Button
                         Container(
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: LinearGradient(
+                            gradient: const LinearGradient(
                               colors: [Color(0xFF7A432D), Color(0xFFB06F4D)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 8,
-                                offset: Offset(0, 3),
+                                color: const Color(0xFF7A432D).withValues(alpha: 0.4),
+                                blurRadius: 16,
+                                offset: const Offset(0, 5),
                               ),
                             ],
                           ),
@@ -1713,19 +1855,19 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             iconColor: Colors.white,
                             backgroundColor: Colors.transparent,
                             borderColor: Colors.transparent,
-                            size: 68,
-                            onPressed: () => _swipeRight(filtered),
+                            size: 70,
+                            onPressed: () => _swipeUp(filtered),
                           ),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 20),
 
-                        // Star Button
+                        // Star Button (Favorite)
                         _buildRoundButton(
                           icon: Icons.star_rounded,
                           iconColor: const Color(0xFFB06F4D),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE8E2DD),
-                          size: 56,
+                          borderColor: const Color(0xFFE0D4CB),
+                          size: 58,
                           onPressed: () => _swipeRight(filtered),
                         ),
                       ],
@@ -1792,53 +1934,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  Widget _buildCompanyEmblem(String org) {
-    final initial = org.isNotEmpty ? org[0].toUpperCase() : 'C';
-    return Flexible(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: const Color(0xFF7A432D).withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF7A432D).withValues(alpha: 0.4),
-                width: 1,
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              initial,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF7A432D),
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              org,
-              style: const TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF7A432D),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCard(Candidate c, {required bool isTop}) {
+    final cleanLoc = c.loc.isNotEmpty ? c.loc.split(',').first.trim() : '';
+    final interestsList = <Widget>[];
+    final displayedInterests = c.interests.take(7).toList();
+    for (final interest in displayedInterests) {
+      interestsList.add(_buildInterestChip(interest));
+    }
+    if (c.interests.length > 7) {
+      interestsList.add(_buildMoreChip());
+    }
+
     return Card(
       color: Colors.white,
       elevation: isTop ? 3 : 1,
@@ -1852,7 +1958,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         children: [
           // 1. Large Image Block at the top
           SizedBox(
-            height: 220,
+            height: 250,
             width: double.infinity,
             child: Stack(
               fit: StackFit.expand,
@@ -1893,26 +1999,27 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   top: 16,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
+                      horizontal: 12,
+                      vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
+                      color: Colors.black.withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
                           Icons.star,
-                          color: Color(0xFFE5A475),
-                          size: 12,
+                          color: Colors.amber,
+                          size: 14,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 6),
                         Text(
                           "${c.match}% match",
                           style: const TextStyle(
                             fontFamily: 'PlusJakartaSans',
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -1921,40 +2028,47 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                   ),
                 ),
-                // Overlay Location
-                Positioned(
-                  right: 16,
-                  top: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          color: Colors.white,
-                          size: 12,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          c.loc,
-                          style: const TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                // Overlay Location badge (pin icon + location name)
+                if (cleanLoc.isNotEmpty)
+                  Positioned(
+                    right: 16,
+                    top: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.location_on,
                             color: Colors.white,
+                            size: 14,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 100),
+                            child: Text(
+                              cleanLoc,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 // Showcase Deck Button overlay
                 if (isTop && c.customCards.isNotEmpty)
                   Positioned(
@@ -2002,135 +2116,207 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           // 2. Content Details area
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Headline (Name)
-                  Text(
-                    c.name,
-                    style: const TextStyle(
-                      fontFamily: 'PlayfairDisplay',
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF3E1F11),
+              padding: const EdgeInsets.all(18),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Headline (Name) - Wraps to 2 lines instead of cutting off
+                    Text(
+                      c.name,
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0A1629),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
+                    const SizedBox(height: 8),
 
-                  // Subhead (Role & Company)
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
+                    // Subhead (Role & Company) - Wrap prevents truncation
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        // Company pill
+                        if (c.org.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0052FF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              c.org,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        if (c.org.isNotEmpty && c.role.isNotEmpty)
+                          const Text(
+                            '·',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFE8E2DD),
+                            ),
+                          ),
+                        // Job Title
+                        Text(
                           c.role,
                           style: const TextStyle(
                             fontFamily: 'PlusJakartaSans',
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF3E1F11),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const Text(
-                        '  ·  ',
-                        style: TextStyle(
-                          color: Color(0xFF8C736B),
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      _buildCompanyEmblem(c.org),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Body (Bio)
-                  Text(
-                    c.bio,
-                    style: const TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 14,
-                      color: Color(0xFF5C473E),
-                      height: 1.4,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-
-                  // IntentTag
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFB06F4D).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.track_changes_rounded,
-                          color: Color(0xFFB06F4D),
-                          size: 14,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            c.intent,
-                            style: const TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF3E1F11),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF8C736B),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
-                  // Highlights / Connections
-                  if (isTop)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: const [
-                          Icon(
-                            Icons.stars_rounded,
-                            color: Color(0xFFE5A475),
-                            size: 14,
-                          ),
-                          SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '2 mutual connections · Co-invested with Sequoia',
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 10,
-                                color: Color(0xFF8C736B),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                    // Body (Bio)
+                    Text(
+                      c.bio,
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 13.5,
+                        color: Color(0xFF3E1F11),
+                        height: 1.45,
                       ),
                     ),
+                    const SizedBox(height: 16),
 
-                  const Spacer(),
-                ],
+                    // Interests title
+                    if (interestsList.isNotEmpty) ...[
+                      const Text(
+                        'Interests',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF3E1F11),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Interests list
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: interestsList,
+                      ),
+                    ],
+                  ],
+                ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper styles mapping class for interests
+  _InterestStyle _getInterestStyle(String interest) {
+    final key = interest.toLowerCase().trim();
+    if (key.contains('music')) {
+      return const _InterestStyle(Icons.music_note_rounded, Color(0xFFF0EEFF), Color(0xFF5636CC));
+    } else if (key.contains('photo') || key.contains('camera')) {
+      return const _InterestStyle(Icons.camera_alt_outlined, Color(0xFFE5F6ED), Color(0xFF2E7D32));
+    } else if (key.contains('travel') || key.contains('flight') || key.contains('explore') || key.contains('tour')) {
+      return const _InterestStyle(Icons.flight_takeoff_rounded, Color(0xFFFFF9E6), Color(0xFFB7791F));
+    } else if (key.contains('fit') || key.contains('gym') || key.contains('workout') || key.contains('sport') || key.contains('health') || key.contains('run')) {
+      return const _InterestStyle(Icons.fitness_center_rounded, Color(0xFFE3F2FD), Color(0xFF1565C0));
+    } else if (key.contains('game') || key.contains('gaming') || key.contains('play')) {
+      return const _InterestStyle(Icons.sports_esports_outlined, Color(0xFFFFEBF0), Color(0xFFD81B60));
+    } else if (key.contains('read') || key.contains('book') || key.contains('write')) {
+      return const _InterestStyle(Icons.menu_book_rounded, Color(0xFFFFF0EB), Color(0xFFD84315));
+    } else if (key.contains('coffee') || key.contains('cafe') || key.contains('tea') || key.contains('drink')) {
+      return const _InterestStyle(Icons.local_cafe_outlined, Color(0xFFF8E8F8), Color(0xFF8E24AA));
+    } else if (key.contains('art') || key.contains('paint') || key.contains('design')) {
+      return const _InterestStyle(Icons.palette_outlined, Color(0xFFFFF3E0), Color(0xFFEF6C00));
+    } else if (key.contains('tech') || key.contains('code') || key.contains('computer') || key.contains('cto') || key.contains('hiring') || key.contains('develop')) {
+      return const _InterestStyle(Icons.code_rounded, Color(0xFFE0F7FA), Color(0xFF00838F));
+    } else if (key.contains('food') || key.contains('cooking') || key.contains('eat') || key.contains('bake')) {
+      return const _InterestStyle(Icons.restaurant_rounded, Color(0xFFF1F8E9), Color(0xFF558B2F));
+    } else if (key.contains('movie') || key.contains('film') || key.contains('cinema') || key.contains('watch')) {
+      return const _InterestStyle(Icons.movie_outlined, Color(0xFFEDE7F6), Color(0xFF673AB7));
+    } else if (key.contains('partner') || key.contains('b2b') || key.contains('sales') || key.contains('marketing') || key.contains('business') || key.contains('growth')) {
+      return const _InterestStyle(Icons.handshake_outlined, Color(0xFFFFF3E0), Color(0xFFD84315));
+    } else if (key.contains('invest') || key.contains('vc') || key.contains('fund') || key.contains('finance') || key.contains('money')) {
+      return const _InterestStyle(Icons.monetization_on_outlined, Color(0xFFE8F5E9), Color(0xFF2E7D32));
+    }
+    // Terracotta theme fallback matching app primary brand style
+    return const _InterestStyle(
+      Icons.label_outline_rounded,
+      Color(0xFFFAF1EC),
+      Color(0xFF7A432D),
+    );
+  }
+
+  Widget _buildInterestChip(String interest) {
+    final style = _getInterestStyle(interest);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: style.backgroundColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            style.icon,
+            size: 13,
+            color: style.foregroundColor,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            interest,
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: style.foregroundColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECEFF1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(
+            Icons.more_horiz_rounded,
+            size: 13,
+            color: Color(0xFF37474F),
+          ),
+          SizedBox(width: 4),
+          Text(
+            'More',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF37474F),
             ),
           ),
         ],
@@ -2170,4 +2356,263 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       ),
     );
   }
+
+  void _showFavoritesBottomSheet(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFAF7F5),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Pull handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8E2DD),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'My Favorites ⭐',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFFE8E2DD), height: 24),
+              Expanded(
+                child: FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('swipes')
+                      .where('fromUid', isEqualTo: currentUid)
+                      .where('action', isEqualTo: 'favorite')
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
+                    }
+                    if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            Icon(Icons.star_outline_rounded, size: 48, color: Color(0xFF8C736B)),
+                            SizedBox(height: 12),
+                            Text(
+                              'No favorited profiles yet',
+                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B), fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Swipe up or tap star on a profile card to add.',
+                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final favoriteDocs = snapshot.data!.docs;
+                    return ListView.builder(
+                      itemCount: favoriteDocs.length,
+                      itemBuilder: (context, index) {
+                        final fav = favoriteDocs[index].data() as Map<String, dynamic>;
+                        final targetUid = fav['toUid'] as String? ?? '';
+                        if (targetUid.isEmpty) return const SizedBox.shrink();
+
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance.collection('users').doc(targetUid).get(),
+                          builder: (context, userSnap) {
+                            if (!userSnap.hasData || !userSnap.data!.exists) {
+                              return const SizedBox.shrink();
+                            }
+                            final userData = userSnap.data!.data() as Map<String, dynamic>;
+                            final name = userData['name'] ?? 'Someone';
+                            final role = userData['role'] ?? 'Professional';
+                            final company = userData['company'] ?? '';
+                            final imageUrl = userData['profileImageUrl'] ?? '';
+                            final initials = (name as String).substring(0, 1).toUpperCase();
+
+                            // Construct a Candidate object for the detail view
+                            final c = Candidate(
+                              uid: targetUid,
+                              name: name,
+                              role: role,
+                              org: company,
+                              loc: userData['currentLocationName'] ?? userData['homeBase'] ?? '',
+                              match: 95, // Default high match for favorites
+                              intent: List<String>.from(userData['intents'] ?? []).join(', '),
+                              tags: List<String>.from(userData['expertise'] ?? []),
+                              interests: List<String>.from(userData['interests'] ?? []),
+                              skills: List<String>.from(userData['skills'] ?? []),
+                              homeBase: userData['homeBase'] ?? '',
+                              bio: userData['bio'] ?? '',
+                              initials: initials,
+                              profileImageUrl: imageUrl,
+                              primaryColor: const Color(0xFFE5A475),
+                            );
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                leading: CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: const Color(0xFFFAF0E6),
+                                  backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+                                  child: imageUrl.isEmpty
+                                      ? Text(initials, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A432D)))
+                                      : null,
+                                ),
+                                title: Text(
+                                  name,
+                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF3E1F11)),
+                                ),
+                                subtitle: Text(
+                                  '$role${company.isNotEmpty ? ' at $company' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                                ),
+                                trailing: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF7A432D),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.pop(context); // Close favorites sheet
+                                    _showFavoriteProfileDetailsSheet(context, c);
+                                  },
+                                  child: const Text(
+                                    'View Profile',
+                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFavoriteProfileDetailsSheet(BuildContext context, Candidate c) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFAF7F5),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(28),
+              topRight: Radius.circular(28),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Pull Handle
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8E2DD),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      'Favorite Profile Details',
+                      style: TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFFE8E2DD), height: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.62,
+                        child: _buildCard(c, isTop: true),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
+
+class _InterestStyle {
+  final IconData icon;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  const _InterestStyle(this.icon, this.backgroundColor, this.foregroundColor);
+}
+

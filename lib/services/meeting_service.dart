@@ -3,9 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'chat_service.dart';
-
-/// Possible states of a meeting.
-enum MeetingStatus { pending, confirmed, completed, cancelled }
+import '../models/enums.dart';
+import '../models/venue.dart';
+import '../models/meeting_history.dart';
 
 /// Singleton service for the Firestore `meetings` collection.
 ///
@@ -38,6 +38,12 @@ class MeetingService {
     String? note,
     int? reminderMinutes,
     String? chatId,
+    String? meetingCity,
+    String? meetingPurpose,
+    String? meetingType,
+    Map<String, dynamic>? selectedVenueSnapshot,
+    String? selectedVenueId,
+    String? selectedVenueProvider,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -59,7 +65,7 @@ class MeetingService {
         'hosts': [uid],
         'participants': allParticipants,
         'participantsStatus': participantsStatus,
-        'status': 'pending',
+        'status': MeetingStatus.pending.name,
         'scheduledAt': scheduledAt != null
             ? Timestamp.fromDate(scheduledAt)
             : null,
@@ -69,9 +75,30 @@ class MeetingService {
         'suggestedAgenda': agenda,
         'cancellationReasons': {},
         'chatId': chatId,
+        'meetingCity': meetingCity ?? 'Vijayawada',
+        'meetingPurpose': meetingPurpose ?? MeetingPurpose.custom.name,
+        'meetingType': meetingType ?? 'in_person',
+        'selectedVenueSnapshot': selectedVenueSnapshot,
+        'selectedVenueId': selectedVenueId,
+        'selectedVenueProvider': selectedVenueProvider,
+        'currentPollId': null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Log creation in history
+      final historyDoc = docRef.collection('history').doc();
+      final historyItem = MeetingHistory(
+        historyId: historyDoc.id,
+        scheduledAt: scheduledAt,
+        location: location,
+        venueSnapshot: selectedVenueSnapshot != null ? Venue.fromMap(selectedVenueSnapshot) : null,
+        updatedBy: uid,
+        updatedAt: DateTime.now(),
+        changeType: 'created',
+        note: 'Meeting created by organizer.',
+      );
+      await historyDoc.set(historyItem.toMap());
 
       // Send notifications to all invited participants
       final organizerName = _auth.currentUser?.displayName ?? 'Organizer';
@@ -318,6 +345,7 @@ class MeetingService {
     required String meetingId,
     required DateTime newTime,
     required String userId,
+    Map<String, dynamic>? newVenueSnapshot,
   }) async {
     try {
       final docRef = _meetingsRef.doc(meetingId);
@@ -340,12 +368,40 @@ class MeetingService {
         currentStatusMap[p] = hosts.contains(p) ? 'accepted' : 'pending';
       }
 
+      final prevTime = (data['scheduledAt'] as Timestamp?)?.toDate();
+      final prevLoc = data['location'] as String? ?? 'Not specified';
+      final prevVenueRaw = data['selectedVenueSnapshot'] as Map<String, dynamic>?;
+      final prevVenue = prevVenueRaw != null ? Venue.fromMap(prevVenueRaw) : null;
+
+      final updatedLocation = newVenueSnapshot != null
+          ? "${newVenueSnapshot['name']}, ${newVenueSnapshot['city']}"
+          : prevLoc;
+
+      // Update parent meeting schedule
       await docRef.update({
         'scheduledAt': Timestamp.fromDate(newTime),
+        'location': updatedLocation,
+        'selectedVenueSnapshot': newVenueSnapshot,
+        'selectedVenueId': newVenueSnapshot?['id'],
+        'selectedVenueProvider': newVenueSnapshot?['provider'],
         'participantsStatus': currentStatusMap,
-        'status': 'rescheduled',
+        'status': MeetingStatus.rescheduled.name,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // Write reschedule history
+      final historyDoc = docRef.collection('history').doc();
+      final historyItem = MeetingHistory(
+        historyId: historyDoc.id,
+        scheduledAt: prevTime,
+        location: prevLoc,
+        venueSnapshot: prevVenue,
+        updatedBy: userId,
+        updatedAt: DateTime.now(),
+        changeType: 'rescheduled',
+        note: 'Meeting rescheduled directly by host.',
+      );
+      await historyDoc.set(historyItem.toMap());
 
       // Send rescheduling notifications
       final hostName = _auth.currentUser?.displayName ?? 'Host';

@@ -331,6 +331,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         _latestUnreadNotificationId != null &&
         _latestUnreadNotification != null &&
         _showNotificationBanner &&
+        _latestUnreadNotification?['shouldShowBanner'] != false &&
         !_dismissedNotificationIds.contains(_latestUnreadNotificationId);
 
     return Scaffold(
@@ -372,6 +373,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                       // Route based on type
                       final type = (notifData?['type'] as String? ?? '').toLowerCase();
                       if (type.contains('meeting')) {
+                        _state.meetingInitialTab = 1;
                         _state.currentScreen = AppScreen.meeting;
                       } else if (type.contains('chat') ||
                           type.contains('group')) {

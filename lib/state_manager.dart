@@ -86,6 +86,13 @@ class AppStateManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _meetingInitialTab = 0;
+  int get meetingInitialTab => _meetingInitialTab;
+  set meetingInitialTab(int val) {
+    _meetingInitialTab = val;
+    notifyListeners();
+  }
+
   // Authentication State
   bool _isLoggedIn = false;
   bool _isAuthCallbackInProgress = false;
@@ -445,21 +452,111 @@ class AppStateManager extends ChangeNotifier {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       if (currentUid == null) return;
 
-      // 1. Fetch current user's swipes to exclude already swiped candidates
+      // 1. Fetch current user's swipes to partition them
       final swipesSnapshot = await FirebaseFirestore.instance
           .collection('swipes')
           .where('fromUid', isEqualTo: currentUid)
           .get();
 
-      final swipedUids = swipesSnapshot.docs
-          .map((doc) => doc.data()['toUid'] as String)
-          .toSet();
+      // Fetch connection requests involving the current user
+      final outgoingReqs = await FirebaseFirestore.instance
+          .collection('connection_requests')
+          .where('fromUid', isEqualTo: currentUid)
+          .get();
+      final incomingReqs = await FirebaseFirestore.instance
+          .collection('connection_requests')
+          .where('toUid', isEqualTo: currentUid)
+          .get();
+
+      final pendingReqUids = <String>{};
+      final rejectedReqUids = <String>{};
+
+      for (final doc in outgoingReqs.docs) {
+        final data = doc.data();
+        final toUid = data['toUid'] as String?;
+        final status = data['status'] as String?;
+        if (toUid == null) continue;
+        if (status == 'pending') {
+          pendingReqUids.add(toUid);
+        } else if (status == 'rejected') {
+          rejectedReqUids.add(toUid);
+        }
+      }
+
+      for (final doc in incomingReqs.docs) {
+        final data = doc.data();
+        final fromUid = data['fromUid'] as String?;
+        final status = data['status'] as String?;
+        if (fromUid == null) continue;
+        if (status == 'pending') {
+          pendingReqUids.add(fromUid);
+        } else if (status == 'rejected') {
+          rejectedReqUids.add(fromUid);
+        }
+      }
+
+      final permanentlyExcludedUids = <String>{};
+      final temporaryExcludedUids = <String>{};
+      final dislikeTimes = <String, DateTime>{};
+
+      final now = DateTime.now();
+
+      for (final doc in swipesSnapshot.docs) {
+        final data = doc.data();
+        final action = data['action'] as String?;
+        final toUid = data['toUid'] as String?;
+        if (toUid == null) continue;
+
+        if (action == 'like') {
+          if (!rejectedReqUids.contains(toUid)) {
+            permanentlyExcludedUids.add(toUid);
+          }
+        } else if (action == 'dislike' || action == 'reject') {
+          // Check if swipe is within 30 days
+          final timestampField = data['timestamp'] ?? data['createdAt'];
+          DateTime? swipeTime;
+          if (timestampField is Timestamp) {
+            swipeTime = timestampField.toDate();
+          } else if (timestampField is String) {
+            swipeTime = DateTime.tryParse(timestampField);
+          }
+
+          if (swipeTime != null) {
+            final difference = now.difference(swipeTime).inDays;
+            if (difference < 30) {
+              temporaryExcludedUids.add(toUid);
+              final existingTime = dislikeTimes[toUid];
+              if (existingTime == null || swipeTime.isAfter(existingTime)) {
+                dislikeTimes[toUid] = swipeTime;
+              }
+            }
+          } else {
+            // Default to excluding if timestamp is missing
+            temporaryExcludedUids.add(toUid);
+            dislikeTimes[toUid] = DateTime.fromMillisecondsSinceEpoch(0);
+          }
+        }
+      }
+
+      // Fetch connected user IDs
+      final connSnap1 = await FirebaseFirestore.instance
+          .collection('connections')
+          .where('userA', isEqualTo: currentUid)
+          .get();
+      final connSnap2 = await FirebaseFirestore.instance
+          .collection('connections')
+          .where('userB', isEqualTo: currentUid)
+          .get();
+      final connectedUids = {
+        ...connSnap1.docs.map((doc) => doc.data()['userB'] as String),
+        ...connSnap2.docs.map((doc) => doc.data()['userA'] as String),
+      };
 
       // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('isDiscoverable', isEqualTo: true)
-          .limit(20)
+          .limit(100)
           .get();
 
       // 2.5 Fetch current user details to calculate dynamic match scores
@@ -473,8 +570,12 @@ class AppStateManager extends ChangeNotifier {
       final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
       final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
 
-      final loaded = querySnapshot.docs
-          .where((doc) => doc.id != currentUid && !swipedUids.contains(doc.id))
+      final allProfiles = querySnapshot.docs
+          .where((doc) =>
+              doc.id != currentUid &&
+              !permanentlyExcludedUids.contains(doc.id) &&
+              !pendingReqUids.contains(doc.id) &&
+              !connectedUids.contains(doc.id))
           .map((doc) {
             final data = doc.data();
             final expertise = List<String>.from(data['expertise'] ?? []);
@@ -531,11 +632,50 @@ class AppStateManager extends ChangeNotifier {
           .toList();
 
       _candidates.clear();
-      _candidates.addAll(loaded);
+      
+      // Partition into non-disliked and disliked/rejected candidates
+      final nonDisliked = <Candidate>[];
+      final disliked = <Candidate>[];
+
+      for (final candidate in allProfiles) {
+        if (temporaryExcludedUids.contains(candidate.uid)) {
+          disliked.add(candidate);
+        } else {
+          nonDisliked.add(candidate);
+        }
+      }
+
+      // Sort disliked candidates chronologically by swipe time (older dislikes first, newer dislikes last)
+      disliked.sort((a, b) {
+        final timeA = dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB = dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return timeA.compareTo(timeB);
+      });
+
+      _candidates.addAll([...nonDisliked, ...disliked]);
       _activeCandidateIndex = 0;
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
+    }
+  }
+
+  /// Instantly moves a candidate to the back of the local list in memory
+  void moveCandidateToBack(String targetUid) {
+    final index = _candidates.indexWhere((c) => c.uid == targetUid);
+    if (index != -1) {
+      final candidate = _candidates.removeAt(index);
+      _candidates.add(candidate);
+      notifyListeners();
+    }
+  }
+
+  /// Instantly removes a candidate from the local list in memory (e.g. once liked/favorited)
+  void removeCandidate(String targetUid) {
+    final index = _candidates.indexWhere((c) => c.uid == targetUid);
+    if (index != -1) {
+      _candidates.removeAt(index);
+      notifyListeners();
     }
   }
 

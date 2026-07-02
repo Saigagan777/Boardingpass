@@ -219,7 +219,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                       const SizedBox(width: 8),
                       _buildTabButton(CheckinType.airport, 'Airport', Icons.flight_outlined),
                       const SizedBox(width: 8),
-                      _buildTabButton(CheckinType.hotel, 'Hotel,', Icons.business_outlined),
+                      _buildTabButton(CheckinType.hotel, 'Hotel', Icons.business_outlined),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -539,26 +539,27 @@ class _CheckinScreenState extends State<CheckinScreen> {
                           // Add Check-in Button
                           SizedBox(
                             width: double.infinity,
-                            height: 48,
+                            height: 52,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF7A432D),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                                 elevation: 0,
+                                shadowColor: const Color(0xFF7A432D).withValues(alpha: 0.4),
                               ),
                               onPressed: _handleAddCheckin,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: const [
-                                  Icon(Icons.add, color: Colors.white, size: 18),
+                                  Icon(Icons.add_circle_outline, color: Colors.white, size: 18),
                                   SizedBox(width: 8),
                                   Text(
-                                    'Add checkin',
+                                    'Confirm Check-in',
                                     style: TextStyle(
                                       fontFamily: 'PlusJakartaSans',
-                                      fontSize: 14,
+                                      fontSize: 15,
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -705,14 +706,28 @@ class _CheckinScreenState extends State<CheckinScreen> {
                   const SizedBox(height: 24),
 
                   // Bottom discover CTA
-                  SizedBox(
+                  Container(
                     width: double.infinity,
-                    height: 52,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF7A432D), Color(0xFF9B5A3E)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF7A432D).withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF7A432D),
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       onPressed: () {
@@ -731,7 +746,7 @@ class _CheckinScreenState extends State<CheckinScreen> {
                             ),
                           ),
                           SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, color: Colors.white, size: 16),
+                          Icon(Icons.explore_outlined, color: Colors.white, size: 16),
                         ],
                       ),
                     ),
@@ -752,41 +767,46 @@ class _CheckinScreenState extends State<CheckinScreen> {
         onTap: () {
           _state.selectedCheckinType = type;
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          duration: const Duration(milliseconds: 220),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF7A432D) : Colors.white,
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [Color(0xFF7A432D), Color(0xFF9B5A3E)],
+                  )
+                : null,
+            color: isSelected ? null : Colors.white,
             border: Border.all(
               color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
               width: 1.2,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF7A432D).withValues(alpha: 0.3),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      color: const Color(0xFF7A432D).withValues(alpha: 0.28),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
                     )
                   ]
                 : [],
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 14,
+                size: 16,
                 color: isSelected ? Colors.white : const Color(0xFF8C736B),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
                   color: isSelected ? Colors.white : const Color(0xFF8C736B),
                 ),

@@ -34,6 +34,37 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+subprojects {
+    val configureProject: (Project) -> Unit = { p ->
+        val ext = p.extensions.findByName("android")
+        if (ext != null) {
+            val methods = ext.javaClass.methods
+            var invoked = false
+            for (m in methods) {
+                if (m.name == "compileSdkVersion" && m.parameterCount == 1 && (m.parameterTypes[0] == Integer.TYPE || m.parameterTypes[0] == java.lang.Integer::class.java)) {
+                    m.invoke(ext, 36)
+                    invoked = true
+                    break
+                }
+            }
+            if (!invoked) {
+                for (m in methods) {
+                    if ((m.name == "compileSdk" || m.name == "setCompileSdk") && m.parameterCount == 1 && (m.parameterTypes[0] == Integer.TYPE || m.parameterTypes[0] == java.lang.Integer::class.java)) {
+                        m.invoke(ext, 36)
+                        break
+                    }
+                }
+            }
+        }
+    }
+    if (project.state.executed) {
+        configureProject(project)
+    } else {
+        project.afterEvaluate {
+            configureProject(this)
+        }
+    }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)

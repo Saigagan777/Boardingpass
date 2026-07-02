@@ -83,14 +83,18 @@ class AppLogo extends StatelessWidget {
       children: [
         logoIcon,
         SizedBox(width: size * 0.3),
-        Text(
-          'Boarding Pause',
-          style: TextStyle(
-            fontFamily: 'PlayfairDisplay',
-            fontSize: size * 0.72,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
-            color: primary,
+        Flexible(
+          child: Text(
+            'Boarding Pause',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontSize: size * 0.72,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              color: primary,
+            ),
           ),
         ),
       ],

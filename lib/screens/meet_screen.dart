@@ -8,6 +8,13 @@ import '../services/chat_service.dart';
 import '../services/user_service.dart';
 import '../utils/image_helper.dart';
 import '../utils/match_calculator.dart';
+import '../models/enums.dart';
+import '../models/venue.dart';
+import '../services/recommendation_engine.dart';
+import 'location_search_section.dart';
+import 'create_poll_dialog.dart';
+import 'poll_widget.dart';
+
 
 class MeetScreen extends StatefulWidget {
   final String? name;
@@ -39,16 +46,19 @@ class _MeetScreenState extends State<MeetScreen> {
   String _selectedLocation = 'Plaza Premium Lounge';
   int _selectedReminderMinutes = 15;
 
-  final List<String> _quickLocations = [
-    'Plaza Premium Lounge',
-    'Gate 12 Lounge',
-    'Starbucks Reserve (Gate 14)',
-    'Transit Hotel Lobby',
-  ];
+  // New discovery & reschedule poll variables
+  String _meetingCity = 'Vijayawada';
+  MeetingPurpose _meetingPurpose = MeetingPurpose.coffeeChat;
+  String _meetingType = 'in_person'; // 'in_person' or 'online'
+  Venue? _selectedVenue;
+
 
   @override
   void initState() {
     super.initState();
+    _activeTab = _state.meetingInitialTab;
+    // Reset initial tab in state manager so future navigations default to 0
+    _state.meetingInitialTab = 0;
     final now = DateTime.now();
     _meetingDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     _meetingTime = "${(now.hour + 1).toString().padLeft(2, '0')}:00";
@@ -148,12 +158,69 @@ class _MeetScreenState extends State<MeetScreen> {
         _loadingConnections = false;
       });
       _checkConflicts();
+      _updateDetectedCity();
     } catch (e) {
       setState(() {
         _loadingConnections = false;
       });
       debugPrint('Error fetching connections: $e');
     }
+  }
+
+  Future<void> _updateDetectedCity() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ids = [uid, ..._selectedConnections.map((c) => c.uid)];
+    final result = await RecommendationEngine().detectMeetingCity(ids);
+    if (mounted) {
+      setState(() {
+        _meetingCity = result.primaryCity;
+      });
+    }
+  }
+
+  Widget _buildTypeButton({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF7A432D) : Colors.white,
+          border: Border.all(
+            color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
+            width: 1.2,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : const Color(0xFF3E1F11),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.white : const Color(0xFF3E1F11),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _checkConflicts() async {
@@ -350,18 +417,29 @@ class _MeetScreenState extends State<MeetScreen> {
         );
       }
 
+      // Determine final location text
+      final finalLocation = _meetingType == 'online'
+          ? 'Online Meeting (Virtual)'
+          : (_selectedVenue != null ? _selectedVenue!.name : _selectedLocation);
+
       // Create Firestore meeting document
       final meetingId = await MeetingService().createMeeting(
         attendeeIds: attendeeIds,
         scheduledAt: scheduledAt,
-        location: _selectedLocation,
+        location: finalLocation,
         reminderMinutes: _selectedReminderMinutes,
         chatId: chatId,
+        meetingCity: _meetingCity,
+        meetingPurpose: _meetingPurpose.name,
+        meetingType: _meetingType,
+        selectedVenueSnapshot: _selectedVenue?.toMap(),
+        selectedVenueId: _selectedVenue?.id,
+        selectedVenueProvider: _selectedVenue?.provider,
       );
 
       // Send text notifications in chats
       final formattedTime = "${scheduledAt.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][scheduledAt.month - 1]} at $_meetingTime";
-      final notificationMsg = "📅 Meeting Request: Let's meet at $_selectedLocation on $formattedTime [meetingId:$meetingId]";
+      final notificationMsg = "📅 Meeting Request: Let's meet at $finalLocation on $formattedTime [meetingId:$meetingId]";
 
       // If we invited a group, send it to the group chat
       if (_selectedGroup != null) {
@@ -482,84 +560,6 @@ class _MeetScreenState extends State<MeetScreen> {
     }
   }
 
-  Future<void> _rescheduleMeetingDialog(String meetingId) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final DateTime? pickedDate = await showDatePicker(
-      context: context,
-      initialDate: today,
-      firstDate: today,
-      lastDate: DateTime(2101),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF7A432D),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF3E1F11),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedDate == null || !mounted) return;
-
-    final TimeOfDay? pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF7A432D),
-              onPrimary: Colors.white,
-              onSurface: Color(0xFF3E1F11),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (pickedTime == null || !mounted) return;
-
-    final newTime = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
-
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw Exception('User not logged in');
-
-      await MeetingService().rescheduleMeeting(
-        meetingId: meetingId,
-        newTime: newTime,
-        userId: uid,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Meeting rescheduled successfully!'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to reschedule meeting: $e'),
-          backgroundColor: const Color(0xFFC62828),
-        ),
-      );
-    }
-  }
 
   Future<void> _showCancellationReasonDialogNew(
     String meetingId,
@@ -738,7 +738,6 @@ class _MeetScreenState extends State<MeetScreen> {
     final rawStatus = data['status'] as String? ?? 'pending';
     final statusStr = rawStatus.toUpperCase();
     final location = data['location'] as String? ?? 'Not specified';
-    final agenda = List<String>.from(data['suggestedAgenda'] ?? []);
     final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
     final scheduledAt = scheduledTimestamp?.toDate();
     final reminderMinutes = data['reminderMinutes'] as int?;
@@ -978,93 +977,11 @@ class _MeetScreenState extends State<MeetScreen> {
                   }
                   final profiles = snapshot.data ?? [];
 
-                  // Calculate interest overlap
-                  final myInterests = _currentUserProfile?.interests ?? [];
-                  final otherInterests = profiles
-                      .where((p) => p.uid != currentUid)
-                      .expand((p) => p.interests)
-                      .toSet();
-                  final common = myInterests.toSet().intersection(otherInterests).toList();
-
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Smart Context Box
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAF7F5),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE8E2DD)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: const [
-                                Icon(Icons.lightbulb_outline, color: Color(0xFF7A432D), size: 16),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Smart Meeting Context',
-                                  style: TextStyle(
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                    color: Color(0xFF3E1F11),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            if (common.isNotEmpty) ...[
-                              Text(
-                                '💡 Common Interests: ${common.join(", ")}',
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  color: Color(0xFF3E1F11),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-                            if (agenda.isNotEmpty) ...[
-                              const Text(
-                                'Suggested AI Agenda:',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF8C736B),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              ...agenda.map((item) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 2),
-                                    child: Text(
-                                      item,
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 11.5,
-                                        color: Color(0xFF3E1F11),
-                                      ),
-                                    ),
-                                  )),
-                            ] else ...[
-                              const Text(
-                                'No specific agenda suggested.',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 11.5,
-                                  color: Color(0xFF8C736B),
-                                ),
-                              ),
-                            ]
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+
                       // Active Proposals Section
                       if ((data['proposals'] as List?)?.isNotEmpty == true) ...[
                         Builder(builder: (context) {
@@ -1236,6 +1153,16 @@ class _MeetScreenState extends State<MeetScreen> {
                           ),
                         ),
                       ],
+                      // Active Collaborative Reschedule Poll
+                      if (data['currentPollId'] != null) ...[
+                        PollWidget(
+                          meetingId: meetingId,
+                          pollId: data['currentPollId'] as String,
+                          isHost: isHost,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
                       const SizedBox(height: 16),
 
                       // Attendee Details Header
@@ -1454,35 +1381,58 @@ class _MeetScreenState extends State<MeetScreen> {
                                       color: Colors.white,
                                     ),
                                   ),
-                                  onPressed: () => _rescheduleMeetingDialog(meetingId),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => CreatePollDialog(
+                                        meetingId: meetingId,
+                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        onPollCreated: () {
+                                          setState(() {});
+                                        },
+                                      ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
                           ],
                         ] else ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               // Reschedule (Host only)
                               if (hosts.contains(currentUid)) ...[
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF7A432D),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   ),
                                   icon: const Icon(Icons.edit_calendar, size: 16, color: Colors.white),
                                   label: const Text(
                                     'Reschedule',
                                     style: TextStyle(
                                       fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                   ),
-                                  onPressed: () => _rescheduleMeetingDialog(meetingId),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (ctx) => CreatePollDialog(
+                                        meetingId: meetingId,
+                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        onPollCreated: () {
+                                          setState(() {});
+                                        },
+                                      ),
+                                    );
+                                  },
                                 ),
+                                const SizedBox(height: 10),
                               ],
 
                               // My Attendance dropdown/actions
@@ -1490,52 +1440,63 @@ class _MeetScreenState extends State<MeetScreen> {
                                 Row(
                                   children: [
                                     const Text(
-                                      'Response: ',
+                                      'Your Response:',
                                       style: TextStyle(
                                         fontFamily: 'PlusJakartaSans',
-                                        fontSize: 11,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xFF8C736B),
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    DropdownButton<String>(
-                                      value: statusMap[currentUid] as String? ?? 'pending',
-                                      dropdownColor: Colors.white,
-                                      underline: const SizedBox(),
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF3E1F11),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: const Color(0xFFE0D4CB)),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: DropdownButton<String>(
+                                          value: statusMap[currentUid] as String? ?? 'pending',
+                                          dropdownColor: Colors.white,
+                                          underline: const SizedBox(),
+                                          isExpanded: true,
+                                          style: const TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF3E1F11),
+                                          ),
+                                          items: const [
+                                            DropdownMenuItem(
+                                              value: 'pending',
+                                              child: Text('Pending', style: TextStyle(color: Colors.grey)),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'accepted',
+                                              child: Text('Accept', style: TextStyle(color: Color(0xFF2E7D32))),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'tentative',
+                                              child: Text('Tentative', style: TextStyle(color: Color(0xFFEF6C00))),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'cancelled',
+                                              child: Text('Cancel', style: TextStyle(color: Color(0xFFC62828))),
+                                            ),
+                                          ],
+                                          onChanged: (val) {
+                                            if (val != null) {
+                                              _updateMyStatus(meetingId, val, location, timeStr);
+                                            }
+                                          },
+                                        ),
                                       ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: 'pending',
-                                          child: Text('Pending', style: TextStyle(color: Colors.grey)),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'accepted',
-                                          child: Text('Accept', style: TextStyle(color: Color(0xFF2E7D32))),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'tentative',
-                                          child: Text('Tentative', style: TextStyle(color: Color(0xFFEF6C00))),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'cancelled',
-                                          child: Text('Cancel', style: TextStyle(color: Color(0xFFC62828))),
-                                        ),
-                                      ],
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          _updateMyStatus(meetingId, val, location, timeStr);
-                                        }
-                                      },
                                     ),
                                   ],
                                 ),
-                              ]
+                              ],
+
                             ],
                           ),
                         ],
@@ -1789,6 +1750,7 @@ class _MeetScreenState extends State<MeetScreen> {
                   }
                 }
               }
+              _updateDetectedCity();
               _checkConflicts();
             },
           ),
@@ -1843,6 +1805,7 @@ class _MeetScreenState extends State<MeetScreen> {
                   setState(() {
                     _selectedConnections.remove(conn);
                   });
+                  _updateDetectedCity();
                   _checkConflicts();
                 },
               );
@@ -2006,6 +1969,7 @@ class _MeetScreenState extends State<MeetScreen> {
                             _selectedConnections.removeWhere((c) => c.uid == conn.uid);
                           }
                         });
+                        _updateDetectedCity();
                         _checkConflicts();
                       },
                     );
@@ -2087,9 +2051,9 @@ class _MeetScreenState extends State<MeetScreen> {
 
         const SizedBox(height: 24),
 
-        // Location Input
+        // Meeting Purpose
         const Text(
-          'LOCATION',
+          'MEETING PURPOSE',
           style: TextStyle(
             fontFamily: 'PlusJakartaSans',
             fontSize: 10,
@@ -2098,43 +2062,133 @@ class _MeetScreenState extends State<MeetScreen> {
             color: Color(0xFF8C736B),
           ),
         ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _quickLocations.map((loc) {
-            final isSelected = _selectedLocation == loc;
-            return InkWell(
-              onTap: () {
-                setState(() {
-                  _selectedLocation = loc;
-                });
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<MeetingPurpose>(
+              value: _meetingPurpose,
+              isExpanded: true,
+              dropdownColor: Colors.white,
+              style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF8C736B)),
+              items: MeetingPurpose.values.map((purpose) {
+                return DropdownMenuItem(
+                  value: purpose,
+                  child: Text(purpose.displayName),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _meetingPurpose = val;
+                  });
+                }
               },
-              borderRadius: BorderRadius.circular(20),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF7A432D) : Colors.white,
-                  border: Border.all(
-                    color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
-                    width: 1.2,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  loc,
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 11.5,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? Colors.white : const Color(0xFF3E1F11),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
+            ),
+          ),
         ),
+
+        const SizedBox(height: 20),
+
+        // Meeting Type (In-Person / Online)
+        const Text(
+          'MEETING TYPE',
+          style: TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: Color(0xFF8C736B),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildTypeButton(
+                label: 'In-Person',
+                icon: Icons.location_on_outlined,
+                isSelected: _meetingType == 'in_person',
+                onTap: () => setState(() => _meetingType = 'in_person'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildTypeButton(
+                label: 'Online Meeting',
+                icon: Icons.videocam_outlined,
+                isSelected: _meetingType == 'online',
+                onTap: () => setState(() => _meetingType = 'online'),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Location & Search Selector
+        if (_meetingType == 'in_person') ...[
+          const Text(
+            'MEETING LOCATION',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+          const SizedBox(height: 10),
+          LocationSearchSection(
+            currentCity: _meetingCity,
+            purpose: _meetingPurpose,
+            selectedVenue: _selectedVenue,
+            onVenueSelected: (venue) {
+              setState(() {
+                _selectedVenue = venue;
+                _selectedLocation = venue.name;
+              });
+            },
+          ),
+        ] else ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAF7F5),
+              border: Border.all(color: const Color(0xFFE8E2DD)),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: const [
+                Icon(Icons.videocam, color: Color(0xFF7A432D), size: 24),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Virtual Video Call',
+                        style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF3E1F11)),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Meeting link will be shared in your chat conversation automatically.',
+                        style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         const SizedBox(height: 20),
         const Text(
