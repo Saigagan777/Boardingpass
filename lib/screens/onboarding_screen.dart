@@ -73,18 +73,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _eduStartDateController = TextEditingController();
   final TextEditingController _eduEndDateController = TextEditingController();
 
-  String? _selectedIndustry = 'Technology';
-  String? _selectedTravelFrequency = 'Occasional';
+  String? _selectedIndustry;
+  String? _selectedTravelFrequency;
 
   // Home Base dependent states
-  String _homeBaseCountry = 'India';
-  String _homeBaseState = 'Andhra Pradesh';
-  String _homeBaseCity = 'Vijayawada';
+  String _homeBaseCountry = '';
+  String _homeBaseState = '';
+  String _homeBaseCity = '';
 
   // Current Location dependent states
-  String _currentLocationCountry = 'India';
-  String _currentLocationState = 'Andhra Pradesh';
-  String _currentLocationCity = 'Vijayawada';
+  String _currentLocationCountry = '';
+  String _currentLocationState = '';
+  String _currentLocationCity = '';
 
   final List<String> _industries = [
     'Technology',
@@ -105,13 +105,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Never',
   ];
 
-  // Intents selectable checkboxes/chips
-  final List<Map<String, dynamic>> _intentsSelection = [
-    {'label': 'Raising Seed', 'selected': false},
-    {'label': 'Hiring CTO', 'selected': false},
-    {'label': 'Open to coffee', 'selected': false},
-    {'label': 'B2B partnerships', 'selected': false},
+  final List<String> _interestOptions = [
+    'Networking',
+    'Socializing',
+    'Learning',
+    'Investing',
+    'Fundraising',
+    'Hiring Talents',
+    'Job Opportunity',
   ];
+  String? _selectedInterest;
 
   final List<Map<String, String>> _onboardingData = [
     {
@@ -206,15 +209,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         if (profile.travelFrequency != null &&
             profile.travelFrequency!.isNotEmpty) {
           _selectedTravelFrequency = profile.travelFrequency;
-        }
-        // Sync intents selection
-        for (final intentLabel in profile.intents) {
-          final idx = _intentsSelection.indexWhere(
-            (item) => item['label'] == intentLabel,
-          );
-          if (idx != -1) {
-            _intentsSelection[idx]['selected'] = true;
-          }
         }
       }
     }
@@ -519,23 +513,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               .toList()
         : [];
 
-    // Parse intents
-    final List<String> selectedIntents = _intentsSelection
-        .where((item) => item['selected'] == true)
-        .map((item) => item['label'] as String)
-        .toList();
-
     // Validate fields before sign up
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
         bio.isEmpty ||
         expertiseList.isEmpty ||
-        selectedIntents.isEmpty) {
+        _selectedIndustry == null ||
+        _selectedInterest == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please complete all professional details, skills, experience, bio, and select at least one interest.',
+            'Please complete all professional details, skills, experience, bio, and select a sector and primary interest.',
           ),
           backgroundColor: Color(0xFF7A432D),
         ),
@@ -568,9 +557,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         travelFrequency: travelFrequency,
         profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
         expertise: expertiseList,
-        intents: selectedIntents,
+        intents: [_selectedInterest!],
         skills: expertiseList,
-        interests: selectedIntents,
+        interests: [_selectedInterest!],
         careerTimeline: _careerTimeline,
         educationTimeline: _educationTimeline,
         linkedinProfileUrl: _linkedinUrlController.text.trim().isNotEmpty
@@ -654,23 +643,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               .toList()
         : [];
 
-    // Parse intents
-    final List<String> selectedIntents = _intentsSelection
-        .where((item) => item['selected'] == true)
-        .map((item) => item['label'] as String)
-        .toList();
-
     // Validate fields before complete
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
         bio.isEmpty ||
         expertiseList.isEmpty ||
-        selectedIntents.isEmpty) {
+        _selectedIndustry == null ||
+        _selectedInterest == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please complete all professional details, skills, experience, bio, and select at least one interest.',
+            'Please complete all professional details, skills, experience, bio, and select a sector and primary interest.',
           ),
           backgroundColor: Color(0xFF7A432D),
         ),
@@ -701,9 +685,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               : null,
           travelFrequency: travelFrequency,
           expertise: expertiseList,
-          intents: selectedIntents,
+          intents: [_selectedInterest!],
           skills: expertiseList,
-          interests: selectedIntents,
+          interests: [_selectedInterest!],
           careerTimeline: _careerTimeline,
           educationTimeline: _educationTimeline,
           linkedinProfileUrl: !_isLinkedInUser && _linkedinUrlController.text.trim().isNotEmpty
@@ -873,9 +857,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     total++;
     if (_bioController.text.trim().isNotEmpty) completed++;
 
-    // 11. Intents
+    // 11. Primary Interest
     total++;
-    if (_intentsSelection.any((item) => item['selected'] == true)) completed++;
+    if (_selectedInterest != null) completed++;
 
     // 12. Travel Frequency
     total++;
@@ -1568,8 +1552,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               Expanded(
                 child: _buildDropdownField(
                   label: 'Industry / Sector',
-                  currentValue: _selectedIndustry!,
+                  currentValue: _selectedIndustry,
                   items: _industries,
+                  hintText: 'Select industry',
                   onChanged: (val) {
                     setState(() => _selectedIndustry = val);
                   },
@@ -1606,7 +1591,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Select Active Intents / Interests:',
+            'Primary Interest:',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontSize: 14,
@@ -1615,39 +1600,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: _intentsSelection.map((intent) {
-              final bool isSelected = intent['selected'];
-              return ChoiceChip(
-                label: Text(
-                  intent['label'],
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? Colors.white : const Color(0xFF5C473E),
-                  ),
-                ),
-                selected: isSelected,
-                selectedColor: const Color(0xFF7A432D),
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(
-                    color: isSelected
-                        ? const Color(0xFF7A432D)
-                        : const Color(0xFFE8E2DD),
-                  ),
-                ),
-                onSelected: (bool selected) {
-                  setState(() {
-                    intent['selected'] = selected;
-                  });
-                },
-              );
-            }).toList(),
+          _buildDropdownField(
+            label: 'Select Interest',
+            currentValue: _selectedInterest,
+            items: _interestOptions,
+            hintText: 'Select interest',
+            onChanged: (val) => setState(() => _selectedInterest = val),
           ),
           const SizedBox(height: 24),
 
@@ -1656,8 +1614,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 12),
           _buildDropdownField(
             label: 'Travel Frequency',
-            currentValue: _selectedTravelFrequency!,
+            currentValue: _selectedTravelFrequency,
             items: _travelFrequencies,
+            hintText: 'Select frequency',
             onChanged: (val) {
               setState(() => _selectedTravelFrequency = val);
             },
@@ -1681,6 +1640,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             currentCountry: getCountryForPicker(_homeBaseCountry),
             currentState: _homeBaseState,
             currentCity: _homeBaseCity,
+            countryDropdownLabel: 'Select country',
+            stateDropdownLabel: 'Select state',
+            cityDropdownLabel: 'Select city',
             dropdownDecoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               color: Colors.white,
@@ -1746,6 +1708,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             currentCountry: getCountryForPicker(_currentLocationCountry),
             currentState: _currentLocationState,
             currentCity: _currentLocationCity,
+            countryDropdownLabel: 'Select country',
+            stateDropdownLabel: 'Select state',
+            cityDropdownLabel: 'Select city',
             dropdownDecoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               color: Colors.white,
@@ -2201,15 +2166,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _buildDropdownField({
     required String label,
-    required String currentValue,
+    String? currentValue,
     required List<String> items,
     required ValueChanged<String?> onChanged,
     Widget? secondaryField,
+    String? hintText,
   }) {
     final List<String> safeItems = List<String>.from(items);
-    if (currentValue.isNotEmpty && !safeItems.contains(currentValue)) {
-      safeItems.add(currentValue);
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -2249,10 +2212,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: safeItems.contains(currentValue)
-                  ? currentValue
-                  : (safeItems.isNotEmpty ? safeItems.first : null),
+            child: DropdownButton<String?>(
+              value: currentValue != null && safeItems.contains(currentValue) ? currentValue : null,
+              hint: hintText != null
+                  ? Text(hintText, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)))
+                  : null,
               isExpanded: true,
               isDense: true,
               dropdownColor: Colors.white,
@@ -2263,7 +2227,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 color: Color(0xFF3E1F11),
               ),
               items: safeItems.map((String val) {
-                return DropdownMenuItem<String>(value: val, child: Text(val));
+                return DropdownMenuItem<String?>(value: val, child: Text(val));
               }).toList(),
               onChanged: onChanged,
             ),
@@ -2832,7 +2796,7 @@ class OnboardingPage extends StatelessWidget {
 }
 
 String getCountryForPicker(String? countryName) {
-  if (countryName == null || countryName.isEmpty) return 'ðŸ‡®ðŸ‡³   India';
+  if (countryName == null || countryName.isEmpty) return '';
   if (countryName.contains('   ')) return countryName;
   
   final Map<String, String> countryToEmoji = {

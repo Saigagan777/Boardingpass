@@ -21,12 +21,32 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   // Filter states
   final TextEditingController _searchQuery = TextEditingController();
-  String _selectedRole = 'All';
-  String _selectedIntent = 'All';
-  double _minMatchScore = 0.0;
-  List<String> _selectedInterests = [];
-  List<String> _selectedExpertise = [];
-  String? _selectedLocation;
+  String? _selectedIndustry;
+  String? _selectedInterest;
+  final TextEditingController _industryController = TextEditingController();
+  final List<String> _customIndustries = [];
+
+  final List<String> _industryOptions = [
+    'Technology',
+    'Finance',
+    'Healthcare',
+    'Education',
+    'Consulting',
+    'Real Estate',
+    'Automotive',
+    'Entertainment',
+    'Other',
+  ];
+
+  final List<String> _interestOptions = [
+    'Networking',
+    'Socializing',
+    'Learning',
+    'Investing',
+    'Fundraising',
+    'Hiring Talents',
+    'Job Opportunity',
+  ];
 
   // Swiping state variables
   double _dragDx = 0.0;
@@ -95,77 +115,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         }
       }
 
-      // 2. Role filter
-      if (_selectedRole != 'All') {
-        if (_selectedRole == 'Founders / CEOs') {
-          final roleLower = c.role.toLowerCase();
-          if (!roleLower.contains('founder') &&
-              !roleLower.contains('ceo') &&
-              !roleLower.contains('co-founder')) {
-            return false;
-          }
-        } else if (_selectedRole == 'Investors / VCs') {
-          final roleLower = c.role.toLowerCase();
-          if (!roleLower.contains('investor') &&
-              !roleLower.contains('vc') &&
-              !roleLower.contains('partner') &&
-              !roleLower.contains('capital')) {
-            return false;
-          }
-        } else if (_selectedRole == 'Tech / Engineering') {
-          final roleLower = c.role.toLowerCase();
-          if (!roleLower.contains('engineer') &&
-              !roleLower.contains('developer') &&
-              !roleLower.contains('cto') &&
-              !roleLower.contains('tech') &&
-              !roleLower.contains('product')) {
-            return false;
-          }
-        } else if (_selectedRole == 'Sales / Marketing') {
-          final roleLower = c.role.toLowerCase();
-          if (!roleLower.contains('sales') &&
-              !roleLower.contains('marketing') &&
-              !roleLower.contains('growth') &&
-              !roleLower.contains('bd')) {
-            return false;
-          }
-        } else {
-          if (!c.role.toLowerCase().contains(_selectedRole.toLowerCase())) {
-            return false;
-          }
-        }
-      }
-
-      // 3. Intent filter
-      if (_selectedIntent != 'All') {
-        if (!c.intent.toLowerCase().contains(_selectedIntent.toLowerCase())) {
+      // 2. Industry filter
+      if (_selectedIndustry != null) {
+        if (c.industry != _selectedIndustry) {
           return false;
         }
       }
 
-      // 4. Minimum Match Score filter
-      if (c.match < _minMatchScore) {
-        return false;
-      }
-
-      // 5. Interest filter
-      if (_selectedInterests.isNotEmpty) {
-        if (!c.interests.any((i) => _selectedInterests.contains(i))) {
-          return false;
-        }
-      }
-
-      // 6. Expertise filter
-      if (_selectedExpertise.isNotEmpty) {
-        if (!c.skills.any((s) => _selectedExpertise.contains(s)) &&
-            !c.tags.any((t) => _selectedExpertise.contains(t))) {
-          return false;
-        }
-      }
-
-      // 7. Location filter
-      if (_selectedLocation != null) {
-        if (c.loc != _selectedLocation && c.homeBase != _selectedLocation) {
+      // 3. Interest filter
+      if (_selectedInterest != null) {
+        if (!c.interests.any((i) => i == _selectedInterest)) {
           return false;
         }
       }
@@ -912,12 +871,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       TextButton(
                         onPressed: () {
                           setModalState(() {
-                            _selectedRole = 'All';
-                            _selectedIntent = 'All';
-                            _minMatchScore = 0.0;
-                            _selectedInterests = [];
-                            _selectedExpertise = [];
-                            _selectedLocation = null;
+                            _selectedIndustry = null;
+                            _selectedInterest = null;
                           });
                           setState(() {});
                         },
@@ -940,127 +895,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Role Selection
+                          // Industry Dropdown
                           const Text(
-                            'Role / Profession',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children:
-                                [
-                                  'All',
-                                  'Founders / CEOs',
-                                  'Investors / VCs',
-                                  'Tech / Engineering',
-                                  'Sales / Marketing',
-                                ].map((role) {
-                                  final isSelected = _selectedRole == role;
-                                  return ChoiceChip(
-                                    label: Text(role),
-                                    selected: isSelected,
-                                    onSelected: (selected) {
-                                      setModalState(() {
-                                        _selectedRole = role;
-                                      });
-                                      setState(() {});
-                                    },
-                                    selectedColor: const Color(0xFF7A432D),
-                                    disabledColor: Colors.transparent,
-                                    backgroundColor: Colors.transparent,
-                                    checkmarkColor: Colors.white,
-                                    labelStyle: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF5C473E),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : const Color(0xFFE8E2DD),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Intent Selection
-                          const Text(
-                            'Intent / Objective',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children:
-                                [
-                                  'All',
-                                  'Raising Seed',
-                                  'Hiring Team',
-                                  'Open to Coffee',
-                                  'B2B Partnerships',
-                                ].map((intent) {
-                                  final isSelected = _selectedIntent == intent;
-                                  return ChoiceChip(
-                                    label: Text(intent),
-                                    selected: isSelected,
-                                    onSelected: (selected) {
-                                      setModalState(() {
-                                        _selectedIntent = intent;
-                                      });
-                                      setState(() {});
-                                    },
-                                    selectedColor: const Color(0xFF7A432D),
-                                    disabledColor: Colors.transparent,
-                                    backgroundColor: Colors.transparent,
-                                    checkmarkColor: Colors.white,
-                                    labelStyle: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF5C473E),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : const Color(0xFFE8E2DD),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Interests Multi-Select
-                          const Text(
-                            'Interests',
+                            'Industry',
                             style: TextStyle(
                               fontFamily: 'PlusJakartaSans',
                               fontWeight: FontWeight.bold,
@@ -1071,288 +908,167 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
-                              final allInterests =
-                                  _state.candidates
-                                      .expand((c) => c.interests)
-                                      .toSet()
-                                      .toList()
-                                    ..sort();
-                              if (allInterests.isEmpty) {
-                                return const Text(
-                                  'No interest data available',
-                                  style: TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 12,
-                                    color: Color(0xFF8C736B),
-                                  ),
-                                );
-                              }
-                              return Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: allInterests.map((interest) {
-                                  final isSelected = _selectedInterests
-                                      .contains(interest);
-                                  return FilterChip(
-                                    label: Text(interest),
-                                    selected: isSelected,
-                                    onSelected: (selected) {
-                                      setModalState(() {
-                                        if (selected) {
-                                          _selectedInterests.add(interest);
-                                        } else {
-                                          _selectedInterests.remove(interest);
-                                        }
-                                      });
-                                      setState(() {});
-                                    },
-                                    selectedColor: const Color(0xFF7A432D),
-                                    checkmarkColor: Colors.white,
-                                    backgroundColor: Colors.transparent,
-                                    labelStyle: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF5C473E),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : const Color(0xFFE8E2DD),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Expertise Multi-Select
-                          const Text(
-                            'Expertise / Skills',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Builder(
-                            builder: (context) {
-                              final allExpertise =
-                                  _state.candidates
-                                      .expand((c) => [...c.tags, ...c.skills])
-                                      .toSet()
-                                      .toList()
-                                    ..sort();
-                              if (allExpertise.isEmpty) {
-                                return const Text(
-                                  'No expertise data available',
-                                  style: TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 12,
-                                    color: Color(0xFF8C736B),
-                                  ),
-                                );
-                              }
-                              return Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: allExpertise.map((skill) {
-                                  final isSelected = _selectedExpertise
-                                      .contains(skill);
-                                  return FilterChip(
-                                    label: Text(skill),
-                                    selected: isSelected,
-                                    onSelected: (selected) {
-                                      setModalState(() {
-                                        if (selected) {
-                                          _selectedExpertise.add(skill);
-                                        } else {
-                                          _selectedExpertise.remove(skill);
-                                        }
-                                      });
-                                      setState(() {});
-                                    },
-                                    selectedColor: const Color(0xFF7A432D),
-                                    checkmarkColor: Colors.white,
-                                    backgroundColor: Colors.transparent,
-                                    labelStyle: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF5C473E),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide(
-                                        color: isSelected
-                                            ? Colors.transparent
-                                            : const Color(0xFFE8E2DD),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 20),
-
-                          // Location Filter
-                          const Text(
-                            'Location',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Builder(
-                            builder: (context) {
-                              final allLocations =
-                                  _state.candidates
-                                      .map((c) => c.loc)
-                                      .where((l) => l.isNotEmpty)
-                                      .toSet()
-                                      .toList()
-                                    ..sort();
-                              return Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
+                              final candidateIndustries = _state.candidates
+                                  .where((c) => c.industry.isNotEmpty)
+                                  .map((c) => c.industry)
+                                  .toSet();
+                              final allIndustries = <String>{
+                                ..._industryOptions,
+                                ...candidateIndustries.where((i) => !_industryOptions.contains(i)),
+                                ..._customIndustries,
+                              }.toList()..sort();
+                              return Column(
                                 children: [
-                                  ChoiceChip(
-                                    label: const Text('All'),
-                                    selected: _selectedLocation == null,
-                                    onSelected: (selected) {
-                                      setModalState(() {
-                                        _selectedLocation = null;
-                                      });
-                                      setState(() {});
-                                    },
-                                    selectedColor: const Color(0xFF7A432D),
-                                    checkmarkColor: Colors.white,
-                                    backgroundColor: Colors.transparent,
-                                    labelStyle: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 12,
-                                      fontWeight: _selectedLocation == null
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: _selectedLocation == null
-                                          ? Colors.white
-                                          : const Color(0xFF5C473E),
+                                  InputDecorator(
+                                    decoration: InputDecoration(
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                      ),
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: BorderSide(
-                                        color: _selectedLocation == null
-                                            ? Colors.transparent
-                                            : const Color(0xFFE8E2DD),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String?>(
+                                        value: _selectedIndustry,
+                                        hint: const Text('Select industry',
+                                          style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                        ),
+                                        isExpanded: true,
+                                        isDense: true,
+                                        dropdownColor: Colors.white,
+                                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+                                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                        items: allIndustries.map((val) {
+                                          return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                        }).toList(),
+                                        onChanged: (val) {
+                                          setModalState(() {
+                                            _selectedIndustry = val;
+                                            if (val == 'Other') {
+                                              _industryController.clear();
+                                            }
+                                          });
+                                          setState(() {});
+                                        },
                                       ),
                                     ),
                                   ),
-                                  ...allLocations.map((loc) {
-                                    final isSelected = _selectedLocation == loc;
-                                    return ChoiceChip(
-                                      label: Text(loc),
-                                      selected: isSelected,
-                                      onSelected: (selected) {
-                                        setModalState(() {
-                                          _selectedLocation = selected
-                                              ? loc
-                                              : null;
-                                        });
-                                        setState(() {});
-                                      },
-                                      selectedColor: const Color(0xFF7A432D),
-                                      checkmarkColor: Colors.white,
-                                      backgroundColor: Colors.transparent,
-                                      labelStyle: TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 12,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: isSelected
-                                            ? Colors.white
-                                            : const Color(0xFF5C473E),
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                        side: BorderSide(
-                                          color: isSelected
-                                              ? Colors.transparent
-                                              : const Color(0xFFE8E2DD),
+                                  if (_selectedIndustry == 'Other')
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: TextField(
+                                        controller: _industryController,
+                                        decoration: InputDecoration(
+                                          hintText: 'Enter custom industry...',
+                                          filled: true,
+                                          fillColor: Colors.white,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                            borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                          ),
                                         ),
+                                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                        onSubmitted: (text) {
+                                          final trimmed = text.trim();
+                                          if (trimmed.isNotEmpty) {
+                                            setModalState(() {
+                                              _customIndustries.add(trimmed);
+                                              _selectedIndustry = trimmed;
+                                              _industryController.clear();
+                                            });
+                                            setState(() {});
+                                          }
+                                        },
                                       ),
-                                    );
-                                  }),
+                                    ),
                                 ],
                               );
                             },
                           ),
                           const SizedBox(height: 20),
 
-                          // Match Score Slider
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Minimum Match Score',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Color(0xFF3E1F11),
-                                ),
-                              ),
-                              Text(
-                                '${_minMatchScore.round()}%',
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Color(0xFF7A432D),
-                                ),
-                              ),
-                            ],
+                          // Interest Dropdown
+                          const Text(
+                            'Interest',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
                           ),
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: const Color(0xFF7A432D),
-                              inactiveTrackColor: const Color(0xFFE8E2DD),
-                              thumbColor: const Color(0xFF7A432D),
-                              overlayColor: const Color(
-                                0xFF7A432D,
-                              ).withValues(alpha: 0.12),
-                              valueIndicatorColor: const Color(0xFF7A432D),
-                            ),
-                            child: Slider(
-                              value: _minMatchScore,
-                              min: 0,
-                              max: 100,
-                              divisions: 10,
-                              onChanged: (val) {
-                                setModalState(() {
-                                  _minMatchScore = val;
-                                });
-                                setState(() {});
-                              },
-                            ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final candidateInterests = _state.candidates
+                                  .where((c) => c.interests.isNotEmpty)
+                                  .expand((c) => c.interests)
+                                  .toSet();
+                              final allInterests = <String>{
+                                ..._interestOptions,
+                                ...candidateInterests.where((i) => !_interestOptions.contains(i)),
+                              }.toList()..sort();
+                              return InputDecorator(
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                  ),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: _selectedInterest,
+                                    hint: const Text('Select interest',
+                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    ),
+                                    isExpanded: true,
+                                    isDense: true,
+                                    dropdownColor: Colors.white,
+                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    items: allInterests.map((val) {
+                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        _selectedInterest = val;
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -1438,12 +1154,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               onPressed: () {
                 setState(() {
                   _searchQuery.clear();
-                  _selectedRole = 'All';
-                  _selectedIntent = 'All';
-                  _minMatchScore = 0.0;
-                  _selectedInterests = [];
-                  _selectedExpertise = [];
-                  _selectedLocation = null;
+                  _selectedIndustry = null;
+                  _selectedInterest = null;
                 });
               },
               icon: const Icon(Icons.refresh_rounded, size: 16),
@@ -1516,12 +1228,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             icon: Stack(
               children: [
                 const Icon(Icons.tune_rounded, color: Color(0xFF3E1F11)),
-                if (_selectedRole != 'All' ||
-                    _selectedIntent != 'All' ||
-                    _minMatchScore > 0 ||
-                    _selectedInterests.isNotEmpty ||
-                    _selectedExpertise.isNotEmpty ||
-                    _selectedLocation != null)
+                if (_selectedIndustry != null ||
+                    _selectedInterest != null)
                   Positioned(
                     right: 0,
                     top: 0,
@@ -1609,12 +1317,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 _buildIncomingRequestsPanel(),
 
                 // Active Filter Chips
-                if (_selectedRole != 'All' ||
-                    _selectedIntent != 'All' ||
-                    _minMatchScore > 0 ||
-                    _selectedInterests.isNotEmpty ||
-                    _selectedExpertise.isNotEmpty ||
-                    _selectedLocation != null)
+                if (_selectedIndustry != null ||
+                    _selectedInterest != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SizedBox(
@@ -1622,69 +1326,29 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         children: [
-                          if (_selectedRole != 'All')
+                          if (_selectedIndustry != null)
                             _buildFilterChip(
-                              label: 'Role: $_selectedRole',
+                              label: 'Industry: $_selectedIndustry',
                               onClear: () {
                                 setState(() {
-                                  _selectedRole = 'All';
+                                  _selectedIndustry = null;
                                 });
                               },
                             ),
-                          if (_selectedIntent != 'All')
+                          if (_selectedInterest != null)
                             _buildFilterChip(
-                              label: 'Intent: $_selectedIntent',
+                              label: 'Interest: $_selectedInterest',
                               onClear: () {
                                 setState(() {
-                                  _selectedIntent = 'All';
-                                });
-                              },
-                            ),
-                          if (_minMatchScore > 0)
-                            _buildFilterChip(
-                              label: 'Match: >=${_minMatchScore.round()}%',
-                              onClear: () {
-                                setState(() {
-                                  _minMatchScore = 0.0;
-                                });
-                              },
-                            ),
-                          if (_selectedInterests.isNotEmpty)
-                            _buildFilterChip(
-                              label: 'Interests: ${_selectedInterests.length}',
-                              onClear: () {
-                                setState(() {
-                                  _selectedInterests = [];
-                                });
-                              },
-                            ),
-                          if (_selectedExpertise.isNotEmpty)
-                            _buildFilterChip(
-                              label: 'Expertise: ${_selectedExpertise.length}',
-                              onClear: () {
-                                setState(() {
-                                  _selectedExpertise = [];
-                                });
-                              },
-                            ),
-                          if (_selectedLocation != null)
-                            _buildFilterChip(
-                              label: 'Location: $_selectedLocation',
-                              onClear: () {
-                                setState(() {
-                                  _selectedLocation = null;
+                                  _selectedInterest = null;
                                 });
                               },
                             ),
                           TextButton(
                             onPressed: () {
                               setState(() {
-                                _selectedRole = 'All';
-                                _selectedIntent = 'All';
-                                _minMatchScore = 0.0;
-                                _selectedInterests = [];
-                                _selectedExpertise = [];
-                                _selectedLocation = null;
+                                _selectedIndustry = null;
+                                _selectedInterest = null;
                               });
                             },
                             child: const Text(

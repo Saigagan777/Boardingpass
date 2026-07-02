@@ -506,7 +506,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         activeWidget = MeetScreen(
           name: _state.activeChatContact,
           onBack: () {
-            _state.currentScreen = AppScreen.chat;
+            _state.currentScreen = AppScreen.hub;
           },
           onDone: () {
             _state.currentScreen = AppScreen.hub;

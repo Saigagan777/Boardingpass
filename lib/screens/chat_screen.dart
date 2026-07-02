@@ -636,6 +636,58 @@ class _ChatScreenState extends State<ChatScreen> {
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     TimeOfDay selectedTime = TimeOfDay.now();
     final noteController = TextEditingController();
+    int selectedReminderMinutes = 15;
+    String? conflictWarning;
+    bool isValidating = false;
+    bool initialCheckDone = false;
+
+    Future<void> checkConflicts(StateSetter setSheetState) async {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid == null || _otherUid == null) return;
+
+      setSheetState(() {
+        isValidating = true;
+      });
+
+      try {
+        final proposedTime = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          selectedTime.hour,
+          selectedTime.minute,
+        );
+
+        final myConflict = await MeetingService().hasMeetingConflict(currentUid, proposedTime);
+        if (myConflict) {
+          setSheetState(() {
+            conflictWarning = "You already have a confirmed meeting around this time.";
+            isValidating = false;
+          });
+          return;
+        }
+
+        final otherConflict = await MeetingService().hasMeetingConflict(_otherUid!, proposedTime);
+        if (otherConflict) {
+          setSheetState(() {
+            final otherName = _selectedContactName ?? 'The other participant';
+            conflictWarning = "$otherName already has a confirmed meeting around this time.";
+            isValidating = false;
+          });
+          return;
+        }
+
+        setSheetState(() {
+          conflictWarning = null;
+          isValidating = false;
+        });
+      } catch (e) {
+        debugPrint('Error validating conflicts: $e');
+        setSheetState(() {
+          isValidating = false;
+        });
+      }
+    }
 
     showModalBottomSheet(
       context: context,
@@ -644,6 +696,13 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            if (!initialCheckDone) {
+              initialCheckDone = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                checkConflicts(setSheetState);
+              });
+            }
+
             return Container(
               decoration: const BoxDecoration(
                 color: Color(0xFFFAF7F5),
@@ -707,6 +766,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                             if (picked != null) {
                               setSheetState(() => selectedDate = picked);
+                              checkConflicts(setSheetState);
                             }
                           },
                         ),
@@ -731,11 +791,57 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                             if (picked != null) {
                               setSheetState(() => selectedTime = picked);
+                              checkConflicts(setSheetState);
                             }
                           },
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'REMINDER',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Color(0xFF8C736B),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE8E2DD)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedReminderMinutes,
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF8C736B)),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('None')),
+                          DropdownMenuItem(value: 5, child: Text('5 minutes before')),
+                          DropdownMenuItem(value: 10, child: Text('10 minutes before')),
+                          DropdownMenuItem(value: 15, child: Text('15 minutes before')),
+                          DropdownMenuItem(value: 30, child: Text('30 minutes before')),
+                          DropdownMenuItem(value: 60, child: Text('1 hour before')),
+                          DropdownMenuItem(value: 1440, child: Text('1 day before')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setSheetState(() {
+                              selectedReminderMinutes = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -747,6 +853,34 @@ class _ChatScreenState extends State<ChatScreen> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
                   ),
+                  if (conflictWarning != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFFD1D1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFC62828), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              conflictWarning!,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFC62828),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -756,7 +890,49 @@ class _ChatScreenState extends State<ChatScreen> {
                         backgroundColor: const Color(0xFF7A432D),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () async {
+                      onPressed: isValidating ? null : () async {
+                        if (conflictWarning != null) {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: const Color(0xFFFAF7F5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: const BorderSide(color: Color(0xFFE8E2DD), width: 1.5),
+                              ),
+                              title: const Text(
+                                'Schedule Conflict',
+                                style: TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              content: Text(
+                                conflictWarning!,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text(
+                                    'OK',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          return;
+                        }
+
                         final proposedDateTime = DateTime(
                           selectedDate.year,
                           selectedDate.month,
@@ -764,19 +940,20 @@ class _ChatScreenState extends State<ChatScreen> {
                           selectedTime.hour,
                           selectedTime.minute,
                         );
+                        final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
                         try {
                           await MeetingService().proposeOtherTime(
                             meetingId: meetingId,
                             proposedTime: proposedDateTime,
                             note: noteController.text.trim(),
+                            reminderMinutes: selectedReminderMinutes,
                           );
                           if (_chatId != null) {
-                            final timeStr = '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
                             final msg = '🔄 Proposed New Time: $timeStr for meeting at $location [meetingId:$meetingId]';
                             await ChatService().sendTextMessage(chatId: _chatId!, text: msg);
                           }
-                          if (context.mounted) Navigator.pop(context);
-                          if (mounted) {
+                          if (context.mounted) {
+                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('New time proposed!'),
@@ -786,7 +963,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             setState(() {});
                           }
                         } catch (e) {
-                          if (mounted) {
+                          if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Failed to propose time: $e'),
@@ -823,6 +1000,10 @@ class _ChatScreenState extends State<ChatScreen> {
     TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
     String selectedLocation = 'Plaza Premium Lounge';
     final noteController = TextEditingController();
+    int selectedReminderMinutes = 15;
+    String? conflictWarning;
+    bool isValidating = false;
+    bool initialCheckDone = false;
 
     final locations = [
       'Plaza Premium Lounge',
@@ -831,6 +1012,54 @@ class _ChatScreenState extends State<ChatScreen> {
       'Transit Hotel Lobby',
     ];
 
+    Future<void> checkConflicts(StateSetter setSheetState) async {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid == null || _otherUid == null) return;
+
+      setSheetState(() {
+        isValidating = true;
+      });
+
+      try {
+        final proposedTime = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          selectedTime.hour,
+          selectedTime.minute,
+        );
+
+        final myConflict = await MeetingService().hasMeetingConflict(currentUid, proposedTime);
+        if (myConflict) {
+          setSheetState(() {
+            conflictWarning = "You already have a confirmed meeting around this time.";
+            isValidating = false;
+          });
+          return;
+        }
+
+        final otherConflict = await MeetingService().hasMeetingConflict(_otherUid!, proposedTime);
+        if (otherConflict) {
+          setSheetState(() {
+            final otherName = _selectedContactName ?? 'The other participant';
+            conflictWarning = "$otherName already has a confirmed meeting around this time.";
+            isValidating = false;
+          });
+          return;
+        }
+
+        setSheetState(() {
+          conflictWarning = null;
+          isValidating = false;
+        });
+      } catch (e) {
+        debugPrint('Error validating conflicts: $e');
+        setSheetState(() {
+          isValidating = false;
+        });
+      }
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -838,6 +1067,13 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            if (!initialCheckDone) {
+              initialCheckDone = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                checkConflicts(setSheetState);
+              });
+            }
+
             return Container(
               decoration: const BoxDecoration(
                 color: Color(0xFFFAF7F5),
@@ -934,6 +1170,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                             if (picked != null) {
                               setSheetState(() => selectedDate = picked);
+                              checkConflicts(setSheetState);
                             }
                           },
                         ),
@@ -958,11 +1195,57 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                             if (picked != null) {
                               setSheetState(() => selectedTime = picked);
+                              checkConflicts(setSheetState);
                             }
                           },
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'REMINDER',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Color(0xFF8C736B),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE8E2DD)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedReminderMinutes,
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF8C736B)),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('None')),
+                          DropdownMenuItem(value: 5, child: Text('5 minutes before')),
+                          DropdownMenuItem(value: 10, child: Text('10 minutes before')),
+                          DropdownMenuItem(value: 15, child: Text('15 minutes before')),
+                          DropdownMenuItem(value: 30, child: Text('30 minutes before')),
+                          DropdownMenuItem(value: 60, child: Text('1 hour before')),
+                          DropdownMenuItem(value: 1440, child: Text('1 day before')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setSheetState(() {
+                              selectedReminderMinutes = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -974,6 +1257,34 @@ class _ChatScreenState extends State<ChatScreen> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
                   ),
+                  if (conflictWarning != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFFD1D1)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFC62828), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              conflictWarning!,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFC62828),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -983,7 +1294,49 @@ class _ChatScreenState extends State<ChatScreen> {
                         backgroundColor: const Color(0xFF7A432D),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () async {
+                      onPressed: isValidating ? null : () async {
+                        if (conflictWarning != null) {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: const Color(0xFFFAF7F5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: const BorderSide(color: Color(0xFFE8E2DD), width: 1.5),
+                              ),
+                              title: const Text(
+                                'Schedule Conflict',
+                                style: TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              content: Text(
+                                conflictWarning!,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text(
+                                    'OK',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          return;
+                        }
+
                         try {
                           final scheduledAt = DateTime(
                             selectedDate.year,
@@ -1000,13 +1353,14 @@ class _ChatScreenState extends State<ChatScreen> {
                             location: selectedLocation,
                             note: noteController.text.trim(),
                             chatId: _chatId,
+                            reminderMinutes: selectedReminderMinutes,
                           );
 
                           final msg = "📅 Meeting Request: Let's meet at $selectedLocation on $timeStr [meetingId:$meetingId]";
                           await ChatService().sendTextMessage(chatId: _chatId!, text: msg);
 
-                          if (context.mounted) Navigator.pop(context);
-                          if (mounted) {
+                          if (context.mounted) {
+                            Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Meeting request sent!'),
@@ -1015,7 +1369,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                           }
                         } catch (e) {
-                          if (mounted) {
+                          if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Failed to send meeting request: $e'),
@@ -1219,6 +1573,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (currentUid == null) return const SizedBox.shrink();
                       final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
                       final myStatus = statusMap[currentUid] as String? ?? 'pending';
+                      final reminderMinutes = data['reminderMinutes'] as int?;
+                      final participants = List<String>.from(data['participants'] ?? []);
+                      final otherUid = participants.firstWhere((p) => p != currentUid, orElse: () => '');
 
                       final isRescheduleRequested = statusStr == 'RESCHEDULE_REQUESTED';
                       final isReschedulePendingForMe = statusStr == 'RESCHEDULE_APPROVED' && myStatus == 'pending';
@@ -1285,6 +1642,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
                         return Column(
                           children: [
+                            if (reminderMinutes != null && reminderMinutes > 0) ...[
+                              Row(
+                                children: [
+                                  Icon(Icons.notifications_active_outlined, size: 14, color: const Color(0xFF8C736B)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    reminderMinutes == 1440
+                                        ? "Reminder: 1 day before"
+                                        : (reminderMinutes == 60
+                                            ? "Reminder: 1 hour before"
+                                            : "Reminder: $reminderMinutes minutes before"),
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF3E1F11),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                             Row(
                               children: [
                                 Expanded(
@@ -1341,6 +1720,38 @@ class _ChatScreenState extends State<ChatScreen> {
                                     onPressed: () async {
                                       if (proposalId != null) {
                                         try {
+                                          final proposedTimestamp = activeProposal['proposedTime'] as Timestamp?;
+                                          if (proposedTimestamp != null) {
+                                            final proposedTime = proposedTimestamp.toDate();
+                                            final myConflict = await MeetingService().hasMeetingConflict(currentUid, proposedTime);
+                                            if (myConflict) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Cannot accept. You already have a confirmed meeting around this time.'),
+                                                    backgroundColor: Color(0xFFC62828),
+                                                  ),
+                                                );
+                                              }
+                                              return;
+                                            }
+
+                                            if (otherUid.isNotEmpty) {
+                                              final otherConflict = await MeetingService().hasMeetingConflict(otherUid, proposedTime);
+                                              if (otherConflict) {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Cannot accept. The other participant already has a confirmed meeting around this time.'),
+                                                      backgroundColor: Color(0xFFC62828),
+                                                    ),
+                                                  );
+                                                }
+                                                return;
+                                              }
+                                            }
+                                          }
+
                                           await MeetingService().acceptProposal(
                                             meetingId: meetingId,
                                             proposalId: proposalId,

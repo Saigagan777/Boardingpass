@@ -614,6 +614,7 @@ class AppStateManager extends ChangeNotifier {
               interests: interests,
               skills: skills,
               homeBase: data['homeBase'] ?? '',
+              industry: data['industry'] ?? '',
               bio: data['bio'] ?? '',
               initials: (data['name'] as String?)?.isNotEmpty == true
                   ? data['name']

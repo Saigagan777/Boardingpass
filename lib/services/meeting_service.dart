@@ -532,6 +532,7 @@ class MeetingService {
     required String meetingId,
     required DateTime proposedTime,
     String? note,
+    int? reminderMinutes,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -562,6 +563,7 @@ class MeetingService {
           'proposedBy': uid,
           'proposedTime': Timestamp.fromDate(proposedTime),
           'note': note ?? '',
+          'reminderMinutes': reminderMinutes,
           'status': 'active', // active | accepted | declined | superseded
           'responses': <String, String>{}, // participantId -> 'accepted'|'declined'
           'createdAt': Timestamp.now(),
@@ -676,6 +678,7 @@ class MeetingService {
             'participantsStatus': statusMap,
             'status': 'RESCHEDULE_APPROVED',
             'rescheduleHistory': rescheduleHistory,
+            'reminderMinutes': proposal['reminderMinutes'] ?? data['reminderMinutes'],
             'updatedAt': FieldValue.serverTimestamp(),
           });
         } else {

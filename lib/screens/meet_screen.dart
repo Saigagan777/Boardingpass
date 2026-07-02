@@ -1086,7 +1086,36 @@ class _MeetScreenState extends State<MeetScreen> {
                                               ),
                                               onPressed: () async {
                                                 try {
-                                                  await MeetingService().acceptProposal(meetingId: meetingId, proposalId: pId);
+                                                   if (pTime != null && currentUid != null) {
+                                                     final myConflict = await MeetingService().hasMeetingConflict(currentUid, pTime);
+                                                     if (myConflict) {
+                                                       if (context.mounted) {
+                                                         ScaffoldMessenger.of(context).showSnackBar(
+                                                           const SnackBar(
+                                                             content: Text('Cannot accept. You already have a confirmed meeting around this time.'),
+                                                             backgroundColor: Color(0xFFC62828),
+                                                           ),
+                                                         );
+                                                       }
+                                                       return;
+                                                     }
+
+                                                     if (pBy != null) {
+                                                       final otherConflict = await MeetingService().hasMeetingConflict(pBy, pTime);
+                                                       if (otherConflict) {
+                                                         if (context.mounted) {
+                                                           ScaffoldMessenger.of(context).showSnackBar(
+                                                             const SnackBar(
+                                                               content: Text('Cannot accept. The other participant already has a confirmed meeting around this time.'),
+                                                               backgroundColor: Color(0xFFC62828),
+                                                             ),
+                                                           );
+                                                         }
+                                                         return;
+                                                       }
+                                                     }
+                                                   }
+                                                   await MeetingService().acceptProposal(meetingId: meetingId, proposalId: pId);
                                                   if (context.mounted) {
                                                     ScaffoldMessenger.of(context).showSnackBar(
                                                       SnackBar(
@@ -1524,7 +1553,7 @@ class _MeetScreenState extends State<MeetScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF3E1F11)),
           onPressed: widget.onBack ?? () {
-            _state.currentScreen = AppScreen.chat;
+            _state.currentScreen = AppScreen.hub;
           },
         ),
         title: const Text(

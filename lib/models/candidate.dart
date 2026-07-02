@@ -18,6 +18,7 @@ class Candidate {
   final List<String> interests;
   final List<String> skills;
   final String homeBase;
+  final String industry;
 
   const Candidate({
     this.uid,
@@ -36,5 +37,6 @@ class Candidate {
     this.interests = const [],
     this.skills = const [],
     this.homeBase = '',
+    this.industry = '',
   });
 }
