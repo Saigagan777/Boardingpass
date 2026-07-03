@@ -572,7 +572,7 @@ class OpenStreetMapProvider implements VenueRepository {
         uri,
         headers: const {
           'Accept': 'application/json',
-          'User-Agent': 'BoardingPause/1.0 contact@boardingpause.app',
+          'User-Agent': 'NexMeet/1.0 contact@NexMeet.app',
         },
       ).timeout(const Duration(seconds: 8));
 

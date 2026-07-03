@@ -119,7 +119,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final List<Map<String, String>> _onboardingData = [
     {
       'image': 'assets/images/boarding_pass_illustration.png',
-      'title': 'Welcome to\nBoarding Pause',
+      'title': 'Welcome to\nNexMeet',
       'subtitle':
           'Connect with professionals, discover events, and build meaningful business relationships wherever work takes you.',
     },
@@ -1025,7 +1025,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Sign in to your Boarding Pause account to continue connecting.',
+            'Sign in to your NexMeet account to continue connecting.',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontSize: 15,

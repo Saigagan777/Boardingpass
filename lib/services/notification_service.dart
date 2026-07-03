@@ -36,8 +36,8 @@ class NotificationService {
 
   static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
     'boardingpass_high', // id
-    'BoardingPause Notifications', // name
-    description: 'High-priority notifications for BoardingPause',
+    'NexMeet Notifications', // name
+    description: 'High-priority notifications for NexMeet',
     importance: Importance.high,
   );
 

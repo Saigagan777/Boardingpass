@@ -85,7 +85,7 @@ class AppLogo extends StatelessWidget {
         SizedBox(width: size * 0.3),
         Flexible(
           child: Text(
-            'Boarding Pause',
+            'NexMeet',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
