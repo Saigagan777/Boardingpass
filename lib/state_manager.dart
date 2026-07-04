@@ -325,7 +325,8 @@ class AppStateManager extends ChangeNotifier {
       );
       _isAdminView = isAdminUser;
     } catch (e) {
-      _isAdminView = user.email?.toLowerCase() == 'gagan123@gmail.com'; // Dev fallback
+      _isAdminView =
+          user.email?.toLowerCase() == 'gagan123@gmail.com'; // Dev fallback
     }
 
     _profileSubscription = UserService().streamCurrentUserProfile().listen((
@@ -339,7 +340,9 @@ class AppStateManager extends ChangeNotifier {
               ? profile.name
               : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),
           // Display the real email stored in Firestore instead of the synthetic Firebase Auth email
-          'email': (profile.email.isNotEmpty && !profile.email.startsWith('linkedin_'))
+          'email':
+              (profile.email.isNotEmpty &&
+                  !profile.email.startsWith('linkedin_'))
               ? profile.email
               : (user.email ?? ''),
           'location': profile.currentLocationName ?? profile.homeBase ?? '',
@@ -349,7 +352,8 @@ class AppStateManager extends ChangeNotifier {
       } else {
         // Avoid auto-creating a profile for synthetic LinkedIn users.
         // The LinkedIn login flow explicitly creates it with the real email.
-        final isSynthetic = user.email != null &&
+        final isSynthetic =
+            user.email != null &&
             user.email!.startsWith('linkedin_') &&
             user.email!.endsWith('@boardingpass.com');
         if (!isSynthetic) {
@@ -363,7 +367,8 @@ class AppStateManager extends ChangeNotifier {
     });
 
     // Fallback initially if profile stream is slow
-    final isSynthetic = user.email != null &&
+    final isSynthetic =
+        user.email != null &&
         user.email!.startsWith('linkedin_') &&
         user.email!.endsWith('@boardingpass.com');
     _profileData = {
@@ -578,24 +583,38 @@ class AppStateManager extends ChangeNotifier {
           .doc(currentUid)
           .get();
       final currentUserData = currentUserDoc.data() ?? {};
-      final currentUserSkills = List<String>.from(currentUserData['skills'] ?? []);
-      final currentUserInterests = List<String>.from(currentUserData['interests'] ?? []);
-      final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
-      final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
-      final currentExpertiseMapList = (currentUserData['expertiseWithLevel'] as List?)
-          ?.map((item) => Map<String, dynamic>.from(item))
-          .toList() ?? [];
-      final currentInterestsMapList = (currentUserData['interestsWithPriority'] as List?)
-          ?.map((item) => Map<String, dynamic>.from(item))
-          .toList() ?? [];
+      final currentUserSkills = List<String>.from(
+        currentUserData['skills'] ?? [],
+      );
+      final currentUserInterests = List<String>.from(
+        currentUserData['interests'] ?? [],
+      );
+      final currentUserExpertise = List<String>.from(
+        currentUserData['expertise'] ?? [],
+      );
+      final currentUserIntents = List<String>.from(
+        currentUserData['intents'] ?? [],
+      );
+      final currentExpertiseMapList =
+          (currentUserData['expertiseWithLevel'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [];
+      final currentInterestsMapList =
+          (currentUserData['interestsWithPriority'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [];
       final currentRole = currentUserData['role'] ?? '';
 
       final allProfiles = querySnapshot.docs
-          .where((doc) =>
-              doc.id != currentUid &&
-              !permanentlyExcludedUids.contains(doc.id) &&
-              !pendingReqUids.contains(doc.id) &&
-              !connectedUids.contains(doc.id))
+          .where(
+            (doc) =>
+                doc.id != currentUid &&
+                !permanentlyExcludedUids.contains(doc.id) &&
+                !pendingReqUids.contains(doc.id) &&
+                !connectedUids.contains(doc.id),
+          )
           .map((doc) {
             final data = doc.data();
             final expertise = List<String>.from(data['expertise'] ?? []);
@@ -609,14 +628,18 @@ class AppStateManager extends ChangeNotifier {
                 )
                 .toList();
 
-            final targetExpertiseMapList = (data['expertiseWithLevel'] as List?)
-                ?.map((item) => Map<String, dynamic>.from(item))
-                .toList() ?? [];
-            final targetInterestsMapList = (data['interestsWithPriority'] as List?)
-                ?.map((item) => Map<String, dynamic>.from(item))
-                .toList() ?? [];
+            final targetExpertiseMapList =
+                (data['expertiseWithLevel'] as List?)
+                    ?.map((item) => Map<String, dynamic>.from(item))
+                    .toList() ??
+                [];
+            final targetInterestsMapList =
+                (data['interestsWithPriority'] as List?)
+                    ?.map((item) => Map<String, dynamic>.from(item))
+                    .toList() ??
+                [];
             final targetBadges = List<String>.from(data['badges'] ?? []);
-            
+
             int sumEndorsements = 0;
             for (final exp in targetExpertiseMapList) {
               sumEndorsements += (exp['endorsements'] ?? 0) as int;
@@ -634,7 +657,10 @@ class AppStateManager extends ChangeNotifier {
               targetExpertise: targetExpertiseMapList,
               targetInterests: targetInterestsMapList,
               currentSkills: [...currentUserSkills, ...currentUserExpertise],
-              currentInterestsList: [...currentUserInterests, ...currentUserIntents],
+              currentInterestsList: [
+                ...currentUserInterests,
+                ...currentUserIntents,
+              ],
               targetSkills: [...skills, ...expertise],
               targetInterestsList: [...interests, ...intents],
               targetBadges: targetBadges,
@@ -645,6 +671,7 @@ class AppStateManager extends ChangeNotifier {
             return Candidate(
               uid: doc.id,
               name: data['name'] ?? '',
+              headline: data['headline'] ?? '',
               role: data['role'] ?? '',
               org: data['company'] ?? '',
               loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
@@ -681,7 +708,7 @@ class AppStateManager extends ChangeNotifier {
           .toList();
 
       _candidates.clear();
-      
+
       // Partition into non-disliked and disliked/rejected candidates
       final nonDisliked = <Candidate>[];
       final disliked = <Candidate>[];
@@ -699,8 +726,10 @@ class AppStateManager extends ChangeNotifier {
 
       // Sort disliked candidates chronologically by swipe time (older dislikes first, newer dislikes last)
       disliked.sort((a, b) {
-        final timeA = dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final timeB = dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeA =
+            dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB =
+            dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
         return timeA.compareTo(timeB);
       });
 

@@ -4,6 +4,7 @@ import 'user_profile.dart'; // To access CustomCard
 class Candidate {
   final String? uid;
   final String name;
+  final String headline;
   final String role;
   final String org;
   final String loc;
@@ -33,6 +34,7 @@ class Candidate {
   const Candidate({
     this.uid,
     required this.name,
+    this.headline = '',
     required this.role,
     required this.org,
     required this.loc,

@@ -134,6 +134,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       // 1. Search Query filter
       if (query.isNotEmpty) {
         final matchesName = c.name.toLowerCase().contains(query);
+        final matchesHeadline = c.headline.toLowerCase().contains(query);
         final matchesCompany = c.org.toLowerCase().contains(query);
         final matchesRole = c.role.toLowerCase().contains(query);
         final matchesSkills = c.tags.any(
@@ -141,6 +142,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         );
         final matchesIntent = c.intent.toLowerCase().contains(query);
         if (!matchesName &&
+            !matchesHeadline &&
             !matchesCompany &&
             !matchesRole &&
             !matchesSkills &&
@@ -2361,30 +2363,51 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       interestsList.add(_buildMoreChip());
     }
 
-    return Card(
-      color: Colors.white,
-      elevation: isTop ? 3 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-        side: const BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+    final roleLine = [
+      if (c.role.trim().isNotEmpty) c.role.trim(),
+      if (c.org.trim().isNotEmpty) c.org.trim(),
+    ].join(c.role.trim().isNotEmpty && c.org.trim().isNotEmpty ? ' at ' : '');
+    final headline = c.headline.trim().isNotEmpty
+        ? c.headline.trim()
+        : roleLine;
+    final bio = c.bio.trim();
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.white, Color(0xFFFFFBF8)],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(
+              0xFF3E1F11,
+            ).withValues(alpha: isTop ? 0.16 : 0.08),
+            blurRadius: isTop ? 32 : 18,
+            offset: Offset(0, isTop ? 18 : 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.82),
+            blurRadius: 14,
+            offset: const Offset(-4, -4),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 1. Large Image Block at the top
-          SizedBox(
-            height: 230,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  child: buildProfileImage(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 218,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  buildProfileImage(
                     c.profileImageUrl ?? '',
                     fit: BoxFit.cover,
                     fallback: Container(
@@ -2392,7 +2415,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [c.primaryColor, const Color(0xFF3E1F11)],
+                          colors: [
+                            c.primaryColor,
+                            const Color(0xFFB06F4D),
+                            const Color(0xFF3E1F11),
+                          ],
                         ),
                       ),
                       child: Center(
@@ -2400,7 +2427,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           c.initials,
                           style: const TextStyle(
                             fontFamily: 'PlayfairDisplay',
-                            fontSize: 48,
+                            fontSize: 56,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -2408,230 +2435,229 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       ),
                     ),
                   ),
-                ),
-                // Overlay Match score badge
-                Positioned(
-                  left: 16,
-                  top: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
+                  DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star, color: Colors.amber, size: 14),
-                        const SizedBox(width: 6),
-                        Text(
-                          "${c.match}% match",
-                          style: const TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.10),
+                          Colors.black.withValues(alpha: 0.04),
+                          Colors.black.withValues(alpha: 0.42),
+                        ],
+                        stops: const [0, 0.48, 1],
+                      ),
                     ),
                   ),
-                ),
-                // Overlay Location badge (pin icon + location name)
-                if (cleanLoc.isNotEmpty)
                   Positioned(
-                    right: 16,
+                    left: 16,
                     top: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                    child: _buildImagePill(
+                      icon: Icons.star_rounded,
+                      label: '${c.match}% match',
+                      iconColor: const Color(0xFFFFD37A),
+                    ),
+                  ),
+                  if (cleanLoc.isNotEmpty)
+                    Positioned(
+                      right: 16,
+                      top: 16,
+                      child: _buildImagePill(
+                        icon: Icons.location_on_rounded,
+                        label: cleanLoc,
+                        maxWidth: 132,
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(20),
+                    ),
+                  if (isTop && c.customCards.isNotEmpty)
+                    Positioned(
+                      right: 16,
+                      bottom: 16,
+                      child: GestureDetector(
+                        onTap: () => _showCustomCardsDeck(context, c),
+                        child: _buildImagePill(
+                          icon: Icons.style_rounded,
+                          label: 'Deck',
+                        ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.name,
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0A1629),
+                        height: 1.06,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (headline.isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        headline,
+                        style: const TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF5C473E),
+                          height: 1.28,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    if (roleLine.isNotEmpty && roleLine != headline) ...[
+                      const SizedBox(height: 6),
+                      Row(
                         children: [
                           const Icon(
-                            Icons.location_on,
-                            color: Colors.white,
+                            Icons.work_outline_rounded,
                             size: 14,
+                            color: Color(0xFFB06F4D),
                           ),
                           const SizedBox(width: 6),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 100),
+                          Expanded(
                             child: Text(
-                              cleanLoc,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              roleLine,
                               style: const TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF8C736B),
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                // Showcase Deck Button overlay
-                if (isTop && c.customCards.isNotEmpty)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: GestureDetector(
-                      onTap: () => _showCustomCardsDeck(context, c),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white30),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(
-                              Icons.style_rounded,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              'Deck',
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // 2. Content Details area
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: ClipRect(
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Headline (Name)
-                      Text(
-                        c.name,
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0A1629),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-
-                      // Subhead (Role & Company)
-                      Text(
-                        c.role + (c.org.isNotEmpty ? ' at ${c.org}' : ''),
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF8C736B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Expertise Preview (2-3 chips)
-                      if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
-                        const Text(
-                          'EXPERTISE',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF8C736B),
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: (c.skills.isNotEmpty ? c.skills : c.tags)
-                              .take(3)
-                              .map((exp) {
-                                String level = 'Intermediate';
-                                if (c.expertiseWithLevel.isNotEmpty) {
-                                  final match = c.expertiseWithLevel.firstWhere(
-                                    (e) =>
-                                        e['name']
-                                            .toString()
-                                            .toLowerCase()
-                                            .trim() ==
-                                        exp.toLowerCase().trim(),
-                                    orElse: () => <String, dynamic>{},
-                                  );
-                                  if (match.isNotEmpty) {
-                                    level =
-                                        match['level']?.toString() ??
-                                        'Intermediate';
-                                  }
-                                }
-                                return _buildExpertiseChipWithLevel(exp, level);
-                              })
-                              .toList(),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-
-                      // Interests Preview (2-3 chips)
-                      if (interestsList.isNotEmpty) ...[
-                        const Text(
-                          'WANTS TO LEARN',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF8C736B),
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: interestsList.take(3).toList(),
-                        ),
-                      ],
                     ],
-                  ),
+                    if (bio.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 3,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE5A475),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              bio,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF6E5A51),
+                                height: 1.34,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const Spacer(),
+                    if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: (c.skills.isNotEmpty ? c.skills : c.tags)
+                            .take(2)
+                            .map((exp) {
+                              String level = 'Intermediate';
+                              if (c.expertiseWithLevel.isNotEmpty) {
+                                final match = c.expertiseWithLevel.firstWhere(
+                                  (e) =>
+                                      e['name']
+                                          .toString()
+                                          .toLowerCase()
+                                          .trim() ==
+                                      exp.toLowerCase().trim(),
+                                  orElse: () => <String, dynamic>{},
+                                );
+                                if (match.isNotEmpty) {
+                                  level =
+                                      match['level']?.toString() ??
+                                      'Intermediate';
+                                }
+                              }
+                              return _buildExpertiseChipWithLevel(exp, level);
+                            })
+                            .toList(),
+                      ),
+                    ] else if (interestsList.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: interestsList.take(2).toList(),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImagePill({
+    required IconData icon,
+    required String label,
+    Color iconColor = Colors.white,
+    double maxWidth = 148,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.34),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: iconColor, size: 14),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3010,6 +3036,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             final c = Candidate(
                               uid: targetUid,
                               name: name,
+                              headline: userData['headline'] ?? '',
                               role: role,
                               org: company,
                               loc:
