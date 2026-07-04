@@ -12,7 +12,6 @@ import '../utils/app_logo.dart';
 import '../utils/match_calculator.dart';
 
 enum _SwipeAction { reject, like, favorite }
-import 'candidate_profile_sheet.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -3682,6 +3681,83 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     setState(() {
       _isProfileExpanded = false;
     });
+  }
+
+  Widget _buildQuickStatCard(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E2DD)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: const Color(0xFF7A432D)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF8C736B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF3E1F11),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailSectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontFamily: 'PlusJakartaSans',
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF3E1F11),
+      ),
+    );
+  }
+
+  Widget _buildDetailCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8E2DD)),
+      ),
+      child: child,
+    );
   }
 }
 
