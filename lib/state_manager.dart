@@ -627,6 +627,16 @@ class AppStateManager extends ChangeNotifier {
                   (item) => CustomCard.fromMap(Map<String, dynamic>.from(item)),
                 )
                 .toList();
+            final careerTimeline =
+                (data['careerTimeline'] as List?)
+                    ?.map((item) => Map<String, dynamic>.from(item))
+                    .toList() ??
+                [];
+            final educationTimeline =
+                (data['educationTimeline'] as List?)
+                    ?.map((item) => Map<String, dynamic>.from(item))
+                    .toList() ??
+                [];
 
             final targetExpertiseMapList =
                 (data['expertiseWithLevel'] as List?)
@@ -683,6 +693,8 @@ class AppStateManager extends ChangeNotifier {
               homeBase: data['homeBase'] ?? '',
               industry: data['industry'] ?? '',
               experience: data['experience'] ?? '',
+              careerTimeline: careerTimeline,
+              educationTimeline: educationTimeline,
               bio: data['bio'] ?? '',
               initials: (data['name'] as String?)?.isNotEmpty == true
                   ? data['name']

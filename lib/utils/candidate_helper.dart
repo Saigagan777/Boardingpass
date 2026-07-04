@@ -5,9 +5,18 @@ import '../models/user_profile.dart';
 import 'match_calculator.dart';
 
 class CandidateHelper {
-  static Future<Candidate> fetchCandidate(String targetUid, String currentUid) async {
-    final targetDocFuture = FirebaseFirestore.instance.collection('users').doc(targetUid).get();
-    final currentDocFuture = FirebaseFirestore.instance.collection('users').doc(currentUid).get();
+  static Future<Candidate> fetchCandidate(
+    String targetUid,
+    String currentUid,
+  ) async {
+    final targetDocFuture = FirebaseFirestore.instance
+        .collection('users')
+        .doc(targetUid)
+        .get();
+    final currentDocFuture = FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUid)
+        .get();
 
     final targetDoc = await targetDocFuture;
     final currentDoc = await currentDocFuture;
@@ -15,23 +24,38 @@ class CandidateHelper {
     return getCandidateFromDocs(targetDoc, currentDoc);
   }
 
-  static Candidate getCandidateFromDocs(DocumentSnapshot targetDoc, DocumentSnapshot currentDoc) {
+  static Candidate getCandidateFromDocs(
+    DocumentSnapshot targetDoc,
+    DocumentSnapshot currentDoc,
+  ) {
     final data = targetDoc.data() as Map<String, dynamic>? ?? {};
     final currentUserData = currentDoc.data() as Map<String, dynamic>? ?? {};
 
     final currentUid = currentDoc.id;
     final targetUid = targetDoc.id;
 
-    final currentUserSkills = List<String>.from(currentUserData['skills'] ?? []);
-    final currentUserInterests = List<String>.from(currentUserData['interests'] ?? []);
-    final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
-    final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
-    final currentExpertiseMapList = (currentUserData['expertiseWithLevel'] as List?)
-        ?.map((item) => Map<String, dynamic>.from(item))
-        .toList() ?? [];
-    final currentInterestsMapList = (currentUserData['interestsWithPriority'] as List?)
-        ?.map((item) => Map<String, dynamic>.from(item))
-        .toList() ?? [];
+    final currentUserSkills = List<String>.from(
+      currentUserData['skills'] ?? [],
+    );
+    final currentUserInterests = List<String>.from(
+      currentUserData['interests'] ?? [],
+    );
+    final currentUserExpertise = List<String>.from(
+      currentUserData['expertise'] ?? [],
+    );
+    final currentUserIntents = List<String>.from(
+      currentUserData['intents'] ?? [],
+    );
+    final currentExpertiseMapList =
+        (currentUserData['expertiseWithLevel'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
+    final currentInterestsMapList =
+        (currentUserData['interestsWithPriority'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
     final currentRole = currentUserData['role'] ?? '';
 
     final expertise = List<String>.from(data['expertise'] ?? []);
@@ -42,13 +66,27 @@ class CandidateHelper {
     final customCards = customCardsData
         .map((item) => CustomCard.fromMap(Map<String, dynamic>.from(item)))
         .toList();
+    final careerTimeline =
+        (data['careerTimeline'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
+    final educationTimeline =
+        (data['educationTimeline'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
 
-    final targetExpertiseMapList = (data['expertiseWithLevel'] as List?)
-        ?.map((item) => Map<String, dynamic>.from(item))
-        .toList() ?? [];
-    final targetInterestsMapList = (data['interestsWithPriority'] as List?)
-        ?.map((item) => Map<String, dynamic>.from(item))
-        .toList() ?? [];
+    final targetExpertiseMapList =
+        (data['expertiseWithLevel'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
+    final targetInterestsMapList =
+        (data['interestsWithPriority'] as List?)
+            ?.map((item) => Map<String, dynamic>.from(item))
+            .toList() ??
+        [];
     final targetBadges = List<String>.from(data['badges'] ?? []);
 
     int sumEndorsements = 0;
@@ -90,6 +128,8 @@ class CandidateHelper {
       homeBase: data['homeBase'] ?? '',
       industry: data['industry'] ?? '',
       experience: data['experience'] ?? '',
+      careerTimeline: careerTimeline,
+      educationTimeline: educationTimeline,
       bio: data['bio'] ?? '',
       initials: (data['name'] as String?)?.isNotEmpty == true
           ? data['name']

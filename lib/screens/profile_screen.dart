@@ -698,20 +698,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               },
             ),
-            const SizedBox(width: 12),
-            _buildStatCard(
-              Icons.verified_user_outlined,
-              'Mentoring',
-              '${profile.completedMentoringSessions}',
-              'Sessions completed',
-            ),
-            const SizedBox(width: 12),
-            _buildStatCard(
-              Icons.handshake_outlined,
-              'Collaborations',
-              '${profile.successfulCollaborations}',
-              'Successful projects',
-            ),
           ],
         ),
       ),

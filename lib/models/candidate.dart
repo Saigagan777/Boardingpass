@@ -21,6 +21,8 @@ class Candidate {
   final String homeBase;
   final String industry;
   final String experience;
+  final List<Map<String, dynamic>> careerTimeline;
+  final List<Map<String, dynamic>> educationTimeline;
 
   // V2 Profile Matching fields
   final List<Map<String, dynamic>> expertiseWithLevel;
@@ -51,6 +53,8 @@ class Candidate {
     this.homeBase = '',
     this.industry = '',
     this.experience = '',
+    this.careerTimeline = const [],
+    this.educationTimeline = const [],
     this.expertiseWithLevel = const [],
     this.interestsWithPriority = const [],
     this.matchReasons = const [],

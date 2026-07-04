@@ -11,8 +11,8 @@ import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
 import '../utils/match_calculator.dart';
 import 'candidate_profile_sheet.dart';
-enum _SwipeAction { reject, like, favorite }
 
+enum _SwipeAction { reject, like, favorite }
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -2147,7 +2147,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                         bottom: 20,
                                         child: GestureDetector(
                                           onTap: () =>
-                                              _showDetailedProfileBottomSheet(
+                                              _showProfileOnlyBottomSheet(
                                                 first,
                                               ),
                                           onPanUpdate: _handlePanUpdate,
@@ -2340,10 +2340,23 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
+  List<String> _profileExpertise(Candidate c) {
+    final seen = <String>{};
+    final values = <String>[];
+    for (final item in [...c.skills, ...c.tags]) {
+      final trimmed = item.trim();
+      final key = trimmed.toLowerCase();
+      if (trimmed.isNotEmpty && seen.add(key)) {
+        values.add(trimmed);
+      }
+    }
+    return values;
+  }
+
   Widget _buildCard(Candidate c, {required bool isTop}) {
-    final cleanLoc = c.loc.isNotEmpty ? c.loc.split(',').first.trim() : '';
+    final expertise = _profileExpertise(c);
     final interestsList = <Widget>[];
-    final displayedInterests = c.interests.take(7).toList();
+    final displayedInterests = c.interests.take(3).toList();
     for (final interest in displayedInterests) {
       String priority = 'Medium';
       if (c.interestsWithPriority.isNotEmpty) {
@@ -2359,7 +2372,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       }
       interestsList.add(_buildInterestChipWithPriority(interest, priority));
     }
-    if (c.interests.length > 7) {
+    if (c.interests.length > 3) {
       interestsList.add(_buildMoreChip());
     }
 
@@ -2367,9 +2380,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       if (c.role.trim().isNotEmpty) c.role.trim(),
       if (c.org.trim().isNotEmpty) c.org.trim(),
     ].join(c.role.trim().isNotEmpty && c.org.trim().isNotEmpty ? ' at ' : '');
-    final headline = c.headline.trim().isNotEmpty
-        ? c.headline.trim()
-        : roleLine;
+    final headline = roleLine;
     final bio = c.bio.trim();
 
     return Container(
@@ -2449,25 +2460,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       ),
                     ),
                   ),
-                  Positioned(
-                    left: 16,
-                    top: 16,
-                    child: _buildImagePill(
-                      icon: Icons.star_rounded,
-                      label: '${c.match}% match',
-                      iconColor: const Color(0xFFFFD37A),
-                    ),
-                  ),
-                  if (cleanLoc.isNotEmpty)
-                    Positioned(
-                      right: 16,
-                      top: 16,
-                      child: _buildImagePill(
-                        icon: Icons.location_on_rounded,
-                        label: cleanLoc,
-                        maxWidth: 132,
-                      ),
-                    ),
                   if (isTop && c.customCards.isNotEmpty)
                     Positioned(
                       right: 16,
@@ -2516,32 +2508,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-                    if (roleLine.isNotEmpty && roleLine != headline) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.work_outline_rounded,
-                            size: 14,
-                            color: Color(0xFFB06F4D),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              roleLine,
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF8C736B),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                     if (bio.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Row(
@@ -2549,7 +2515,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         children: [
                           Container(
                             width: 3,
-                            height: 46,
+                            height: 38,
                             decoration: BoxDecoration(
                               color: const Color(0xFFE5A475),
                               borderRadius: BorderRadius.circular(999),
@@ -2566,7 +2532,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 color: Color(0xFF6E5A51),
                                 height: 1.34,
                               ),
-                              maxLines: 3,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -2574,39 +2540,26 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       ),
                     ],
                     const Spacer(),
-                    if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
+                    if (expertise.isNotEmpty) ...[
+                      _buildCardSectionLabel('Expertise'),
+                      const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: (c.skills.isNotEmpty ? c.skills : c.tags)
-                            .take(2)
-                            .map((exp) {
-                              String level = 'Intermediate';
-                              if (c.expertiseWithLevel.isNotEmpty) {
-                                final match = c.expertiseWithLevel.firstWhere(
-                                  (e) =>
-                                      e['name']
-                                          .toString()
-                                          .toLowerCase()
-                                          .trim() ==
-                                      exp.toLowerCase().trim(),
-                                  orElse: () => <String, dynamic>{},
-                                );
-                                if (match.isNotEmpty) {
-                                  level =
-                                      match['level']?.toString() ??
-                                      'Intermediate';
-                                }
-                              }
-                              return _buildExpertiseChipWithLevel(exp, level);
-                            })
+                        children: expertise
+                            .take(3)
+                            .map((exp) => _buildExpertiseChipWithLevel(exp, ''))
                             .toList(),
                       ),
-                    ] else if (interestsList.isNotEmpty) ...[
+                    ],
+                    if (interestsList.isNotEmpty) ...[
+                      if (expertise.isNotEmpty) const SizedBox(height: 8),
+                      _buildCardSectionLabel('Interests'),
+                      const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: interestsList.take(2).toList(),
+                        children: interestsList.take(4).toList(),
                       ),
                     ],
                   ],
@@ -2615,6 +2568,18 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCardSectionLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        fontFamily: 'PlusJakartaSans',
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFF8C736B),
       ),
     );
   }
@@ -3028,6 +2993,20 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             final role = userData['role'] ?? 'Professional';
                             final company = userData['company'] ?? '';
                             final imageUrl = userData['profileImageUrl'] ?? '';
+                            final careerTimeline =
+                                (userData['careerTimeline'] as List?)
+                                    ?.map(
+                                      (item) => Map<String, dynamic>.from(item),
+                                    )
+                                    .toList() ??
+                                [];
+                            final educationTimeline =
+                                (userData['educationTimeline'] as List?)
+                                    ?.map(
+                                      (item) => Map<String, dynamic>.from(item),
+                                    )
+                                    .toList() ??
+                                [];
                             final initials = (name as String)
                                 .substring(0, 1)
                                 .toUpperCase();
@@ -3057,6 +3036,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 userData['skills'] ?? [],
                               ),
                               homeBase: userData['homeBase'] ?? '',
+                              careerTimeline: careerTimeline,
+                              educationTimeline: educationTimeline,
                               bio: userData['bio'] ?? '',
                               initials: initials,
                               profileImageUrl: imageUrl,
@@ -3229,563 +3210,23 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  void _showDetailedProfileBottomSheet(Candidate c) async {
+  void _showProfileOnlyBottomSheet(Candidate c) async {
     setState(() {
       _isProfileExpanded = true;
     });
-
-    final interestsList = <Widget>[];
-    for (final interest in c.interests) {
-      String priority = 'Medium';
-      if (c.interestsWithPriority.isNotEmpty) {
-        final match = c.interestsWithPriority.firstWhere(
-          (e) =>
-              e['name'].toString().toLowerCase().trim() ==
-              interest.toLowerCase().trim(),
-          orElse: () => <String, dynamic>{},
-        );
-        if (match.isNotEmpty) {
-          priority = match['priority']?.toString() ?? 'Medium';
-        }
-      }
-      interestsList.add(_buildInterestChipWithPriority(interest, priority));
-    }
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withAlpha((0.35 * 255).round()),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.75,
-          minChildSize: 0.4,
-          maxChildSize: 0.96,
-          snap: true,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFFAF7F5),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(32),
-                  topRight: Radius.circular(32),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Scroll Handle Indicator
-                  Center(
-                    child: Container(
-                      width: 44,
-                      height: 5,
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0D4CB),
-                        borderRadius: BorderRadius.circular(2.5),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-                      physics: const BouncingScrollPhysics(),
-                      children: [
-                        // Large profile photo
-                        Center(
-                          child: Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF7A432D,
-                                  ).withValues(alpha: 0.15),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: buildProfileImage(
-                                c.profileImageUrl ?? '',
-                                width: 140,
-                                height: 140,
-                                fit: BoxFit.cover,
-                                fallback: Container(
-                                  color: const Color(0xFF7A432D),
-                                  child: Center(
-                                    child: Text(
-                                      c.initials,
-                                      style: const TextStyle(
-                                        fontFamily: 'PlayfairDisplay',
-                                        fontSize: 48,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Name
-                        Center(
-                          child: Text(
-                            c.name,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontFamily: 'PlayfairDisplay',
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-
-                        // Badges Row
-                        if (c.badges.isNotEmpty) ...[
-                          Center(
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: c.badges.map((badge) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF2E7D32,
-                                    ).withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: const Color(
-                                        0xFF2E7D32,
-                                      ).withValues(alpha: 0.2),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.stars,
-                                        size: 13,
-                                        color: Color(0xFF2E7D32),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        badge,
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF2E7D32),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // Occupation and Match overlay row
-                        Center(
-                          child: Wrap(
-                            alignment: WrapAlignment.center,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 8,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0052FF),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  c.org.isNotEmpty ? c.org : 'Independent',
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                c.role,
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF8C736B),
-                                ),
-                              ),
-                              if (c.experience.isNotEmpty) ...[
-                                const Text(
-                                  '•',
-                                  style: TextStyle(color: Color(0xFFE0D4CB)),
-                                ),
-                                Text(
-                                  '${c.experience} yrs exp',
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF8C736B),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Section Dividers / Grid of Quick Stats
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildQuickStatCard(
-                                Icons.place_outlined,
-                                'Location',
-                                c.loc.isNotEmpty
-                                    ? c.loc.split(',').first.trim()
-                                    : 'Remote',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildQuickStatCard(
-                                Icons.translate,
-                                'Languages',
-                                'English, Hindi',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildQuickStatCard(
-                                Icons.verified_user_outlined,
-                                'Mentoring',
-                                '${c.completedMentoringSessions} sessions',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildQuickStatCard(
-                                Icons.thumb_up_alt_outlined,
-                                'Endorsements',
-                                '${c.expertiseWithLevel.fold<int>(0, (total, item) => total + (item['endorsements'] as int? ?? 0))} endorsements',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Bio / About Card
-                        if (c.bio.isNotEmpty) ...[
-                          _buildDetailSectionHeader('About'),
-                          const SizedBox(height: 8),
-                          _buildDetailCard(
-                            child: Text(
-                              c.bio,
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 13.5,
-                                color: Color(0xFF3E1F11),
-                                height: 1.5,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Match justification (Explainable matching)
-                        if (c.matchReasons.isNotEmpty) ...[
-                          _buildDetailSectionHeader('Why You Matched'),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE3F2FD),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFF90CAF9),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1565C0),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        '${c.match}% Match Rating',
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                ...c.matchReasons.map((reason) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          '• ',
-                                          style: TextStyle(
-                                            color: Color(0xFF1565C0),
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: Text(
-                                            reason,
-                                            style: const TextStyle(
-                                              fontFamily: 'PlusJakartaSans',
-                                              fontSize: 13.5,
-                                              color: Color(0xFF0D47A1),
-                                              height: 1.4,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Expertise (What I can share)
-                        if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
-                          _buildDetailSectionHeader(
-                            'Expertise (What I can share)',
-                          ),
-                          const SizedBox(height: 8),
-                          _buildDetailCard(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children:
-                                  (c.skills.isNotEmpty ? c.skills : c.tags).map(
-                                    (exp) {
-                                      String level = 'Intermediate';
-                                      if (c.expertiseWithLevel.isNotEmpty) {
-                                        final match = c.expertiseWithLevel
-                                            .firstWhere(
-                                              (e) =>
-                                                  e['name']
-                                                      .toString()
-                                                      .toLowerCase()
-                                                      .trim() ==
-                                                  exp.toLowerCase().trim(),
-                                              orElse: () => <String, dynamic>{},
-                                            );
-                                        if (match.isNotEmpty) {
-                                          level =
-                                              match['level']?.toString() ??
-                                              'Intermediate';
-                                        }
-                                      }
-                                      return _buildExpertiseChipWithLevel(
-                                        exp,
-                                        level,
-                                      );
-                                    },
-                                  ).toList(),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Interests (What I want to learn)
-                        if (interestsList.isNotEmpty) ...[
-                          _buildDetailSectionHeader(
-                            'Interests (What I want to learn)',
-                          ),
-                          const SizedBox(height: 8),
-                          _buildDetailCard(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: interestsList,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Suggested starters
-                        if (c.conversationStarters.isNotEmpty) ...[
-                          _buildDetailSectionHeader('Suggested Icebreakers'),
-                          const SizedBox(height: 8),
-                          ...c.conversationStarters.map((starter) {
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFAF1EC),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF7A432D,
-                                  ).withValues(alpha: 0.15),
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(
-                                    Icons.chat_bubble_outline,
-                                    size: 16,
-                                    color: Color(0xFF7A432D),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      starter,
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 13,
-                                        color: Color(0xFF5C473E),
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      builder: (context) => CandidateProfileSheet(candidate: c),
     );
 
+    if (!mounted) return;
     setState(() {
       _isProfileExpanded = false;
     });
-  }
-
-  Widget _buildQuickStatCard(IconData icon, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E2DD)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 18, color: const Color(0xFF7A432D)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF8C736B),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF3E1F11),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailSectionHeader(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontFamily: 'PlusJakartaSans',
-        fontSize: 13,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF3E1F11),
-      ),
-    );
-  }
-
-  Widget _buildDetailCard({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE8E2DD)),
-      ),
-      child: child,
-    );
   }
 }
 
