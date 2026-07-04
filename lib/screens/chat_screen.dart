@@ -16,6 +16,7 @@ import '../services/meeting_service.dart';
 import '../utils/image_helper.dart';
 import '../services/user_service.dart';
 import '../utils/match_calculator.dart';
+import 'candidate_profile_sheet.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? name;
@@ -88,6 +89,24 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('Error ensuring lazy chat ID: $e');
       return null;
     }
+  }
+
+  void _showUserProfileBottomSheet(String targetUid) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withAlpha((0.35 * 255).round()),
+      builder: (context) {
+        return CandidateProfileSheet.lazy(
+          targetUid: targetUid,
+          currentUid: currentUid,
+        );
+      },
+    );
   }
 
   void _initializeChat() async {
@@ -2676,7 +2695,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           final DateTime? lastSeen = (userData['lastSeen'] as Timestamp?)?.toDate();
                           final bool isOnline = lastSeen != null && DateTime.now().difference(lastSeen).inMinutes < 5;
 
-                          return Row(
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (_otherUid != null) {
+                                _showUserProfileBottomSheet(_otherUid!);
+                              }
+                            },
+                            child: Row(
                             children: [
                               Stack(
                                 children: [
@@ -2754,7 +2780,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               ),
                             ],
-                          );
+                          ),);
                         },
                       );
                     }
@@ -2957,7 +2983,9 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             if (!isMe) ...[
               if (_otherUid != null)
-                _otherUserProfileImage != null && _otherUserProfileImage!.isNotEmpty
+                GestureDetector(
+                  onTap: () => _showUserProfileBottomSheet(_otherUid!),
+                  child: _otherUserProfileImage != null && _otherUserProfileImage!.isNotEmpty
                     ? CircleAvatar(
                         radius: 14,
                         backgroundImage: NetworkImage(_otherUserProfileImage!),
@@ -2969,7 +2997,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           _otherUserInitials ?? 'P',
                           style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
                         ),
-                      )
+                ),)
               else
                 FutureBuilder<DocumentSnapshot>(
                   future: FirebaseFirestore.instance.collection('users').doc(msg.senderId).get(),
@@ -2980,14 +3008,16 @@ class _ChatScreenState extends State<ChatScreen> {
                     final initials = name.isNotEmpty
                         ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
                         : 'P';
-                    return CircleAvatar(
+                    return GestureDetector(
+                      onTap: msg.senderId != null ? () => _showUserProfileBottomSheet(msg.senderId!) : null,
+                      child: CircleAvatar(
                       radius: 14,
                       backgroundImage: img.isNotEmpty ? NetworkImage(img) : null,
                       backgroundColor: const Color(0xFFE5A475),
                       child: img.isEmpty
                           ? Text(initials, style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold))
                           : null,
-                    );
+                    ),);
                   }
                 ),
               const SizedBox(width: 8),
@@ -4470,6 +4500,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           final isMe = member.uid == currentUid;
                           
                           return ListTile(
+                            onTap: () => _showUserProfileBottomSheet(member.uid),
                             contentPadding: EdgeInsets.zero,
                             leading: CircleAvatar(
                               radius: 16,
