@@ -69,6 +69,9 @@ class AuthService {
     List<Map<String, dynamic>> careerTimeline = const [],
     List<Map<String, dynamic>> educationTimeline = const [],
     String? linkedinProfileUrl,
+    List<Map<String, dynamic>> expertiseWithLevel = const [],
+    List<Map<String, dynamic>> interestsWithPriority = const [],
+    List<String> badges = const [],
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -104,6 +107,9 @@ class AuthService {
           linkedinProfileUrl: linkedinProfileUrl,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
+          expertiseWithLevel: expertiseWithLevel,
+          interestsWithPriority: interestsWithPriority,
+          badges: badges,
         );
         await _firestore
             .collection('users')
@@ -377,6 +383,14 @@ class AuthService {
   Future<void> ensureUserProfile() async {
     final user = _auth.currentUser;
     if (user == null) return;
+
+    // Do not auto-create a profile with a synthetic LinkedIn email.
+    // The LinkedIn authentication flow handles creating the profile with the user's real email.
+    if (user.email != null &&
+        user.email!.startsWith('linkedin_') &&
+        user.email!.endsWith('@boardingpass.com')) {
+      return;
+    }
 
     await _createUserProfile(
       uid: user.uid,

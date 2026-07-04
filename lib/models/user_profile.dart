@@ -77,6 +77,13 @@ class UserProfile {
   final List<Map<String, dynamic>> educationTimeline;
   final Map<String, dynamic> notificationSettings;
 
+  // V2 Profile Matching fields
+  final List<Map<String, dynamic>> expertiseWithLevel;
+  final List<Map<String, dynamic>> interestsWithPriority;
+  final List<String> badges;
+  final int completedMentoringSessions;
+  final int successfulCollaborations;
+
   // Sync tracking fields
   final bool linkedinSynced;
   final DateTime? linkedinSyncedAt;
@@ -135,6 +142,11 @@ class UserProfile {
     this.resumeParsedAt,
     this.directPasswordSet = false,
     this.matchScore,
+    this.expertiseWithLevel = const [],
+    this.interestsWithPriority = const [],
+    this.badges = const [],
+    this.completedMentoringSessions = 0,
+    this.successfulCollaborations = 0,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -196,6 +208,17 @@ class UserProfile {
       resumeParsedAt: (data['resumeParsedAt'] as Timestamp?)?.toDate(),
       directPasswordSet: data['directPasswordSet'] ?? false,
       matchScore: data['matchScore'] as int?,
+      expertiseWithLevel: (data['expertiseWithLevel'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [],
+      interestsWithPriority: (data['interestsWithPriority'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [],
+      badges: List<String>.from(data['badges'] ?? []),
+      completedMentoringSessions: data['completedMentoringSessions'] ?? 0,
+      successfulCollaborations: data['successfulCollaborations'] ?? 0,
     );
   }
 
@@ -247,6 +270,11 @@ class UserProfile {
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
       'directPasswordSet': directPasswordSet,
       'matchScore': matchScore,
+      'expertiseWithLevel': expertiseWithLevel,
+      'interestsWithPriority': interestsWithPriority,
+      'badges': badges,
+      'completedMentoringSessions': completedMentoringSessions,
+      'successfulCollaborations': successfulCollaborations,
     };
   }
 
@@ -296,6 +324,11 @@ class UserProfile {
     DateTime? resumeParsedAt,
     bool? directPasswordSet,
     int? matchScore,
+    List<Map<String, dynamic>>? expertiseWithLevel,
+    List<Map<String, dynamic>>? interestsWithPriority,
+    List<String>? badges,
+    int? completedMentoringSessions,
+    int? successfulCollaborations,
   }) {
     return UserProfile(
       uid: uid,
@@ -345,6 +378,11 @@ class UserProfile {
       resumeParsedAt: resumeParsedAt ?? this.resumeParsedAt,
       directPasswordSet: directPasswordSet ?? this.directPasswordSet,
       matchScore: matchScore ?? this.matchScore,
+      expertiseWithLevel: expertiseWithLevel ?? this.expertiseWithLevel,
+      interestsWithPriority: interestsWithPriority ?? this.interestsWithPriority,
+      badges: badges ?? this.badges,
+      completedMentoringSessions: completedMentoringSessions ?? this.completedMentoringSessions,
+      successfulCollaborations: successfulCollaborations ?? this.successfulCollaborations,
     );
   }
 }

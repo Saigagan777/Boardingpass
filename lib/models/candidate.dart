@@ -19,6 +19,16 @@ class Candidate {
   final List<String> skills;
   final String homeBase;
   final String industry;
+  final String experience;
+
+  // V2 Profile Matching fields
+  final List<Map<String, dynamic>> expertiseWithLevel;
+  final List<Map<String, dynamic>> interestsWithPriority;
+  final List<String> matchReasons;
+  final List<String> conversationStarters;
+  final List<String> badges;
+  final int completedMentoringSessions;
+  final int successfulCollaborations;
 
   const Candidate({
     this.uid,
@@ -38,5 +48,13 @@ class Candidate {
     this.skills = const [],
     this.homeBase = '',
     this.industry = '',
+    this.experience = '',
+    this.expertiseWithLevel = const [],
+    this.interestsWithPriority = const [],
+    this.matchReasons = const [],
+    this.conversationStarters = const [],
+    this.badges = const [],
+    this.completedMentoringSessions = 0,
+    this.successfulCollaborations = 0,
   });
 }

@@ -41,8 +41,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _headlineController = TextEditingController();
   final TextEditingController _companyController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
+  String? _selectedOccupation;
+  final TextEditingController _customOccupationController = TextEditingController();
+  final List<String> _occupations = [
+    'Software Engineer',
+    'CTO',
+    'Product Manager',
+    'Founder',
+    'Doctor',
+    'Lawyer',
+    'Financial Analyst',
+    'Other',
+  ];
   final TextEditingController _bioController = TextEditingController();
-  final TextEditingController _expertiseController = TextEditingController();
   final TextEditingController _industryController = TextEditingController();
   final TextEditingController _experienceController = TextEditingController();
   final TextEditingController _profileImageUrlController =
@@ -105,16 +116,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Never',
   ];
 
-  final List<String> _interestOptions = [
-    'Networking',
-    'Socializing',
-    'Learning',
+  final List<String> _expertiseOptions = [
+    'React',
+    'Flutter',
+    'Spring Boot',
+    'AI/ML',
+    'Data Science',
+    'Stock Market',
     'Investing',
-    'Fundraising',
-    'Hiring Talents',
-    'Job Opportunity',
+    'Leadership',
+    'Product Strategy',
+    'UI/UX',
+    'Marketing',
+    'Sales',
+    'Public Speaking',
   ];
-  String? _selectedInterest;
+
+  final List<String> _interestOptions = [
+    'Stock Market',
+    'Artificial Intelligence',
+    'Startups',
+    'Investing',
+    'Public Speaking',
+    'Fitness',
+    'Personal Finance',
+    'Entrepreneurship',
+    'Design',
+    'Content Creation',
+  ];
+
+  List<String> _selectedExpertise = [];
+  List<String> _selectedInterests = [];
+  final Map<String, String> _expertiseLevels = {};
+  final Map<String, String> _interestsPriorities = {};
+  final TextEditingController _customExpertiseController = TextEditingController();
+  final TextEditingController _customInterestController = TextEditingController();
 
   final List<Map<String, String>> _onboardingData = [
     {
@@ -195,13 +231,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _emailController.text = profile.email;
         _profileImageUrlController.text = profile.profileImageUrl ?? '';
         _roleController.text = profile.role ?? '';
+        final roleVal = profile.role ?? '';
+        if (_occupations.contains(roleVal)) {
+          _selectedOccupation = roleVal;
+        } else if (roleVal.isNotEmpty) {
+          _selectedOccupation = 'Other';
+          _customOccupationController.text = roleVal;
+        }
         _companyController.text = profile.company ?? '';
         _headlineController.text = profile.headline ?? '';
         _bioController.text = profile.bio ?? '';
         _experienceController.text = profile.experience ?? '';
         _linkedinUrlController.text = profile.linkedinProfileUrl ?? '';
-        if (profile.expertise.isNotEmpty) {
-          _expertiseController.text = profile.expertise.join(', ');
+        _selectedExpertise = List<String>.from(profile.skills.isNotEmpty ? profile.skills : profile.expertise);
+        _selectedInterests = List<String>.from(profile.interests.isNotEmpty ? profile.interests : profile.intents);
+        for (final exp in profile.expertiseWithLevel) {
+          final name = exp['name']?.toString() ?? '';
+          final lvl = exp['level']?.toString() ?? 'Intermediate';
+          if (name.isNotEmpty) _expertiseLevels[name] = lvl;
+        }
+        for (final intr in profile.interestsWithPriority) {
+          final name = intr['name']?.toString() ?? '';
+          final pri = intr['priority']?.toString() ?? 'Medium';
+          if (name.isNotEmpty) _interestsPriorities[name] = pri;
         }
         if (profile.industry != null && profile.industry!.isNotEmpty) {
           _selectedIndustry = profile.industry;
@@ -223,7 +275,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _roleController.addListener(_onFieldChanged);
     _companyController.addListener(_onFieldChanged);
     _headlineController.addListener(_onFieldChanged);
-    _expertiseController.addListener(_onFieldChanged);
     _experienceController.addListener(_onFieldChanged);
     _bioController.addListener(_onFieldChanged);
     _industryController.addListener(_onFieldChanged);
@@ -240,7 +291,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _roleController.removeListener(_onFieldChanged);
     _companyController.removeListener(_onFieldChanged);
     _headlineController.removeListener(_onFieldChanged);
-    _expertiseController.removeListener(_onFieldChanged);
     _experienceController.removeListener(_onFieldChanged);
     _bioController.removeListener(_onFieldChanged);
     _industryController.removeListener(_onFieldChanged);
@@ -253,7 +303,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _companyController.dispose();
     _roleController.dispose();
     _bioController.dispose();
-    _expertiseController.dispose();
+    _customExpertiseController.dispose();
+    _customInterestController.dispose();
     _industryController.dispose();
     _experienceController.dispose();
     _profileImageUrlController.dispose();
@@ -480,7 +531,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final name = _nameController.text.trim();
     final headline = _headlineController.text.trim();
     final company = _companyController.text.trim();
-    final role = _roleController.text.trim();
+    final role = _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : (_selectedOccupation ?? '');
     final bio = _bioController.text.trim();
 
     final industry = _selectedIndustry == 'Other'
@@ -503,28 +554,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final travelFrequency = _selectedTravelFrequency;
     final profileImageUrl = _profileImageUrlController.text.trim();
 
-    // Parse expertise
-    final expertiseStr = _expertiseController.text.trim();
-    final List<String> expertiseList = expertiseStr.isNotEmpty
-        ? expertiseStr
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList()
-        : [];
-
     // Validate fields before sign up
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
         bio.isEmpty ||
-        expertiseList.isEmpty ||
+        _selectedExpertise.isEmpty ||
         _selectedIndustry == null ||
-        _selectedInterest == null) {
+        _selectedInterests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please complete all professional details, skills, experience, bio, and select a sector and primary interest.',
+            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
           ),
           backgroundColor: Color(0xFF7A432D),
         ),
@@ -556,10 +597,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             : null,
         travelFrequency: travelFrequency,
         profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
-        expertise: expertiseList,
-        intents: [_selectedInterest!],
-        skills: expertiseList,
-        interests: [_selectedInterest!],
+        expertise: _selectedExpertise,
+        intents: _selectedInterests,
+        skills: _selectedExpertise,
+        interests: _selectedInterests,
+        expertiseWithLevel: _selectedExpertise.map((e) => {
+          'name': e,
+          'level': _expertiseLevels[e] ?? 'Intermediate',
+          'endorsements': 0,
+        }).toList(),
+        interestsWithPriority: _selectedInterests.map((i) => {
+          'name': i,
+          'priority': _interestsPriorities[i] ?? 'Medium',
+        }).toList(),
         careerTimeline: _careerTimeline,
         educationTimeline: _educationTimeline,
         linkedinProfileUrl: _linkedinUrlController.text.trim().isNotEmpty
@@ -610,7 +660,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _handleProfileCompletion() async {
-    final role = _roleController.text.trim();
+    final role = _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : (_selectedOccupation ?? '');
     final company = _companyController.text.trim();
     final headline = _headlineController.text.trim();
     final bio = _bioController.text.trim();
@@ -633,28 +683,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final currentLocationName = currentLocSegments.join(', ');
     final travelFrequency = _selectedTravelFrequency;
 
-    // Parse expertise
-    final expertiseStr = _expertiseController.text.trim();
-    final List<String> expertiseList = expertiseStr.isNotEmpty
-        ? expertiseStr
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList()
-        : [];
-
     // Validate fields before complete
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
         bio.isEmpty ||
-        expertiseList.isEmpty ||
+        _selectedExpertise.isEmpty ||
         _selectedIndustry == null ||
-        _selectedInterest == null) {
+        _selectedInterests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please complete all professional details, skills, experience, bio, and select a sector and primary interest.',
+            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
           ),
           backgroundColor: Color(0xFF7A432D),
         ),
@@ -684,10 +724,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ? currentLocationName
               : null,
           travelFrequency: travelFrequency,
-          expertise: expertiseList,
-          intents: [_selectedInterest!],
-          skills: expertiseList,
-          interests: [_selectedInterest!],
+          expertise: _selectedExpertise,
+          intents: _selectedInterests,
+          skills: _selectedExpertise,
+          interests: _selectedInterests,
+          expertiseWithLevel: _selectedExpertise.map((e) => {
+            'name': e,
+            'level': _expertiseLevels[e] ?? 'Intermediate',
+            'endorsements': 0,
+          }).toList(),
+          interestsWithPriority: _selectedInterests.map((i) => {
+            'name': i,
+            'priority': _interestsPriorities[i] ?? 'Medium',
+          }).toList(),
           careerTimeline: _careerTimeline,
           educationTimeline: _educationTimeline,
           linkedinProfileUrl: !_isLinkedInUser && _linkedinUrlController.text.trim().isNotEmpty
@@ -833,7 +882,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     // 7. Expertise / Skills
     total++;
-    if (_expertiseController.text.trim().isNotEmpty) completed++;
+    if (_selectedExpertise.isNotEmpty) completed++;
 
     // 8. Industry
     total++;
@@ -859,7 +908,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     // 11. Primary Interest
     total++;
-    if (_selectedInterest != null) completed++;
+    if (_selectedInterests.isNotEmpty) completed++;
 
     // 12. Travel Frequency
     total++;
@@ -1510,10 +1559,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           // Section 1: Professional Role
           _buildSectionHeader('Professional Role'),
           const SizedBox(height: 12),
-          _buildTextField(
-            controller: _roleController,
-            labelText: 'Job Title / Role',
-            hintText: 'e.g. VP Engineering, Founder, Partner',
+          _buildDropdownField(
+            label: 'Occupation',
+            currentValue: _selectedOccupation,
+            items: _occupations,
+            hintText: 'Select occupation',
+            onChanged: (val) {
+              setState(() => _selectedOccupation = val);
+            },
+            secondaryField: _selectedOccupation == 'Other'
+                ? _buildTextField(
+                    controller: _customOccupationController,
+                    labelText: 'Custom Occupation',
+                    hintText: 'e.g. BioTech Consultant',
+                  )
+                : null,
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -1537,13 +1597,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ],
           const SizedBox(height: 24),
 
-          // Section 2: Skills & Experience
-          _buildSectionHeader('Skills & Experience'),
+          // Section 2: Expertise & Experience
+          _buildSectionHeader('Expertise & Experience'),
           const SizedBox(height: 12),
-          _buildTextField(
-            controller: _expertiseController,
-            labelText: 'Skills / Expertise Tags (comma-separated)',
-            hintText: 'e.g. Fintech, Payments, Go-to-market',
+          const Text(
+            'Expertise Areas (What can you share?):',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3E1F11),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildMultiSelectChipGrid(
+            options: _expertiseOptions,
+            selectedList: _selectedExpertise,
+            customController: _customExpertiseController,
+            customHint: 'Add custom expertise (e.g. AI Consultant)',
+            onListChanged: _onFieldChanged,
+            isExpertise: true,
+            levelsMap: _expertiseLevels,
           ),
           const SizedBox(height: 16),
           Row(
@@ -1591,21 +1665,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Primary Interest:',
+            'Interests (What are you looking for / want to learn?):',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.bold,
               color: Color(0xFF3E1F11),
             ),
           ),
           const SizedBox(height: 8),
-          _buildDropdownField(
-            label: 'Select Interest',
-            currentValue: _selectedInterest,
-            items: _interestOptions,
-            hintText: 'Select interest',
-            onChanged: (val) => setState(() => _selectedInterest = val),
+          _buildMultiSelectChipGrid(
+            options: _interestOptions,
+            selectedList: _selectedInterests,
+            customController: _customInterestController,
+            customHint: 'Add custom interest (e.g. Investing)',
+            onListChanged: _onFieldChanged,
+            isExpertise: false,
+            prioritiesMap: _interestsPriorities,
           ),
           const SizedBox(height: 24),
 
@@ -2139,6 +2215,162 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMultiSelectChipGrid({
+    required List<String> options,
+    required List<String> selectedList,
+    required TextEditingController customController,
+    required String customHint,
+    required VoidCallback onListChanged,
+    bool isExpertise = false,
+    Map<String, String>? levelsMap,
+    Map<String, String>? prioritiesMap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: options.map((opt) {
+            final isSelected = selectedList.contains(opt);
+            return FilterChip(
+              label: Text(opt),
+              labelStyle: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.white : const Color(0xFF7A432D),
+              ),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    selectedList.add(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap[opt] = 'Intermediate';
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap[opt] = 'Medium';
+                    }
+                  } else {
+                    selectedList.remove(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap.remove(opt);
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap.remove(opt);
+                    }
+                  }
+                  onListChanged();
+                });
+              },
+              selectedColor: const Color(0xFF7A432D),
+              backgroundColor: Colors.white,
+              checkmarkColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        if (selectedList.any((opt) => !options.contains(opt))) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Custom Additions:',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: selectedList.where((opt) => !options.contains(opt)).map((opt) {
+              return Chip(
+                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                label: Text(opt, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
+                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
+                onDeleted: () {
+                  setState(() {
+                    selectedList.remove(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap.remove(opt);
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap.remove(opt);
+                    }
+                    onListChanged();
+                  });
+                },
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: customController,
+                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: customHint,
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7A432D),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final text = customController.text.trim();
+                if (text.isNotEmpty && !selectedList.contains(text)) {
+                  setState(() {
+                    selectedList.add(text);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap[text] = 'Intermediate';
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap[text] = 'Medium';
+                    }
+                    customController.clear();
+                    onListChanged();
+                  });
+                }
+              },
+              child: const Text('Add Custom', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+          ],
+        ),
+
+      ],
     );
   }
 

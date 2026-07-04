@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../models/candidate.dart';
 import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
+import '../utils/match_calculator.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -23,6 +25,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   final TextEditingController _searchQuery = TextEditingController();
   String? _selectedIndustry;
   String? _selectedInterest;
+  String? _selectedLocation;
+  String? _selectedFilterExpertise;
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
 
@@ -39,19 +43,39 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   ];
 
   final List<String> _interestOptions = [
-    'Networking',
-    'Socializing',
-    'Learning',
+    'Stock Market',
+    'Artificial Intelligence',
+    'Startups',
     'Investing',
-    'Fundraising',
-    'Hiring Talents',
-    'Job Opportunity',
+    'Public Speaking',
+    'Fitness',
+    'Personal Finance',
+    'Entrepreneurship',
+    'Design',
+    'Content Creation',
+  ];
+
+  final List<String> _expertiseOptions = [
+    'React',
+    'Flutter',
+    'Spring Boot',
+    'AI/ML',
+    'Data Science',
+    'Stock Market',
+    'Investing',
+    'Leadership',
+    'Product Strategy',
+    'UI/UX',
+    'Marketing',
+    'Sales',
+    'Public Speaking',
   ];
 
   // Swiping state variables
   double _dragDx = 0.0;
   double _dragDy = 0.0;
   bool _isAnimating = false;
+  bool _isProfileExpanded = false;
 
   // Match overlay state
   String? _matchedName;
@@ -124,7 +148,26 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
       // 3. Interest filter
       if (_selectedInterest != null) {
-        if (!c.interests.any((i) => i == _selectedInterest)) {
+        bool hasMatchingExpertise = c.skills.any((s) => doesExpertiseSatisfyInterest(s, _selectedInterest!)) ||
+                                    c.tags.any((t) => doesExpertiseSatisfyInterest(t, _selectedInterest!));
+        bool hasSharedInterest = c.interests.any((i) => i.toLowerCase().trim() == _selectedInterest!.toLowerCase().trim());
+        if (!hasMatchingExpertise && !hasSharedInterest) {
+          return false;
+        }
+      }
+
+      // 4. Location filter
+      if (_selectedLocation != null) {
+        if (!c.loc.toLowerCase().contains(_selectedLocation!.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 5. Expertise filter
+      if (_selectedFilterExpertise != null) {
+        bool hasExpertise = c.skills.any((s) => s.toLowerCase().trim() == _selectedFilterExpertise!.toLowerCase().trim()) ||
+                            c.tags.any((t) => t.toLowerCase().trim() == _selectedFilterExpertise!.toLowerCase().trim());
+        if (!hasExpertise) {
           return false;
         }
       }
@@ -873,6 +916,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           setModalState(() {
                             _selectedIndustry = null;
                             _selectedInterest = null;
+                            _selectedLocation = null;
+                            _selectedFilterExpertise = null;
                           });
                           setState(() {});
                         },
@@ -1006,6 +1051,71 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                           const SizedBox(height: 20),
 
+                          // Expertise Dropdown
+                          const Text(
+                            'Expertise',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final candidateSkills = _state.candidates
+                                  .expand((c) => c.skills.isNotEmpty ? c.skills : c.tags)
+                                  .toSet();
+                              final allExpertise = <String>{
+                                ..._expertiseOptions,
+                                ...candidateSkills.where((s) => !_expertiseOptions.contains(s)),
+                              }.toList()..sort();
+                              return InputDecorator(
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                  ),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: _selectedFilterExpertise,
+                                    hint: const Text('Select expertise',
+                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    ),
+                                    isExpanded: true,
+                                    isDense: true,
+                                    dropdownColor: Colors.white,
+                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    items: allExpertise.map((val) {
+                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        _selectedFilterExpertise = val;
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 20),
+
                           // Interest Dropdown
                           const Text(
                             'Interest',
@@ -1062,6 +1172,69 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                     onChanged: (val) {
                                       setModalState(() {
                                         _selectedInterest = val;
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Location Dropdown
+                          const Text(
+                            'Location',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final candidateLocations = _state.candidates
+                                  .where((c) => c.loc.isNotEmpty)
+                                  .map((c) => c.loc)
+                                  .toSet()
+                                  .toList()..sort();
+                              return InputDecorator(
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                  ),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String?>(
+                                    value: _selectedLocation,
+                                    hint: const Text('Select location',
+                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    ),
+                                    isExpanded: true,
+                                    isDense: true,
+                                    dropdownColor: Colors.white,
+                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    items: candidateLocations.map((val) {
+                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        _selectedLocation = val;
                                       });
                                       setState(() {});
                                     },
@@ -1156,6 +1329,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   _searchQuery.clear();
                   _selectedIndustry = null;
                   _selectedInterest = null;
+                  _selectedLocation = null;
+                  _selectedFilterExpertise = null;
                 });
               },
               icon: const Icon(Icons.refresh_rounded, size: 16),
@@ -1229,7 +1404,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               children: [
                 const Icon(Icons.tune_rounded, color: Color(0xFF3E1F11)),
                 if (_selectedIndustry != null ||
-                    _selectedInterest != null)
+                    _selectedInterest != null ||
+                    _selectedLocation != null ||
+                    _selectedFilterExpertise != null)
                   Positioned(
                     right: 0,
                     top: 0,
@@ -1318,7 +1495,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                 // Active Filter Chips
                 if (_selectedIndustry != null ||
-                    _selectedInterest != null)
+                    _selectedInterest != null ||
+                    _selectedLocation != null ||
+                    _selectedFilterExpertise != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SizedBox(
@@ -1344,11 +1523,31 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 });
                               },
                             ),
+                          if (_selectedLocation != null)
+                            _buildFilterChip(
+                              label: 'Location: $_selectedLocation',
+                              onClear: () {
+                                setState(() {
+                                  _selectedLocation = null;
+                                });
+                              },
+                            ),
+                          if (_selectedFilterExpertise != null)
+                            _buildFilterChip(
+                              label: 'Expertise: $_selectedFilterExpertise',
+                              onClear: () {
+                                setState(() {
+                                  _selectedFilterExpertise = null;
+                                });
+                              },
+                            ),
                           TextButton(
                             onPressed: () {
                               setState(() {
                                 _selectedIndustry = null;
                                 _selectedInterest = null;
+                                _selectedLocation = null;
+                                _selectedFilterExpertise = null;
                               });
                             },
                             child: const Text(
@@ -1370,102 +1569,108 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   child: filteredCount == 0
                       ? _buildEmptyState()
                       : Center(
-                          child: SizedBox(
-                            width: double.infinity,
-                            height: screenHeight * 0.62,
-                            child: Builder(
-                              builder: (context) {
-                                final int index = _cardIndex % filteredCount;
-                                final first = filtered[index];
-                                final second = filteredCount > 1
-                                    ? filtered[(index + 1) % filteredCount]
-                                    : null;
-                                final third = filteredCount > 2
-                                    ? filtered[(index + 2) % filteredCount]
-                                    : null;
+                          child: AnimatedScale(
+                            scale: _isProfileExpanded ? 0.97 : 1.0,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: screenHeight * 0.62,
+                              child: Builder(
+                                builder: (context) {
+                                  final int index = _cardIndex % filteredCount;
+                                  final first = filtered[index];
+                                  final second = filteredCount > 1
+                                      ? filtered[(index + 1) % filteredCount]
+                                      : null;
+                                  final third = filteredCount > 2
+                                      ? filtered[(index + 2) % filteredCount]
+                                      : null;
 
-                                return Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    // Third Card (Bottom)
-                                    if (third != null)
-                                      Positioned(
-                                        left: 0,
-                                        right: 0,
-                                        top: 20,
-                                        bottom: 0,
-                                        child: Transform.scale(
-                                          scale: 0.92,
-                                          child: _buildCard(
-                                            third,
-                                            isTop: false,
-                                          ),
-                                        ),
-                                      ),
-
-                                    // Second Card (Middle)
-                                    if (second != null)
-                                      Positioned(
-                                        left: 0,
-                                        right: 0,
-                                        top: 10,
-                                        bottom: 10,
-                                        child: Transform.scale(
-                                          scale: 0.96,
-                                          child: _buildCard(
-                                            second,
-                                            isTop: false,
-                                          ),
-                                        ),
-                                      ),
-
-                                    // First Card (Top - Draggable)
-                                    Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      top: 0,
-                                      bottom: 20,
-                                      child: GestureDetector(
-                                        onDoubleTap: () => _swipeUp(filtered),
-                                        onLongPress: () => _swipeRight(filtered),
-                                        onPanUpdate: (details) {
-                                          if (_isAnimating) return;
-                                          setState(() {
-                                            _dragDx += details.delta.dx;
-                                            _dragDy += details.delta.dy;
-                                          });
-                                        },
-                                        onPanEnd: (details) {
-                                          if (_isAnimating) return;
-                                          if (_dragDx > 120) {
-                                            _swipeRight(filtered);
-                                          } else if (_dragDx < -120) {
-                                            _swipeLeft(filtered);
-                                          } else if (_dragDy < -100) {
-                                            _swipeUp(filtered);
-                                          } else {
-                                            // Reset card position
-                                            setState(() {
-                                              _dragDx = 0;
-                                              _dragDy = 0;
-                                            });
-                                          }
-                                        },
-                                        child: Transform.translate(
-                                          offset: Offset(_dragDx, _dragDy),
-                                          child: Transform.rotate(
-                                            angle: _dragDx / 400 * 0.15,
+                                  return Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      // Third Card (Bottom)
+                                      if (third != null)
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          top: 20,
+                                          bottom: 0,
+                                          child: Transform.scale(
+                                            scale: 0.92,
                                             child: _buildCard(
-                                              first,
-                                              isTop: true,
+                                              third,
+                                              isTop: false,
+                                            ),
+                                          ),
+                                        ),
+
+                                      // Second Card (Middle)
+                                      if (second != null)
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          top: 10,
+                                          bottom: 10,
+                                          child: Transform.scale(
+                                            scale: 0.96,
+                                            child: _buildCard(
+                                              second,
+                                              isTop: false,
+                                            ),
+                                          ),
+                                        ),
+
+                                      // First Card (Top - Draggable)
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        top: 0,
+                                        bottom: 20,
+                                        child: GestureDetector(
+                                          onTap: () => _showDetailedProfileBottomSheet(first),
+                                          onDoubleTap: () => _swipeUp(filtered),
+                                          onLongPress: () => _swipeRight(filtered),
+                                          onPanUpdate: (details) {
+                                            if (_isAnimating) return;
+                                            setState(() {
+                                              _dragDx += details.delta.dx;
+                                              _dragDy += details.delta.dy;
+                                            });
+                                          },
+                                          onPanEnd: (details) {
+                                            if (_isAnimating) return;
+                                            if (_dragDx > 120) {
+                                              _swipeRight(filtered);
+                                            } else if (_dragDx < -120) {
+                                              _swipeLeft(filtered);
+                                            } else if (_dragDy < -100) {
+                                              _swipeUp(filtered);
+                                            } else {
+                                              // Reset card position
+                                              setState(() {
+                                                _dragDx = 0;
+                                                _dragDy = 0;
+                                              });
+                                            }
+                                          },
+                                          child: Transform.translate(
+                                            offset: Offset(_dragDx, _dragDy),
+                                            child: Transform.rotate(
+                                              angle: _dragDx / 400 * 0.15,
+                                              child: _buildCard(
+                                                first,
+                                                isTop: true,
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                );
-                              },
+                                    ],
+                                  );
+                                },
+                              ),
                             ),
                           ),
                         ),
@@ -1593,6 +1798,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 ),
               ),
             ),
+          if (_isProfileExpanded)
+            Positioned.fill(
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1603,7 +1819,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     final interestsList = <Widget>[];
     final displayedInterests = c.interests.take(7).toList();
     for (final interest in displayedInterests) {
-      interestsList.add(_buildInterestChip(interest));
+      String priority = 'Medium';
+      if (c.interestsWithPriority.isNotEmpty) {
+        final match = c.interestsWithPriority.firstWhere(
+          (e) => e['name'].toString().toLowerCase().trim() == interest.toLowerCase().trim(),
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty) {
+          priority = match['priority']?.toString() ?? 'Medium';
+        }
+      }
+      interestsList.add(_buildInterestChipWithPriority(interest, priority));
     }
     if (c.interests.length > 7) {
       interestsList.add(_buildMoreChip());
@@ -1622,7 +1848,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         children: [
           // 1. Large Image Block at the top
           SizedBox(
-            height: 250,
+            height: 230,
             width: double.infinity,
             child: Stack(
               fit: StackFit.expand,
@@ -1780,106 +2006,98 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           // 2. Content Details area
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Headline (Name) - Wraps to 2 lines instead of cutting off
-                    Text(
-                      c.name,
-                      style: const TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0A1629),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: ClipRect(
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Headline (Name)
+                      Text(
+                        c.name,
+                        style: const TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0A1629),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 6),
 
-                    // Subhead (Role & Company) - Wrap prevents truncation
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        // Company pill
-                        if (c.org.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0052FF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              c.org,
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        if (c.org.isNotEmpty && c.role.isNotEmpty)
-                          const Text(
-                            '·',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFE8E2DD),
-                            ),
-                          ),
-                        // Job Title
-                        Text(
-                          c.role,
-                          style: const TextStyle(
+                      // Subhead (Role & Company)
+                      Text(
+                        c.role + (c.org.isNotEmpty ? ' at ${c.org}' : ''),
+                        style: const TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF8C736B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Expertise Preview (2-3 chips)
+                      if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
+                        const Text(
+                          'EXPERTISE',
+                          style: TextStyle(
                             fontFamily: 'PlusJakartaSans',
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
                             color: Color(0xFF8C736B),
+                            letterSpacing: 1.1,
                           ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: (c.skills.isNotEmpty ? c.skills : c.tags)
+                              .take(3)
+                              .map((exp) {
+                                String level = 'Intermediate';
+                                if (c.expertiseWithLevel.isNotEmpty) {
+                                  final match = c.expertiseWithLevel.firstWhere(
+                                    (e) => e['name'].toString().toLowerCase().trim() == exp.toLowerCase().trim(),
+                                    orElse: () => <String, dynamic>{},
+                                  );
+                                  if (match.isNotEmpty) {
+                                    level = match['level']?.toString() ?? 'Intermediate';
+                                  }
+                                }
+                                return _buildExpertiseChipWithLevel(exp, level);
+                              })
+                              .toList(),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      // Interests Preview (2-3 chips)
+                      if (interestsList.isNotEmpty) ...[
+                        const Text(
+                          'WANTS TO LEARN',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF8C736B),
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: interestsList.take(3).toList(),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Body (Bio)
-                    Text(
-                      c.bio,
-                      style: const TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13.5,
-                        color: Color(0xFF3E1F11),
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Interests title
-                    if (interestsList.isNotEmpty) ...[
-                      const Text(
-                        'Interests',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Interests list
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: interestsList,
-                      ),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1892,32 +2110,24 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   // Helper styles mapping class for interests
   _InterestStyle _getInterestStyle(String interest) {
     final key = interest.toLowerCase().trim();
-    if (key.contains('music')) {
-      return const _InterestStyle(Icons.music_note_rounded, Color(0xFFF0EEFF), Color(0xFF5636CC));
-    } else if (key.contains('photo') || key.contains('camera')) {
-      return const _InterestStyle(Icons.camera_alt_outlined, Color(0xFFE5F6ED), Color(0xFF2E7D32));
-    } else if (key.contains('travel') || key.contains('flight') || key.contains('explore') || key.contains('tour')) {
-      return const _InterestStyle(Icons.flight_takeoff_rounded, Color(0xFFFFF9E6), Color(0xFFB7791F));
-    } else if (key.contains('fit') || key.contains('gym') || key.contains('workout') || key.contains('sport') || key.contains('health') || key.contains('run')) {
-      return const _InterestStyle(Icons.fitness_center_rounded, Color(0xFFE3F2FD), Color(0xFF1565C0));
-    } else if (key.contains('game') || key.contains('gaming') || key.contains('play')) {
-      return const _InterestStyle(Icons.sports_esports_outlined, Color(0xFFFFEBF0), Color(0xFFD81B60));
-    } else if (key.contains('read') || key.contains('book') || key.contains('write')) {
-      return const _InterestStyle(Icons.menu_book_rounded, Color(0xFFFFF0EB), Color(0xFFD84315));
-    } else if (key.contains('coffee') || key.contains('cafe') || key.contains('tea') || key.contains('drink')) {
-      return const _InterestStyle(Icons.local_cafe_outlined, Color(0xFFF8E8F8), Color(0xFF8E24AA));
-    } else if (key.contains('art') || key.contains('paint') || key.contains('design')) {
-      return const _InterestStyle(Icons.palette_outlined, Color(0xFFFFF3E0), Color(0xFFEF6C00));
-    } else if (key.contains('tech') || key.contains('code') || key.contains('computer') || key.contains('cto') || key.contains('hiring') || key.contains('develop')) {
-      return const _InterestStyle(Icons.code_rounded, Color(0xFFE0F7FA), Color(0xFF00838F));
-    } else if (key.contains('food') || key.contains('cooking') || key.contains('eat') || key.contains('bake')) {
-      return const _InterestStyle(Icons.restaurant_rounded, Color(0xFFF1F8E9), Color(0xFF558B2F));
-    } else if (key.contains('movie') || key.contains('film') || key.contains('cinema') || key.contains('watch')) {
-      return const _InterestStyle(Icons.movie_outlined, Color(0xFFEDE7F6), Color(0xFF673AB7));
-    } else if (key.contains('partner') || key.contains('b2b') || key.contains('sales') || key.contains('marketing') || key.contains('business') || key.contains('growth')) {
-      return const _InterestStyle(Icons.handshake_outlined, Color(0xFFFFF3E0), Color(0xFFD84315));
-    } else if (key.contains('invest') || key.contains('vc') || key.contains('fund') || key.contains('finance') || key.contains('money')) {
+    if (key.contains('stock market') || key.contains('stock') || key.contains('trading')) {
+      return const _InterestStyle(Icons.show_chart, Color(0xFFE8F5E9), Color(0xFF2E7D32));
+    } else if (key.contains('artificial intelligence') || key.contains('ai') || key.contains('ml') || key.contains('machine learning')) {
+      return const _InterestStyle(Icons.psychology, Color(0xFFE0F7FA), Color(0xFF00838F));
+    } else if (key.contains('startup') || key.contains('founder') || key.contains('entrepreneur')) {
+      return const _InterestStyle(Icons.rocket_launch, Color(0xFFFFF3E0), Color(0xFFD84315));
+    } else if (key.contains('invest')) {
       return const _InterestStyle(Icons.monetization_on_outlined, Color(0xFFE8F5E9), Color(0xFF2E7D32));
+    } else if (key.contains('public speaking') || key.contains('speak') || key.contains('talk')) {
+      return const _InterestStyle(Icons.record_voice_over, Color(0xFFF8E8F8), Color(0xFF8E24AA));
+    } else if (key.contains('fit') || key.contains('gym') || key.contains('coach') || key.contains('health') || key.contains('workout')) {
+      return const _InterestStyle(Icons.fitness_center_rounded, Color(0xFFE3F2FD), Color(0xFF1565C0));
+    } else if (key.contains('personal finance') || key.contains('finance') || key.contains('money') || key.contains('wallet')) {
+      return const _InterestStyle(Icons.account_balance_wallet_outlined, Color(0xFFFFF9E6), Color(0xFFB7791F));
+    } else if (key.contains('design') || key.contains('ui') || key.contains('ux') || key.contains('art')) {
+      return const _InterestStyle(Icons.palette_outlined, Color(0xFFFFF3E0), Color(0xFFEF6C00));
+    } else if (key.contains('content') || key.contains('create') || key.contains('photo') || key.contains('video') || key.contains('camera')) {
+      return const _InterestStyle(Icons.video_call, Color(0xFFFFEBF0), Color(0xFFD81B60));
     }
     // Terracotta theme fallback matching app primary brand style
     return const _InterestStyle(
@@ -1927,7 +2137,41 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  Widget _buildInterestChip(String interest) {
+  Widget _buildExpertiseChipWithLevel(String exp, String level) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF1EC), // light terracotta
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF7A432D).withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.verified_outlined,
+            size: 13,
+            color: Color(0xFF7A432D),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            exp,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF7A432D),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInterestChipWithPriority(String interest, String priority) {
     final style = _getInterestStyle(interest);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -2269,6 +2513,498 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           ),
         );
       },
+    );
+  }
+
+  void _showDetailedProfileBottomSheet(Candidate c) async {
+    setState(() {
+      _isProfileExpanded = true;
+    });
+
+    final interestsList = <Widget>[];
+    for (final interest in c.interests) {
+      String priority = 'Medium';
+      if (c.interestsWithPriority.isNotEmpty) {
+        final match = c.interestsWithPriority.firstWhere(
+          (e) => e['name'].toString().toLowerCase().trim() == interest.toLowerCase().trim(),
+          orElse: () => <String, dynamic>{},
+        );
+        if (match.isNotEmpty) {
+          priority = match['priority']?.toString() ?? 'Medium';
+        }
+      }
+      interestsList.add(_buildInterestChipWithPriority(interest, priority));
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.96,
+          snap: true,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(32),
+                  topRight: Radius.circular(32),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Scroll Handle Indicator
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0D4CB),
+                        borderRadius: BorderRadius.circular(2.5),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        // Large profile photo
+                        Center(
+                          child: Container(
+                            width: 140,
+                            height: 140,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF7A432D).withValues(alpha: 0.15),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: buildProfileImage(
+                                c.profileImageUrl ?? '',
+                                width: 140,
+                                height: 140,
+                                fit: BoxFit.cover,
+                                fallback: Container(
+                                  color: const Color(0xFF7A432D),
+                                  child: Center(
+                                    child: Text(
+                                      c.initials,
+                                      style: const TextStyle(
+                                        fontFamily: 'PlayfairDisplay',
+                                        fontSize: 48,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Name
+                        Center(
+                          child: Text(
+                            c.name,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: 'PlayfairDisplay',
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Badges Row
+                        if (c.badges.isNotEmpty) ...[
+                          Center(
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: c.badges.map((badge) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.stars, size: 13, color: Color(0xFF2E7D32)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        badge,
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF2E7D32),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Occupation and Match overlay row
+                        Center(
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0052FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  c.org.isNotEmpty ? c.org : 'Independent',
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                c.role,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              ),
+                              if (c.experience.isNotEmpty) ...[
+                                const Text('•', style: TextStyle(color: Color(0xFFE0D4CB))),
+                                Text(
+                                  '${c.experience} yrs exp',
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF8C736B),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Section Dividers / Grid of Quick Stats
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildQuickStatCard(
+                                Icons.place_outlined,
+                                'Location',
+                                c.loc.isNotEmpty ? c.loc.split(',').first.trim() : 'Remote',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildQuickStatCard(
+                                Icons.translate,
+                                'Languages',
+                                'English, Hindi',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildQuickStatCard(
+                                Icons.verified_user_outlined,
+                                'Mentoring',
+                                '${c.completedMentoringSessions} sessions',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildQuickStatCard(
+                                Icons.thumb_up_alt_outlined,
+                                'Endorsements',
+                                '${c.expertiseWithLevel.fold<int>(0, (total, item) => total + (item['endorsements'] as int? ?? 0))} endorsements',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Bio / About Card
+                        if (c.bio.isNotEmpty) ...[
+                          _buildDetailSectionHeader('About'),
+                          const SizedBox(height: 8),
+                          _buildDetailCard(
+                            child: Text(
+                              c.bio,
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 13.5,
+                                color: Color(0xFF3E1F11),
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // Match justification (Explainable matching)
+                        if (c.matchReasons.isNotEmpty) ...[
+                          _buildDetailSectionHeader('Why You Matched'),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE3F2FD),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFF90CAF9)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF1565C0),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        '${c.match}% Match Rating',
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                ...c.matchReasons.map((reason) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('• ', style: TextStyle(color: Color(0xFF1565C0), fontSize: 14, fontWeight: FontWeight.bold)),
+                                        Expanded(
+                                          child: Text(
+                                            reason,
+                                            style: const TextStyle(
+                                              fontFamily: 'PlusJakartaSans',
+                                              fontSize: 13.5,
+                                              color: Color(0xFF0D47A1),
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // Expertise (What I can share)
+                        if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
+                          _buildDetailSectionHeader('Expertise (What I can share)'),
+                          const SizedBox(height: 8),
+                          _buildDetailCard(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: (c.skills.isNotEmpty ? c.skills : c.tags)
+                                  .map((exp) {
+                                    String level = 'Intermediate';
+                                    if (c.expertiseWithLevel.isNotEmpty) {
+                                      final match = c.expertiseWithLevel.firstWhere(
+                                        (e) => e['name'].toString().toLowerCase().trim() == exp.toLowerCase().trim(),
+                                        orElse: () => <String, dynamic>{},
+                                      );
+                                      if (match.isNotEmpty) {
+                                        level = match['level']?.toString() ?? 'Intermediate';
+                                      }
+                                    }
+                                    return _buildExpertiseChipWithLevel(exp, level);
+                                  })
+                                  .toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // Interests (What I want to learn)
+                        if (interestsList.isNotEmpty) ...[
+                          _buildDetailSectionHeader('Interests (What I want to learn)'),
+                          const SizedBox(height: 8),
+                          _buildDetailCard(
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: interestsList,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // Suggested starters
+                        if (c.conversationStarters.isNotEmpty) ...[
+                          _buildDetailSectionHeader('Suggested Icebreakers'),
+                          const SizedBox(height: 8),
+                          ...c.conversationStarters.map((starter) {
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFAF1EC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFF7A432D).withValues(alpha: 0.15),
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF7A432D)),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      starter,
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 13,
+                                        color: Color(0xFF5C473E),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    setState(() {
+      _isProfileExpanded = false;
+    });
+  }
+
+  Widget _buildDetailSectionHeader(String title) {
+    return Text(
+      title.toUpperCase(),
+      style: const TextStyle(
+        fontFamily: 'PlusJakartaSans',
+        fontSize: 11.5,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF8C736B),
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _buildDetailCard({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8E2DD)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildQuickStatCard(IconData icon, String label, String val) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E2DD)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF7A432D)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF8C736B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  val,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3E1F11),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

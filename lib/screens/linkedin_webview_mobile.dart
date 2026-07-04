@@ -69,8 +69,19 @@ class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> with Widg
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.authUrl));
+      );
+
+    // Clear cookies before loading request to ensure fresh login/account-switching support
+    WebViewCookieManager().clearCookies().then((_) {
+      if (mounted) {
+        _controller.loadRequest(Uri.parse(widget.authUrl));
+      }
+    }).catchError((e) {
+      debugPrint('Error clearing WebView cookies: $e');
+      if (mounted) {
+        _controller.loadRequest(Uri.parse(widget.authUrl));
+      }
+    });
   }
 
   void _startTimer() {

@@ -338,25 +338,38 @@ class AppStateManager extends ChangeNotifier {
           'name': profile.name.isNotEmpty
               ? profile.name
               : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),
-          'email': user.email ?? '',
+          // Display the real email stored in Firestore instead of the synthetic Firebase Auth email
+          'email': (profile.email.isNotEmpty && !profile.email.startsWith('linkedin_'))
+              ? profile.email
+              : (user.email ?? ''),
           'location': profile.currentLocationName ?? profile.homeBase ?? '',
           'picture': profile.profileImageUrl ?? user.photoURL ?? '',
         };
         notifyListeners();
       } else {
-        try {
-          await AuthService().ensureUserProfile();
-        } catch (e) {
-          debugPrint('Failed to auto-create user profile on login: $e');
+        // Avoid auto-creating a profile for synthetic LinkedIn users.
+        // The LinkedIn login flow explicitly creates it with the real email.
+        final isSynthetic = user.email != null &&
+            user.email!.startsWith('linkedin_') &&
+            user.email!.endsWith('@boardingpass.com');
+        if (!isSynthetic) {
+          try {
+            await AuthService().ensureUserProfile();
+          } catch (e) {
+            debugPrint('Failed to auto-create user profile on login: $e');
+          }
         }
       }
     });
 
     // Fallback initially if profile stream is slow
+    final isSynthetic = user.email != null &&
+        user.email!.startsWith('linkedin_') &&
+        user.email!.endsWith('@boardingpass.com');
     _profileData = {
       'sub': user.uid,
       'name': user.displayName ?? user.email?.split('@')[0] ?? 'User',
-      'email': user.email ?? '',
+      'email': isSynthetic ? '' : (user.email ?? ''),
       'location': '',
       'picture': user.photoURL ?? '',
     };
@@ -569,6 +582,13 @@ class AppStateManager extends ChangeNotifier {
       final currentUserInterests = List<String>.from(currentUserData['interests'] ?? []);
       final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
       final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
+      final currentExpertiseMapList = (currentUserData['expertiseWithLevel'] as List?)
+          ?.map((item) => Map<String, dynamic>.from(item))
+          .toList() ?? [];
+      final currentInterestsMapList = (currentUserData['interestsWithPriority'] as List?)
+          ?.map((item) => Map<String, dynamic>.from(item))
+          .toList() ?? [];
+      final currentRole = currentUserData['role'] ?? '';
 
       final allProfiles = querySnapshot.docs
           .where((doc) =>
@@ -589,17 +609,37 @@ class AppStateManager extends ChangeNotifier {
                 )
                 .toList();
 
-            final computedScore = calculateMatchScore(
+            final targetExpertiseMapList = (data['expertiseWithLevel'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ?? [];
+            final targetInterestsMapList = (data['interestsWithPriority'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ?? [];
+            final targetBadges = List<String>.from(data['badges'] ?? []);
+            
+            int sumEndorsements = 0;
+            for (final exp in targetExpertiseMapList) {
+              sumEndorsements += (exp['endorsements'] ?? 0) as int;
+            }
+            final targetSessions = data['completedMentoringSessions'] ?? 0;
+            final targetCollaborations = data['successfulCollaborations'] ?? 0;
+
+            final detailedMatch = calculateDetailedMatch(
               currentUid: currentUid,
               targetUid: doc.id,
-              currentSkills: currentUserSkills,
-              currentInterests: currentUserInterests,
-              currentExpertise: currentUserExpertise,
-              currentIntents: currentUserIntents,
-              targetSkills: skills,
-              targetInterests: interests,
-              targetExpertise: expertise,
-              targetIntents: intents,
+              currentRole: currentRole,
+              targetRole: data['role'] ?? '',
+              currentExpertise: currentExpertiseMapList,
+              currentInterests: currentInterestsMapList,
+              targetExpertise: targetExpertiseMapList,
+              targetInterests: targetInterestsMapList,
+              currentSkills: [...currentUserSkills, ...currentUserExpertise],
+              currentInterestsList: [...currentUserInterests, ...currentUserIntents],
+              targetSkills: [...skills, ...expertise],
+              targetInterestsList: [...interests, ...intents],
+              targetBadges: targetBadges,
+              targetEndorsements: sumEndorsements,
+              targetSessions: targetSessions,
             );
 
             return Candidate(
@@ -608,13 +648,14 @@ class AppStateManager extends ChangeNotifier {
               role: data['role'] ?? '',
               org: data['company'] ?? '',
               loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
-              match: computedScore,
+              match: detailedMatch.score,
               intent: intents.isNotEmpty ? intents.join(', ') : '',
               tags: expertise,
               interests: interests,
               skills: skills,
               homeBase: data['homeBase'] ?? '',
               industry: data['industry'] ?? '',
+              experience: data['experience'] ?? '',
               bio: data['bio'] ?? '',
               initials: (data['name'] as String?)?.isNotEmpty == true
                   ? data['name']
@@ -628,6 +669,13 @@ class AppStateManager extends ChangeNotifier {
               profileImageUrl: data['profileImageUrl'],
               primaryColor: const Color(0xFFE5A475),
               customCards: customCards,
+              expertiseWithLevel: targetExpertiseMapList,
+              interestsWithPriority: targetInterestsMapList,
+              matchReasons: detailedMatch.reasons,
+              conversationStarters: detailedMatch.conversationStarters,
+              badges: targetBadges,
+              completedMentoringSessions: targetSessions,
+              successfulCollaborations: targetCollaborations,
             );
           })
           .toList();
@@ -645,6 +693,9 @@ class AppStateManager extends ChangeNotifier {
           nonDisliked.add(candidate);
         }
       }
+
+      // Sort non-disliked candidates by match score descending so high matches are shown first
+      nonDisliked.sort((a, b) => b.match.compareTo(a.match));
 
       // Sort disliked candidates chronologically by swipe time (older dislikes first, newer dislikes last)
       disliked.sort((a, b) {

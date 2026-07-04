@@ -179,13 +179,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 12),
                         _buildAboutCard(bio),
                         const SizedBox(height: 24),
-                        _buildSectionLabel('Skills', Icons.build_outlined),
+                        _buildSectionLabel('Expertise (What I can share)', Icons.verified_outlined),
                         const SizedBox(height: 12),
-                        _buildSkillsCard(skills),
+                        _buildSkillsCard(skills, profile),
                         const SizedBox(height: 24),
-                        _buildSectionLabel('Interests', Icons.star_border_rounded),
+                        _buildSectionLabel('Interests (What I\'m looking for)', Icons.explore_outlined),
                         const SizedBox(height: 12),
-                        _buildInterestsCard(interests),
+                        _buildInterestsCard(interests, profile),
                         const SizedBox(height: 24),
                         _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
                         const SizedBox(height: 12),
@@ -505,6 +505,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
               color: Color(0xFF3E1F11),
             ),
           ),
+          if (profile.badges.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: profile.badges.map((badge) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.stars, size: 12, color: Color(0xFF2E7D32)),
+                      const SizedBox(width: 4),
+                      Text(
+                        badge,
+                        style: const TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2E7D32),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
             headline,
@@ -662,6 +697,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   "Events you've organized",
                 );
               },
+            ),
+            const SizedBox(width: 12),
+            _buildStatCard(
+              Icons.verified_user_outlined,
+              'Mentoring',
+              '${profile.completedMentoringSessions}',
+              'Sessions completed',
+            ),
+            const SizedBox(width: 12),
+            _buildStatCard(
+              Icons.handshake_outlined,
+              'Collaborations',
+              '${profile.successfulCollaborations}',
+              'Successful projects',
             ),
           ],
         ),
@@ -1095,7 +1144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildSkillsCard(List<String> skills) {
+  Widget _buildSkillsCard(List<String> skills, UserProfile profile) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: _buildCardContainer(
@@ -1113,7 +1162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'No skills added yet. Tap Edit to add your skills.',
+                      'No expertise added yet. Tap Edit to add your expertise.',
                       style: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
                         fontSize: 13,
@@ -1166,7 +1215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildInterestsCard(List<String> interests) {
+  Widget _buildInterestsCard(List<String> interests, UserProfile profile) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: _buildCardContainer(
@@ -1752,14 +1801,29 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   final TextEditingController _newEduStartDateController = TextEditingController();
   final TextEditingController _newEduEndDateController = TextEditingController();
 
-  final TextEditingController _newSkillController = TextEditingController();
-
   bool _isLoading = false;
   bool _isProfileLoading = false;
   bool _isCoverLoading = false;
   late List<Map<String, dynamic>> _localCareerTimeline;
   late List<Map<String, dynamic>> _localEducationTimeline;
   late List<String> _localSkills;
+  late List<String> _localInterests;
+  final TextEditingController _customExpertiseController = TextEditingController();
+  final TextEditingController _customInterestController = TextEditingController();
+  String _selectedOccupation = 'Software Engineer';
+  final TextEditingController _customOccupationController = TextEditingController();
+  final List<String> _occupations = [
+    'Software Engineer',
+    'CTO',
+    'Product Manager',
+    'Founder',
+    'Doctor',
+    'Lawyer',
+    'Financial Analyst',
+    'Other',
+  ];
+  final Map<String, String> _localExpertiseLevels = {};
+  final Map<String, String> _localInterestsPriorities = {};
 
   final List<String> _industries = [
     'Technology',
@@ -1783,16 +1847,34 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   String? _selectedIndustry;
   String? _selectedTravelFrequency;
 
-  final List<String> _interestOptions = [
-    'Networking',
-    'Socializing',
-    'Learning',
+  final List<String> _expertiseOptions = [
+    'React',
+    'Flutter',
+    'Spring Boot',
+    'AI/ML',
+    'Data Science',
+    'Stock Market',
     'Investing',
-    'Fundraising',
-    'Hiring Talents',
-    'Job Opportunity',
+    'Leadership',
+    'Product Strategy',
+    'UI/UX',
+    'Marketing',
+    'Sales',
+    'Public Speaking',
   ];
-  String? _selectedInterest;
+
+  final List<String> _interestOptions = [
+    'Stock Market',
+    'Artificial Intelligence',
+    'Startups',
+    'Investing',
+    'Public Speaking',
+    'Fitness',
+    'Personal Finance',
+    'Entrepreneurship',
+    'Design',
+    'Content Creation',
+  ];
 
   late String _homeBaseCountry;
   late String _homeBaseState;
@@ -1810,6 +1892,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _bioController = TextEditingController(text: widget.profile.bio);
     _companyController = TextEditingController(text: widget.profile.company);
     _roleController = TextEditingController(text: widget.profile.role);
+    final roleVal = widget.profile.role ?? '';
+    if (_occupations.contains(roleVal)) {
+      _selectedOccupation = roleVal;
+    } else if (roleVal.isNotEmpty) {
+      _selectedOccupation = 'Other';
+      _customOccupationController.text = roleVal;
+    }
 
     final initialIndustry = widget.profile.industry ?? 'Technology';
     _selectedIndustry = _industries.contains(initialIndustry) ? initialIndustry : 'Other';
@@ -1818,8 +1907,20 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     final initialTravel = widget.profile.travelFrequency ?? 'Occasional';
     _selectedTravelFrequency = _travelFrequencies.contains(initialTravel) ? initialTravel : 'Occasional';
 
-    final initialInterest = widget.profile.interests.isNotEmpty ? widget.profile.interests.first : null;
-    _selectedInterest = initialInterest != null && _interestOptions.contains(initialInterest) ? initialInterest : null;
+    _localInterests = List<String>.from(widget.profile.interests.isNotEmpty ? widget.profile.interests : widget.profile.intents);
+
+    _localExpertiseLevels.clear();
+    for (final exp in widget.profile.expertiseWithLevel) {
+      final name = exp['name']?.toString() ?? '';
+      final lvl = exp['level']?.toString() ?? 'Intermediate';
+      if (name.isNotEmpty) _localExpertiseLevels[name] = lvl;
+    }
+    _localInterestsPriorities.clear();
+    for (final intr in widget.profile.interestsWithPriority) {
+      final name = intr['name']?.toString() ?? '';
+      final pri = intr['priority']?.toString() ?? 'Medium';
+      if (name.isNotEmpty) _localInterestsPriorities[name] = pri;
+    }
 
     _parseHomeBase(widget.profile.homeBase);
     _parseCurrentLocation(widget.profile.currentLocationName);
@@ -1878,9 +1979,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     total++;
     if (_bioController.text.trim().isNotEmpty) completed++;
     total++;
-    if (widget.profile.intents.isNotEmpty) completed++;
-    total++;
-    if (_selectedInterest != null && _interestOptions.contains(_selectedInterest!)) completed++;
+    if (_localInterests.isNotEmpty) completed++;
+
     total++;
     if (_selectedTravelFrequency != null && _selectedTravelFrequency!.isNotEmpty && _selectedTravelFrequency != 'Select Frequency') {
       completed++;
@@ -2013,7 +2113,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _newEduStartDateController.dispose();
     _newEduEndDateController.dispose();
 
-    _newSkillController.dispose();
+    _customExpertiseController.dispose();
+    _customInterestController.dispose();
+    _customOccupationController.dispose();
 
     super.dispose();
   }
@@ -2067,7 +2169,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         headline: _headlineController.text.trim(),
         bio: _bioController.text.trim(),
         company: _companyController.text.trim(),
-        role: _roleController.text.trim(),
+        role: _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : _selectedOccupation,
         industry: finalIndustry,
         experience: _experienceController.text.trim(),
         homeBase: finalHomeBase,
@@ -2077,9 +2179,23 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         coverImageUrl: _coverImageUrlController.text.trim(),
         linkedinProfileUrl: _linkedinUrlController.text.trim(),
         skills: _localSkills,
+        expertise: _localSkills,
         careerTimeline: _localCareerTimeline,
         educationTimeline: _localEducationTimeline,
-        interests: _selectedInterest != null ? [_selectedInterest!] : [],
+        interests: _localInterests,
+        intents: _localInterests,
+        expertiseWithLevel: _localSkills.map((e) => {
+          'name': e,
+          'level': _localExpertiseLevels[e] ?? 'Intermediate',
+          'endorsements': widget.profile.expertiseWithLevel.firstWhere(
+            (o) => o['name'].toString().toLowerCase().trim() == e.toLowerCase().trim(),
+            orElse: () => <String, dynamic>{},
+          )['endorsements'] ?? 0,
+        }).toList(),
+        interestsWithPriority: _localInterests.map((i) => {
+          'name': i,
+          'priority': _localInterestsPriorities[i] ?? 'Medium',
+        }).toList(),
       );
       if (mounted) {
         Navigator.pop(context);
@@ -2199,12 +2315,16 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     _buildTextField('Headline', _headlineController, hintText: 'e.g. VP Engineering at Stripe'),
                     _buildTextField('Bio / Description', _bioController, maxLines: 3, hintText: 'Tell us about yourself'),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(child: _buildTextField('Company', _companyController, hintText: 'e.g. Google, Stripe')),
-                        const SizedBox(width: 12),
-                        Expanded(child: _buildTextField('Role', _roleController, hintText: 'e.g. Software Engineer')),
-                      ],
+                    _buildTextField('Company', _companyController, hintText: 'e.g. Google, Stripe'),
+                    const SizedBox(height: 12),
+                    _buildDropdownField(
+                      label: 'Occupation',
+                      currentValue: _selectedOccupation,
+                      items: _occupations,
+                      onChanged: (val) => setState(() => _selectedOccupation = val ?? 'Software Engineer'),
+                      secondaryField: _selectedOccupation == 'Other'
+                          ? _buildTextField('Custom Occupation', _customOccupationController, hintText: 'e.g. BioTech Consultant')
+                          : null,
                     ),
                     Row(
                       children: [
@@ -2395,33 +2515,28 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     }),
                     _buildAddEducationCard(),
                     const SizedBox(height: 20),
-                    _buildSectionHeader('Skills'),
+                    _buildSectionHeader('Expertise'),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _localSkills.map((s) {
-                        return Chip(
-                          backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                          label: Text(s, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
-                          deleteIcon: const Icon(Icons.close, size: 16, color: Color(0xFF7A432D)),
-                          onDeleted: () => setState(() => _localSkills.remove(s)),
-                          side: BorderSide.none,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                        );
-                      }).toList(),
+                    _buildMultiSelectChipGrid(
+                      options: _expertiseOptions,
+                      selectedList: _localSkills,
+                      customController: _customExpertiseController,
+                      customHint: 'Add custom expertise...',
+                      onListChanged: _onFieldChanged,
+                      isExpertise: true,
+                      levelsMap: _localExpertiseLevels,
                     ),
-                    const SizedBox(height: 8),
-                    _buildAddSkillRow(),
                     const SizedBox(height: 24),
-                    _buildSectionHeader('Interest'),
+                    _buildSectionHeader('Interests'),
                     const SizedBox(height: 12),
-                    _buildDropdownField(
-                      label: 'Primary Interest',
-                      currentValue: _selectedInterest ?? 'Networking',
-                      items: _interestOptions,
-                      onChanged: (val) => setState(() => _selectedInterest = val),
+                    _buildMultiSelectChipGrid(
+                      options: _interestOptions,
+                      selectedList: _localInterests,
+                      customController: _customInterestController,
+                      customHint: 'Add custom interest...',
+                      onListChanged: _onFieldChanged,
+                      isExpertise: false,
+                      prioritiesMap: _localInterestsPriorities,
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -2431,6 +2546,162 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMultiSelectChipGrid({
+    required List<String> options,
+    required List<String> selectedList,
+    required TextEditingController customController,
+    required String customHint,
+    required VoidCallback onListChanged,
+    bool isExpertise = false,
+    Map<String, String>? levelsMap,
+    Map<String, String>? prioritiesMap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: options.map((opt) {
+            final isSelected = selectedList.contains(opt);
+            return FilterChip(
+              label: Text(opt),
+              labelStyle: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.white : const Color(0xFF7A432D),
+              ),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    selectedList.add(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap[opt] = 'Intermediate';
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap[opt] = 'Medium';
+                    }
+                  } else {
+                    selectedList.remove(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap.remove(opt);
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap.remove(opt);
+                    }
+                  }
+                  onListChanged();
+                });
+              },
+              selectedColor: const Color(0xFF7A432D),
+              backgroundColor: Colors.white,
+              checkmarkColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        if (selectedList.any((opt) => !options.contains(opt))) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Custom Additions:',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: selectedList.where((opt) => !options.contains(opt)).map((opt) {
+              return Chip(
+                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                label: Text(opt, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
+                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
+                onDeleted: () {
+                  setState(() {
+                    selectedList.remove(opt);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap.remove(opt);
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap.remove(opt);
+                    }
+                    onListChanged();
+                  });
+                },
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: customController,
+                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: customHint,
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const Color(0xFF7A432D).withValues(alpha: 1.5) == Colors.white ? const BorderSide(color: Color(0xFF7A432D)) : const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7A432D),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                elevation: 0,
+              ),
+              onPressed: () {
+                final text = customController.text.trim();
+                if (text.isNotEmpty && !selectedList.contains(text)) {
+                  setState(() {
+                    selectedList.add(text);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap[text] = 'Intermediate';
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap[text] = 'Medium';
+                    }
+                    customController.clear();
+                    onListChanged();
+                  });
+                }
+              },
+              child: const Text('Add Custom', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+          ],
+        ),
+
+      ],
     );
   }
 
@@ -2781,56 +3052,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  Widget _buildAddSkillRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _newSkillController,
-            style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'Add a skill...',
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF7A432D),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            elevation: 0,
-          ),
-          onPressed: () {
-            final text = _newSkillController.text.trim();
-            if (text.isNotEmpty && !_localSkills.contains(text)) {
-              setState(() {
-                _localSkills.add(text);
-                _newSkillController.clear();
-              });
-            }
-          },
-          child: const Text('Add', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold)),
-        ),
-      ],
-    );
-  }
+
 
   Widget _buildTextField(
     String label,
