@@ -3,12 +3,15 @@ import 'dart:ui' show ImageFilter;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../state_manager.dart';
 import '../models/candidate.dart';
 import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
 import '../utils/match_calculator.dart';
+
+enum _SwipeAction { reject, like, favorite }
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -20,6 +23,9 @@ class DiscoverScreen extends StatefulWidget {
 class _DiscoverScreenState extends State<DiscoverScreen>
     with SingleTickerProviderStateMixin {
   final AppStateManager _state = AppStateManager();
+  static const double _horizontalSwipeThreshold = 120.0;
+  static const double _upSwipeThreshold = 100.0;
+  static const Duration _swipeExitDuration = Duration(milliseconds: 230);
 
   // Filter states
   final TextEditingController _searchQuery = TextEditingController();
@@ -76,6 +82,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   double _dragDy = 0.0;
   bool _isAnimating = false;
   bool _isProfileExpanded = false;
+  _SwipeAction? _thresholdHapticAction;
+  _SwipeAction? _completionAction;
+  int _completionEffectToken = 0;
 
   // Match overlay state
   String? _matchedName;
@@ -148,9 +157,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
       // 3. Interest filter
       if (_selectedInterest != null) {
-        bool hasMatchingExpertise = c.skills.any((s) => doesExpertiseSatisfyInterest(s, _selectedInterest!)) ||
-                                    c.tags.any((t) => doesExpertiseSatisfyInterest(t, _selectedInterest!));
-        bool hasSharedInterest = c.interests.any((i) => i.toLowerCase().trim() == _selectedInterest!.toLowerCase().trim());
+        bool hasMatchingExpertise =
+            c.skills.any(
+              (s) => doesExpertiseSatisfyInterest(s, _selectedInterest!),
+            ) ||
+            c.tags.any(
+              (t) => doesExpertiseSatisfyInterest(t, _selectedInterest!),
+            );
+        bool hasSharedInterest = c.interests.any(
+          (i) =>
+              i.toLowerCase().trim() == _selectedInterest!.toLowerCase().trim(),
+        );
         if (!hasMatchingExpertise && !hasSharedInterest) {
           return false;
         }
@@ -165,8 +182,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
       // 5. Expertise filter
       if (_selectedFilterExpertise != null) {
-        bool hasExpertise = c.skills.any((s) => s.toLowerCase().trim() == _selectedFilterExpertise!.toLowerCase().trim()) ||
-                            c.tags.any((t) => t.toLowerCase().trim() == _selectedFilterExpertise!.toLowerCase().trim());
+        bool hasExpertise =
+            c.skills.any(
+              (s) =>
+                  s.toLowerCase().trim() ==
+                  _selectedFilterExpertise!.toLowerCase().trim(),
+            ) ||
+            c.tags.any(
+              (t) =>
+                  t.toLowerCase().trim() ==
+                  _selectedFilterExpertise!.toLowerCase().trim(),
+            );
         if (!hasExpertise) {
           return false;
         }
@@ -329,59 +355,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         });
       }
     });
-  }
-
-  void _showConnectionRequestPopup(
-    Candidate candidate, {
-    bool alreadyPending = false,
-  }) {
-    final message = alreadyPending
-        ? 'Connection request already sent to ${candidate.name}.'
-        : 'Connection request sent to ${candidate.name}.';
-
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.fromLTRB(18, 0, 18, 22),
-          duration: const Duration(seconds: 3),
-          backgroundColor: const Color(0xFF3E1F11),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFE5A475), width: 0.8),
-          ),
-          content: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5A475).withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.mark_email_read_rounded,
-                  color: Color(0xFFE5A475),
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '$message They can accept it from their notifications.',
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
   }
 
   void _showConnectionRequestError(Candidate candidate) {
@@ -652,91 +625,241 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  Future<void> _swipeLeft(List<Candidate> filteredList) async {
-    if (_isAnimating || filteredList.isEmpty) return;
-    final currentCandidate = filteredList[_cardIndex % filteredList.length];
-    final targetUid = currentCandidate.uid;
+  double _clampedProgress(double value) {
+    return value.clamp(0.0, 1.0).toDouble();
+  }
 
-    setState(() {
-      _isAnimating = true;
-      _dragDx = -400.0;
-    });
+  double _progressForAction(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return _clampedProgress(-_dragDx / (_horizontalSwipeThreshold * 1.35));
+      case _SwipeAction.like:
+        return _clampedProgress(_dragDx / (_horizontalSwipeThreshold * 1.35));
+      case _SwipeAction.favorite:
+        return _clampedProgress(-_dragDy / (_upSwipeThreshold * 1.45));
+    }
+  }
 
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
+  _SwipeAction? _activeOverlayAction() {
+    final rejectProgress = _progressForAction(_SwipeAction.reject);
+    final likeProgress = _progressForAction(_SwipeAction.like);
+    final favoriteProgress = _progressForAction(_SwipeAction.favorite);
+    final horizontalProgress = rejectProgress > likeProgress
+        ? rejectProgress
+        : likeProgress;
 
-    if (targetUid != null && targetUid.isNotEmpty) {
-      // Optimistic local update
-      _state.moveCandidateToBack(targetUid);
-      // Background Firestore write
-      _state.swipeCandidate(targetUid: targetUid, action: 'dislike');
+    if (horizontalProgress < 0.04 && favoriteProgress < 0.04) {
+      return null;
     }
 
+    if (likeProgress > 0.04 && likeProgress >= favoriteProgress * 0.72) {
+      return _SwipeAction.like;
+    }
+
+    if (rejectProgress > 0.04 && rejectProgress >= favoriteProgress * 0.72) {
+      return _SwipeAction.reject;
+    }
+
+    if (favoriteProgress > 0.04) {
+      return _SwipeAction.favorite;
+    }
+
+    return _dragDx >= 0 ? _SwipeAction.like : _SwipeAction.reject;
+  }
+
+  _SwipeAction? _releaseAction() {
+    if (_dragDx > _horizontalSwipeThreshold) return _SwipeAction.like;
+    if (_dragDx < -_horizontalSwipeThreshold) return _SwipeAction.reject;
+    if (_dragDy < -_upSwipeThreshold) return _SwipeAction.favorite;
+    return null;
+  }
+
+  double get _cardRotationAngle {
+    return (_dragDx / 400 * 0.18).clamp(-0.22, 0.22).toDouble();
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    if (_isAnimating) return;
     setState(() {
-      _dragDx = 0.0;
-      _dragDy = 0.0;
-      _isAnimating = false;
+      _dragDx += details.delta.dx;
+      _dragDy += details.delta.dy;
+    });
+    _triggerThresholdHaptic(_releaseAction());
+  }
+
+  void _handlePanEnd(List<Candidate> filteredList) {
+    if (_isAnimating) return;
+    final action = _releaseAction();
+    switch (action) {
+      case _SwipeAction.reject:
+        _swipeLeft(filteredList);
+        break;
+      case _SwipeAction.like:
+        _swipeRight(filteredList);
+        break;
+      case _SwipeAction.favorite:
+        _swipeUp(filteredList);
+        break;
+      case null:
+        setState(() {
+          _dragDx = 0;
+          _dragDy = 0;
+          _thresholdHapticAction = null;
+        });
+        break;
+    }
+  }
+
+  void _triggerThresholdHaptic(_SwipeAction? action) {
+    if (action == null) {
+      _thresholdHapticAction = null;
+      return;
+    }
+    if (_thresholdHapticAction == action) return;
+    _thresholdHapticAction = action;
+    if (action == _SwipeAction.favorite) {
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  void _triggerConfirmedHaptic(_SwipeAction action) {
+    if (action == _SwipeAction.favorite) {
+      HapticFeedback.heavyImpact();
+    } else {
+      HapticFeedback.lightImpact();
+    }
+  }
+
+  void _showSwipeCompletionEffect(_SwipeAction action) {
+    final token = ++_completionEffectToken;
+    setState(() {
+      _completionAction = action;
+    });
+    Future.delayed(const Duration(milliseconds: 420), () {
+      if (!mounted || token != _completionEffectToken) return;
+      setState(() {
+        _completionAction = null;
+      });
     });
   }
 
-  Future<void> _swipeRight(List<Candidate> filteredList) async {
-    if (_isAnimating || filteredList.isEmpty) return;
-    final currentCandidate = filteredList[_cardIndex % filteredList.length];
-    final targetUid = currentCandidate.uid;
+  Color _swipeActionColor(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return const Color(0xFFC62828);
+      case _SwipeAction.like:
+        return const Color(0xFF2E7D32);
+      case _SwipeAction.favorite:
+        return const Color(0xFFE5A475);
+    }
+  }
 
-    if (targetUid == null || targetUid.isEmpty) {
-      _showConnectionRequestError(currentCandidate);
-      return;
+  Color _swipeActionBackground(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return const Color(0xFF3B1414);
+      case _SwipeAction.like:
+        return const Color(0xFF103B28);
+      case _SwipeAction.favorite:
+        return const Color(0xFF3E1F11);
+    }
+  }
+
+  IconData _swipeActionIcon(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return Icons.close_rounded;
+      case _SwipeAction.like:
+        return Icons.favorite_border_rounded;
+      case _SwipeAction.favorite:
+        return Icons.star_border_rounded;
+    }
+  }
+
+  String _swipeActionLabel(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return 'REJECT';
+      case _SwipeAction.like:
+        return 'LIKE';
+      case _SwipeAction.favorite:
+        return 'FAVORITE';
+    }
+  }
+
+  String _swipeConfirmationTitle(_SwipeAction action) {
+    switch (action) {
+      case _SwipeAction.reject:
+        return 'Rejected';
+      case _SwipeAction.like:
+        return 'Liked';
+      case _SwipeAction.favorite:
+        return 'Added to Favorites';
+    }
+  }
+
+  void _showSwipeConfirmation(
+    _SwipeAction action,
+    Candidate candidate, {
+    ConnectionRequestResult? connectionResult,
+  }) {
+    final accent = _swipeActionColor(action);
+    final background = _swipeActionBackground(action);
+    final name = candidate.name.trim().isEmpty
+        ? 'this profile'
+        : candidate.name.trim();
+    String detail;
+
+    switch (action) {
+      case _SwipeAction.reject:
+        detail = '$name moved out of your discovery stack.';
+        break;
+      case _SwipeAction.like:
+        switch (connectionResult) {
+          case ConnectionRequestResult.accepted:
+            detail = 'You and $name are now connected.';
+            break;
+          case ConnectionRequestResult.alreadyPending:
+            detail = 'Your connection request to $name is already pending.';
+            break;
+          case ConnectionRequestResult.sent:
+          case null:
+            detail = 'Connection request sent to $name.';
+            break;
+          case ConnectionRequestResult.failed:
+            detail = 'Could not like $name. Please try again.';
+            break;
+        }
+        break;
+      case _SwipeAction.favorite:
+        detail = 'You can view $name later in Favorites.';
+        break;
     }
 
-    setState(() {
-      _isAnimating = true;
-      _dragDx = 400.0;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
-
-    // Optimistic local update: move to back
-    _state.moveCandidateToBack(targetUid);
-    // Background Firestore write
-    _state.swipeCandidate(targetUid: targetUid, action: 'favorite');
-
-    setState(() {
-      _dragDx = 0.0;
-      _dragDy = 0.0;
-      _isAnimating = false;
-    });
-
-    if (!mounted) return;
-
-    // Show favorited notification feedback (other user is not notified)
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.fromLTRB(18, 0, 18, 22),
-          duration: const Duration(seconds: 3),
-          backgroundColor: const Color(0xFF7A432D),
+          duration: const Duration(milliseconds: 1500),
+          backgroundColor: background,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
-            side: const BorderSide(color: Color(0xFFE5A475), width: 0.8),
+            side: BorderSide(color: accent.withValues(alpha: 0.8), width: 0.9),
           ),
           content: Row(
             children: [
               Container(
                 width: 34,
                 height: 34,
-                decoration: const BoxDecoration(
-                  color: Colors.white24,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.18),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.star_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                child: Icon(_swipeActionIcon(action), color: accent, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -744,17 +867,20 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Added to Favorites',
-                      style: TextStyle(
+                    Text(
+                      _swipeConfirmationTitle(action),
+                      style: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      'You can view ${currentCandidate.name} later in Favorites.',
+                      detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: 'PlusJakartaSans',
                         fontSize: 11,
@@ -770,6 +896,303 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       );
   }
 
+  Widget _buildSwipeActionOverlay() {
+    final action = _activeOverlayAction();
+    if (action == null) return const SizedBox.shrink();
+
+    final progress = _progressForAction(action);
+    final accent = _swipeActionColor(action);
+    final isFavorite = action == _SwipeAction.favorite;
+    final alignment = switch (action) {
+      _SwipeAction.reject => Alignment.topLeft,
+      _SwipeAction.like => Alignment.topRight,
+      _SwipeAction.favorite => Alignment.topCenter,
+    };
+    final rotation = switch (action) {
+      _SwipeAction.reject => -0.14 * progress,
+      _SwipeAction.like => 0.14 * progress,
+      _SwipeAction.favorite => 0.0,
+    };
+    final scale = isFavorite
+        ? 0.88 + (progress * 0.28)
+        : action == _SwipeAction.like
+        ? 0.9 + (progress * 0.32)
+        : 0.92 + (progress * 0.22);
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 34, 22, 0),
+          child: Align(
+            alignment: alignment,
+            child: Transform.translate(
+              offset: Offset(
+                0,
+                isFavorite ? -28 * progress : 8 * (1 - progress),
+              ),
+              child: Transform.rotate(
+                angle: rotation,
+                child: Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: (0.12 + progress * 0.88).clamp(0.0, 1.0),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 18 + (progress * 8),
+                        vertical: 12 + (progress * 4),
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(
+                          alpha: 0.38 + progress * 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: accent.withValues(
+                            alpha: 0.72 + progress * 0.28,
+                          ),
+                          width: 1.6 + (progress * 2.4),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accent.withValues(
+                              alpha: isFavorite
+                                  ? 0.32 * progress
+                                  : 0.20 * progress,
+                            ),
+                            blurRadius: isFavorite
+                                ? 26 * progress
+                                : 16 * progress,
+                            spreadRadius: isFavorite ? 2 * progress : 0,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _swipeActionIcon(action),
+                            size: 38 + (progress * 24),
+                            color: accent,
+                          ),
+                          const SizedBox(height: 6),
+                          Opacity(
+                            opacity: (progress * 1.2).clamp(0.0, 1.0),
+                            child: Text(
+                              _swipeActionLabel(action),
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 13 + (progress * 2),
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeCompletionEffects() {
+    final action = _completionAction;
+    final accent = action == null
+        ? Colors.transparent
+        : _swipeActionColor(action);
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            AnimatedOpacity(
+              opacity: action == null
+                  ? 0
+                  : action == _SwipeAction.reject
+                  ? 0.08
+                  : 0.055,
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              child: Container(color: accent),
+            ),
+            if (action != null)
+              Center(
+                child: TweenAnimationBuilder<double>(
+                  key: ValueKey('${action.name}-$_completionEffectToken'),
+                  tween: Tween<double>(begin: 0.65, end: 1.18),
+                  duration: const Duration(milliseconds: 360),
+                  curve: Curves.easeOutBack,
+                  builder: (context, value, child) {
+                    return Opacity(
+                      opacity: (1.6 - value).clamp(0.0, 1.0),
+                      child: Transform.scale(scale: value, child: child),
+                    );
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: action == _SwipeAction.favorite ? 96 : 86,
+                        height: action == _SwipeAction.favorite ? 96 : 86,
+                        decoration: BoxDecoration(
+                          color: _swipeActionBackground(
+                            action,
+                          ).withValues(alpha: 0.72),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: accent, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accent.withValues(
+                                alpha: action == _SwipeAction.favorite
+                                    ? 0.42
+                                    : 0.28,
+                              ),
+                              blurRadius: action == _SwipeAction.favorite
+                                  ? 34
+                                  : 24,
+                              spreadRadius: action == _SwipeAction.favorite
+                                  ? 4
+                                  : 1,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          _swipeActionIcon(action),
+                          color: accent,
+                          size: action == _SwipeAction.favorite ? 48 : 42,
+                        ),
+                      ),
+                      if (action == _SwipeAction.favorite) ...[
+                        const Positioned(
+                          top: -8,
+                          right: -6,
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Color(0xFFE5A475),
+                            size: 18,
+                          ),
+                        ),
+                        const Positioned(
+                          left: -10,
+                          bottom: 4,
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Color(0xFFFFD37A),
+                            size: 14,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _swipeLeft(List<Candidate> filteredList) async {
+    if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
+    setState(() {
+      _isAnimating = true;
+      _dragDx = -520.0;
+      _dragDy = 0.0;
+    });
+    _triggerConfirmedHaptic(_SwipeAction.reject);
+    _showSwipeCompletionEffect(_SwipeAction.reject);
+
+    await Future.delayed(_swipeExitDuration);
+    if (!mounted) return;
+
+    if (targetUid != null && targetUid.isNotEmpty) {
+      // Optimistic local update
+      _state.moveCandidateToBack(targetUid);
+      // Background Firestore write
+      _state.swipeCandidate(targetUid: targetUid, action: 'dislike');
+    }
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
+      _thresholdHapticAction = null;
+    });
+
+    _showSwipeConfirmation(_SwipeAction.reject, currentCandidate);
+  }
+
+  Future<void> _swipeRight(List<Candidate> filteredList) async {
+    if (_isAnimating || filteredList.isEmpty) return;
+    final currentCandidate = filteredList[_cardIndex % filteredList.length];
+    final targetUid = currentCandidate.uid;
+
+    if (targetUid == null || targetUid.isEmpty) {
+      _showConnectionRequestError(currentCandidate);
+      return;
+    }
+
+    setState(() {
+      _isAnimating = true;
+      _dragDx = 520.0;
+      _dragDy = 0.0;
+    });
+    _triggerConfirmedHaptic(_SwipeAction.like);
+    _showSwipeCompletionEffect(_SwipeAction.like);
+
+    await Future.delayed(_swipeExitDuration);
+    if (!mounted) return;
+
+    // Optimistic local update
+    _state.removeCandidate(targetUid);
+
+    setState(() {
+      _dragDx = 0.0;
+      _dragDy = 0.0;
+      _isAnimating = false;
+      _thresholdHapticAction = null;
+    });
+
+    final result = await _state.sendOrAcceptConnection(targetUid: targetUid);
+    if (result != ConnectionRequestResult.failed) {
+      await _state.swipeCandidate(targetUid: targetUid, action: 'like');
+    }
+
+    if (!mounted) return;
+
+    switch (result) {
+      case ConnectionRequestResult.sent:
+      case ConnectionRequestResult.alreadyPending:
+        _showSwipeConfirmation(
+          _SwipeAction.like,
+          currentCandidate,
+          connectionResult: result,
+        );
+        break;
+      case ConnectionRequestResult.accepted:
+        _showSwipeConfirmation(
+          _SwipeAction.like,
+          currentCandidate,
+          connectionResult: result,
+        );
+        _triggerMatch(currentCandidate.name);
+        break;
+      case ConnectionRequestResult.failed:
+        _showConnectionRequestError(currentCandidate);
+        break;
+    }
+  }
+
   Future<void> _swipeUp(List<Candidate> filteredList) async {
     if (_isAnimating || filteredList.isEmpty) return;
     final currentCandidate = filteredList[_cardIndex % filteredList.length];
@@ -782,42 +1205,27 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     setState(() {
       _isAnimating = true;
-      _dragDy = -600.0;
+      _dragDx = 0.0;
+      _dragDy = -640.0;
     });
+    _triggerConfirmedHaptic(_SwipeAction.favorite);
+    _showSwipeCompletionEffect(_SwipeAction.favorite);
 
-    await Future.delayed(const Duration(milliseconds: 200));
+    await Future.delayed(_swipeExitDuration);
     if (!mounted) return;
 
-    // Optimistic local update
-    _state.removeCandidate(targetUid);
+    // Optimistic local update: keep favorites discoverable later in the session
+    _state.moveCandidateToBack(targetUid);
+    _state.swipeCandidate(targetUid: targetUid, action: 'favorite');
 
     setState(() {
       _dragDx = 0.0;
       _dragDy = 0.0;
       _isAnimating = false;
+      _thresholdHapticAction = null;
     });
 
-    final result = await _state.sendOrAcceptConnection(targetUid: targetUid);
-    if (result != ConnectionRequestResult.failed) {
-      await _state.swipeCandidate(targetUid: targetUid, action: 'like');
-    }
-
-    if (!mounted) return;
-
-    switch (result) {
-      case ConnectionRequestResult.sent:
-        _showConnectionRequestPopup(currentCandidate);
-        break;
-      case ConnectionRequestResult.alreadyPending:
-        _showConnectionRequestPopup(currentCandidate, alreadyPending: true);
-        break;
-      case ConnectionRequestResult.accepted:
-        _triggerMatch(currentCandidate.name);
-        break;
-      case ConnectionRequestResult.failed:
-        _showConnectionRequestError(currentCandidate);
-        break;
-    }
+    _showSwipeConfirmation(_SwipeAction.favorite, currentCandidate);
   }
 
   Widget _buildFilterChip({
@@ -959,7 +1367,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   .toSet();
                               final allIndustries = <String>{
                                 ..._industryOptions,
-                                ...candidateIndustries.where((i) => !_industryOptions.contains(i)),
+                                ...candidateIndustries.where(
+                                  (i) => !_industryOptions.contains(i),
+                                ),
                                 ..._customIndustries,
                               }.toList()..sort();
                               return Column(
@@ -968,33 +1378,59 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                     decoration: InputDecoration(
                                       filled: true,
                                       fillColor: Colors.white,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 4,
+                                          ),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFFE8E2DD),
+                                        ),
                                       ),
                                       enabledBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFFE8E2DD),
+                                        ),
                                       ),
                                       focusedBorder: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                        borderSide: const BorderSide(
+                                          color: Color(0xFF7A432D),
+                                          width: 1.5,
+                                        ),
                                       ),
                                     ),
                                     child: DropdownButtonHideUnderline(
                                       child: DropdownButton<String?>(
                                         value: _selectedIndustry,
-                                        hint: const Text('Select industry',
-                                          style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                        hint: const Text(
+                                          'Select industry',
+                                          style: TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 14,
+                                            color: Color(0xFF8C736B),
+                                          ),
                                         ),
                                         isExpanded: true,
                                         isDense: true,
                                         dropdownColor: Colors.white,
-                                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-                                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                        icon: const Icon(
+                                          Icons.arrow_drop_down,
+                                          color: Color(0xFF7A432D),
+                                        ),
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 14,
+                                          color: Color(0xFF3E1F11),
+                                        ),
                                         items: allIndustries.map((val) {
-                                          return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                          return DropdownMenuItem<String?>(
+                                            value: val,
+                                            child: Text(val),
+                                          );
                                         }).toList(),
                                         onChanged: (val) {
                                           setModalState(() {
@@ -1017,21 +1453,42 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                           hintText: 'Enter custom industry...',
                                           filled: true,
                                           fillColor: Colors.white,
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 16,
+                                                vertical: 12,
+                                              ),
                                           border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFFE8E2DD),
+                                            ),
                                           ),
                                           enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFFE8E2DD),
+                                            ),
                                           ),
                                           focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFF7A432D),
+                                              width: 1.5,
+                                            ),
                                           ),
                                         ),
-                                        style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 14,
+                                          color: Color(0xFF3E1F11),
+                                        ),
                                         onSubmitted: (text) {
                                           final trimmed = text.trim();
                                           if (trimmed.isNotEmpty) {
@@ -1065,43 +1522,73 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           Builder(
                             builder: (context) {
                               final candidateSkills = _state.candidates
-                                  .expand((c) => c.skills.isNotEmpty ? c.skills : c.tags)
+                                  .expand(
+                                    (c) =>
+                                        c.skills.isNotEmpty ? c.skills : c.tags,
+                                  )
                                   .toSet();
                               final allExpertise = <String>{
                                 ..._expertiseOptions,
-                                ...candidateSkills.where((s) => !_expertiseOptions.contains(s)),
+                                ...candidateSkills.where(
+                                  (s) => !_expertiseOptions.contains(s),
+                                ),
                               }.toList()..sort();
                               return InputDecorator(
                                 decoration: InputDecoration(
                                   filled: true,
                                   fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF7A432D),
+                                      width: 1.5,
+                                    ),
                                   ),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<String?>(
                                     value: _selectedFilterExpertise,
-                                    hint: const Text('Select expertise',
-                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    hint: const Text(
+                                      'Select expertise',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 14,
+                                        color: Color(0xFF8C736B),
+                                      ),
                                     ),
                                     isExpanded: true,
                                     isDense: true,
                                     dropdownColor: Colors.white,
-                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    icon: const Icon(
+                                      Icons.arrow_drop_down,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 14,
+                                      color: Color(0xFF3E1F11),
+                                    ),
                                     items: allExpertise.map((val) {
-                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                      return DropdownMenuItem<String?>(
+                                        value: val,
+                                        child: Text(val),
+                                      );
                                     }).toList(),
                                     onChanged: (val) {
                                       setModalState(() {
@@ -1135,39 +1622,66 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   .toSet();
                               final allInterests = <String>{
                                 ..._interestOptions,
-                                ...candidateInterests.where((i) => !_interestOptions.contains(i)),
+                                ...candidateInterests.where(
+                                  (i) => !_interestOptions.contains(i),
+                                ),
                               }.toList()..sort();
                               return InputDecorator(
                                 decoration: InputDecoration(
                                   filled: true,
                                   fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF7A432D),
+                                      width: 1.5,
+                                    ),
                                   ),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<String?>(
                                     value: _selectedInterest,
-                                    hint: const Text('Select interest',
-                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    hint: const Text(
+                                      'Select interest',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 14,
+                                        color: Color(0xFF8C736B),
+                                      ),
                                     ),
                                     isExpanded: true,
                                     isDense: true,
                                     dropdownColor: Colors.white,
-                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    icon: const Icon(
+                                      Icons.arrow_drop_down,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 14,
+                                      color: Color(0xFF3E1F11),
+                                    ),
                                     items: allInterests.map((val) {
-                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                      return DropdownMenuItem<String?>(
+                                        value: val,
+                                        child: Text(val),
+                                      );
                                     }).toList(),
                                     onChanged: (val) {
                                       setModalState(() {
@@ -1195,42 +1709,69 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
-                              final candidateLocations = _state.candidates
-                                  .where((c) => c.loc.isNotEmpty)
-                                  .map((c) => c.loc)
-                                  .toSet()
-                                  .toList()..sort();
+                              final candidateLocations =
+                                  _state.candidates
+                                      .where((c) => c.loc.isNotEmpty)
+                                      .map((c) => c.loc)
+                                      .toSet()
+                                      .toList()
+                                    ..sort();
                               return InputDecorator(
                                 decoration: InputDecoration(
                                   filled: true,
                                   fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                    ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF7A432D),
+                                      width: 1.5,
+                                    ),
                                   ),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<String?>(
                                     value: _selectedLocation,
-                                    hint: const Text('Select location',
-                                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B)),
+                                    hint: const Text(
+                                      'Select location',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 14,
+                                        color: Color(0xFF8C736B),
+                                      ),
                                     ),
                                     isExpanded: true,
                                     isDense: true,
                                     dropdownColor: Colors.white,
-                                    icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
+                                    icon: const Icon(
+                                      Icons.arrow_drop_down,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 14,
+                                      color: Color(0xFF3E1F11),
+                                    ),
                                     items: candidateLocations.map((val) {
-                                      return DropdownMenuItem<String?>(value: val, child: Text(val));
+                                      return DropdownMenuItem<String?>(
+                                        value: val,
+                                        child: Text(val),
+                                      );
                                     }).toList(),
                                     onChanged: (val) {
                                       setModalState(() {
@@ -1449,7 +1990,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF7A432D).withValues(alpha: 0.06),
+                          color: const Color(
+                            0xFF7A432D,
+                          ).withValues(alpha: 0.06),
                           blurRadius: 10,
                           offset: const Offset(0, 3),
                         ),
@@ -1471,7 +2014,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                         ),
                         suffixIcon: _searchQuery.text.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF8C736B)),
+                                icon: const Icon(
+                                  Icons.clear_rounded,
+                                  size: 16,
+                                  color: Color(0xFF8C736B),
+                                ),
                                 onPressed: () {
                                   _searchQuery.clear();
                                 },
@@ -1586,6 +2133,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   final third = filteredCount > 2
                                       ? filtered[(index + 2) % filteredCount]
                                       : null;
+                                  final activeAction = _activeOverlayAction();
+                                  final stackProgress = activeAction == null
+                                      ? 0.0
+                                      : _progressForAction(activeAction);
 
                                   return Stack(
                                     clipBehavior: Clip.none,
@@ -1595,10 +2146,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                         Positioned(
                                           left: 0,
                                           right: 0,
-                                          top: 20,
-                                          bottom: 0,
+                                          top: 20 - (10 * stackProgress),
+                                          bottom: 10 * stackProgress,
                                           child: Transform.scale(
-                                            scale: 0.92,
+                                            scale:
+                                                0.92 + (0.04 * stackProgress),
                                             child: _buildCard(
                                               third,
                                               isTop: false,
@@ -1611,10 +2163,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                         Positioned(
                                           left: 0,
                                           right: 0,
-                                          top: 10,
-                                          bottom: 10,
+                                          top: 10 - (10 * stackProgress),
+                                          bottom: 10 + (10 * stackProgress),
                                           child: Transform.scale(
-                                            scale: 0.96,
+                                            scale:
+                                                0.96 + (0.04 * stackProgress),
                                             child: _buildCard(
                                               second,
                                               isTop: false,
@@ -1629,40 +2182,34 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                         top: 0,
                                         bottom: 20,
                                         child: GestureDetector(
-                                          onTap: () => _showDetailedProfileBottomSheet(first),
-                                          onDoubleTap: () => _swipeUp(filtered),
-                                          onLongPress: () => _swipeRight(filtered),
-                                          onPanUpdate: (details) {
-                                            if (_isAnimating) return;
-                                            setState(() {
-                                              _dragDx += details.delta.dx;
-                                              _dragDy += details.delta.dy;
-                                            });
-                                          },
-                                          onPanEnd: (details) {
-                                            if (_isAnimating) return;
-                                            if (_dragDx > 120) {
-                                              _swipeRight(filtered);
-                                            } else if (_dragDx < -120) {
-                                              _swipeLeft(filtered);
-                                            } else if (_dragDy < -100) {
-                                              _swipeUp(filtered);
-                                            } else {
-                                              // Reset card position
-                                              setState(() {
-                                                _dragDx = 0;
-                                                _dragDy = 0;
-                                              });
-                                            }
-                                          },
-                                          child: Transform.translate(
-                                            offset: Offset(_dragDx, _dragDy),
-                                            child: Transform.rotate(
-                                              angle: _dragDx / 400 * 0.15,
-                                              child: _buildCard(
+                                          onTap: () =>
+                                              _showDetailedProfileBottomSheet(
                                                 first,
-                                                isTop: true,
                                               ),
+                                          onPanUpdate: _handlePanUpdate,
+                                          onPanEnd: (_) =>
+                                              _handlePanEnd(filtered),
+                                          child: AnimatedContainer(
+                                            duration: _isAnimating
+                                                ? _swipeExitDuration
+                                                : Duration.zero,
+                                            curve: Curves.easeOutCubic,
+                                            transformAlignment:
+                                                Alignment.center,
+                                            transform: Matrix4.identity()
+                                              ..translateByDouble(
+                                                _dragDx,
+                                                _dragDy,
+                                                0,
+                                                1,
+                                              )
+                                              ..rotateZ(_cardRotationAngle),
+                                            child: Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                _buildCard(first, isTop: true),
+                                                _buildSwipeActionOverlay(),
+                                              ],
                                             ),
                                           ),
                                         ),
@@ -1695,48 +2242,53 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       children: [
                         // Dislike Button
                         _buildRoundButton(
-                          icon: Icons.close,
-                          iconColor: const Color(0xFF8C736B),
+                          icon: Icons.close_rounded,
+                          iconColor: const Color(0xFFC62828),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE0D4CB),
+                          borderColor: const Color(0xFFF1C8C8),
                           size: 58,
+                          tooltip: 'Reject',
                           onPressed: () => _swipeLeft(filtered),
                         ),
                         const SizedBox(width: 20),
 
-                        // Handshake/Connect Button
+                        // Favorite Button
                         Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF7A432D), Color(0xFFB06F4D)],
+                              colors: [Color(0xFFB06F4D), Color(0xFFE5A475)],
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF7A432D).withValues(alpha: 0.4),
+                                color: const Color(
+                                  0xFFE5A475,
+                                ).withValues(alpha: 0.4),
                                 blurRadius: 16,
                                 offset: const Offset(0, 5),
                               ),
                             ],
                           ),
                           child: _buildRoundButton(
-                            icon: Icons.handshake,
+                            icon: Icons.star_border_rounded,
                             iconColor: Colors.white,
                             backgroundColor: Colors.transparent,
                             borderColor: Colors.transparent,
                             size: 70,
+                            tooltip: 'Favorite',
                             onPressed: () => _swipeUp(filtered),
                           ),
                         ),
                         const SizedBox(width: 20),
 
-                        // Star Button (Favorite)
+                        // Like Button
                         _buildRoundButton(
-                          icon: Icons.star_rounded,
-                          iconColor: const Color(0xFFB06F4D),
+                          icon: Icons.favorite_border_rounded,
+                          iconColor: const Color(0xFF2E7D32),
                           backgroundColor: Colors.white,
-                          borderColor: const Color(0xFFE0D4CB),
+                          borderColor: const Color(0xFFCFE8D4),
                           size: 58,
+                          tooltip: 'Like',
                           onPressed: () => _swipeRight(filtered),
                         ),
                       ],
@@ -1745,6 +2297,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               ],
             ),
           ),
+
+          _buildSwipeCompletionEffects(),
 
           // Connection Overlay
           if (_showMatchOverlay && _matchedName != null)
@@ -1803,9 +2357,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               child: ClipRRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.3),
-                  ),
+                  child: Container(color: Colors.black.withValues(alpha: 0.3)),
                 ),
               ),
             ),
@@ -1822,7 +2374,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       String priority = 'Medium';
       if (c.interestsWithPriority.isNotEmpty) {
         final match = c.interestsWithPriority.firstWhere(
-          (e) => e['name'].toString().toLowerCase().trim() == interest.toLowerCase().trim(),
+          (e) =>
+              e['name'].toString().toLowerCase().trim() ==
+              interest.toLowerCase().trim(),
           orElse: () => <String, dynamic>{},
         );
         if (match.isNotEmpty) {
@@ -1899,11 +2453,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.star,
-                          color: Colors.amber,
-                          size: 14,
-                        ),
+                        const Icon(Icons.star, color: Colors.amber, size: 14),
                         const SizedBox(width: 6),
                         Text(
                           "${c.match}% match",
@@ -2063,11 +2613,18 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 String level = 'Intermediate';
                                 if (c.expertiseWithLevel.isNotEmpty) {
                                   final match = c.expertiseWithLevel.firstWhere(
-                                    (e) => e['name'].toString().toLowerCase().trim() == exp.toLowerCase().trim(),
+                                    (e) =>
+                                        e['name']
+                                            .toString()
+                                            .toLowerCase()
+                                            .trim() ==
+                                        exp.toLowerCase().trim(),
                                     orElse: () => <String, dynamic>{},
                                   );
                                   if (match.isNotEmpty) {
-                                    level = match['level']?.toString() ?? 'Intermediate';
+                                    level =
+                                        match['level']?.toString() ??
+                                        'Intermediate';
                                   }
                                 }
                                 return _buildExpertiseChipWithLevel(exp, level);
@@ -2110,24 +2667,83 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   // Helper styles mapping class for interests
   _InterestStyle _getInterestStyle(String interest) {
     final key = interest.toLowerCase().trim();
-    if (key.contains('stock market') || key.contains('stock') || key.contains('trading')) {
-      return const _InterestStyle(Icons.show_chart, Color(0xFFE8F5E9), Color(0xFF2E7D32));
-    } else if (key.contains('artificial intelligence') || key.contains('ai') || key.contains('ml') || key.contains('machine learning')) {
-      return const _InterestStyle(Icons.psychology, Color(0xFFE0F7FA), Color(0xFF00838F));
-    } else if (key.contains('startup') || key.contains('founder') || key.contains('entrepreneur')) {
-      return const _InterestStyle(Icons.rocket_launch, Color(0xFFFFF3E0), Color(0xFFD84315));
+    if (key.contains('stock market') ||
+        key.contains('stock') ||
+        key.contains('trading')) {
+      return const _InterestStyle(
+        Icons.show_chart,
+        Color(0xFFE8F5E9),
+        Color(0xFF2E7D32),
+      );
+    } else if (key.contains('artificial intelligence') ||
+        key.contains('ai') ||
+        key.contains('ml') ||
+        key.contains('machine learning')) {
+      return const _InterestStyle(
+        Icons.psychology,
+        Color(0xFFE0F7FA),
+        Color(0xFF00838F),
+      );
+    } else if (key.contains('startup') ||
+        key.contains('founder') ||
+        key.contains('entrepreneur')) {
+      return const _InterestStyle(
+        Icons.rocket_launch,
+        Color(0xFFFFF3E0),
+        Color(0xFFD84315),
+      );
     } else if (key.contains('invest')) {
-      return const _InterestStyle(Icons.monetization_on_outlined, Color(0xFFE8F5E9), Color(0xFF2E7D32));
-    } else if (key.contains('public speaking') || key.contains('speak') || key.contains('talk')) {
-      return const _InterestStyle(Icons.record_voice_over, Color(0xFFF8E8F8), Color(0xFF8E24AA));
-    } else if (key.contains('fit') || key.contains('gym') || key.contains('coach') || key.contains('health') || key.contains('workout')) {
-      return const _InterestStyle(Icons.fitness_center_rounded, Color(0xFFE3F2FD), Color(0xFF1565C0));
-    } else if (key.contains('personal finance') || key.contains('finance') || key.contains('money') || key.contains('wallet')) {
-      return const _InterestStyle(Icons.account_balance_wallet_outlined, Color(0xFFFFF9E6), Color(0xFFB7791F));
-    } else if (key.contains('design') || key.contains('ui') || key.contains('ux') || key.contains('art')) {
-      return const _InterestStyle(Icons.palette_outlined, Color(0xFFFFF3E0), Color(0xFFEF6C00));
-    } else if (key.contains('content') || key.contains('create') || key.contains('photo') || key.contains('video') || key.contains('camera')) {
-      return const _InterestStyle(Icons.video_call, Color(0xFFFFEBF0), Color(0xFFD81B60));
+      return const _InterestStyle(
+        Icons.monetization_on_outlined,
+        Color(0xFFE8F5E9),
+        Color(0xFF2E7D32),
+      );
+    } else if (key.contains('public speaking') ||
+        key.contains('speak') ||
+        key.contains('talk')) {
+      return const _InterestStyle(
+        Icons.record_voice_over,
+        Color(0xFFF8E8F8),
+        Color(0xFF8E24AA),
+      );
+    } else if (key.contains('fit') ||
+        key.contains('gym') ||
+        key.contains('coach') ||
+        key.contains('health') ||
+        key.contains('workout')) {
+      return const _InterestStyle(
+        Icons.fitness_center_rounded,
+        Color(0xFFE3F2FD),
+        Color(0xFF1565C0),
+      );
+    } else if (key.contains('personal finance') ||
+        key.contains('finance') ||
+        key.contains('money') ||
+        key.contains('wallet')) {
+      return const _InterestStyle(
+        Icons.account_balance_wallet_outlined,
+        Color(0xFFFFF9E6),
+        Color(0xFFB7791F),
+      );
+    } else if (key.contains('design') ||
+        key.contains('ui') ||
+        key.contains('ux') ||
+        key.contains('art')) {
+      return const _InterestStyle(
+        Icons.palette_outlined,
+        Color(0xFFFFF3E0),
+        Color(0xFFEF6C00),
+      );
+    } else if (key.contains('content') ||
+        key.contains('create') ||
+        key.contains('photo') ||
+        key.contains('video') ||
+        key.contains('camera')) {
+      return const _InterestStyle(
+        Icons.video_call,
+        Color(0xFFFFEBF0),
+        Color(0xFFD81B60),
+      );
     }
     // Terracotta theme fallback matching app primary brand style
     return const _InterestStyle(
@@ -2182,11 +2798,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            style.icon,
-            size: 13,
-            color: style.foregroundColor,
-          ),
+          Icon(style.icon, size: 13, color: style.foregroundColor),
           const SizedBox(width: 4),
           Text(
             interest,
@@ -2212,11 +2824,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: const [
-          Icon(
-            Icons.more_horiz_rounded,
-            size: 13,
-            color: Color(0xFF37474F),
-          ),
+          Icon(Icons.more_horiz_rounded, size: 13, color: Color(0xFF37474F)),
           SizedBox(width: 4),
           Text(
             'More',
@@ -2238,6 +2846,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     required Color backgroundColor,
     required Color borderColor,
     required double size,
+    String? tooltip,
     required VoidCallback onPressed,
   }) {
     return Container(
@@ -2260,6 +2869,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       child: IconButton(
         icon: Icon(icon, color: iconColor),
         iconSize: size * 0.45,
+        tooltip: tooltip,
         onPressed: onPressed,
       ),
     );
@@ -2312,7 +2922,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF8C736B),
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -2327,23 +2940,42 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       .get(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF7A432D),
+                        ),
+                      );
                     }
-                    if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    if (snapshot.hasError ||
+                        !snapshot.hasData ||
+                        snapshot.data!.docs.isEmpty) {
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Icon(Icons.star_outline_rounded, size: 48, color: Color(0xFF8C736B)),
+                            Icon(
+                              Icons.star_outline_rounded,
+                              size: 48,
+                              color: Color(0xFF8C736B),
+                            ),
                             SizedBox(height: 12),
                             Text(
                               'No favorited profiles yet',
-                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF8C736B), fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 14,
+                                color: Color(0xFF8C736B),
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             SizedBox(height: 4),
                             Text(
                               'Swipe up or tap star on a profile card to add.',
-                              style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 11,
+                                color: Color(0xFF8C736B),
+                              ),
                             ),
                           ],
                         ),
@@ -2354,22 +2986,29 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     return ListView.builder(
                       itemCount: favoriteDocs.length,
                       itemBuilder: (context, index) {
-                        final fav = favoriteDocs[index].data() as Map<String, dynamic>;
+                        final fav =
+                            favoriteDocs[index].data() as Map<String, dynamic>;
                         final targetUid = fav['toUid'] as String? ?? '';
                         if (targetUid.isEmpty) return const SizedBox.shrink();
 
                         return FutureBuilder<DocumentSnapshot>(
-                          future: FirebaseFirestore.instance.collection('users').doc(targetUid).get(),
+                          future: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(targetUid)
+                              .get(),
                           builder: (context, userSnap) {
                             if (!userSnap.hasData || !userSnap.data!.exists) {
                               return const SizedBox.shrink();
                             }
-                            final userData = userSnap.data!.data() as Map<String, dynamic>;
+                            final userData =
+                                userSnap.data!.data() as Map<String, dynamic>;
                             final name = userData['name'] ?? 'Someone';
                             final role = userData['role'] ?? 'Professional';
                             final company = userData['company'] ?? '';
                             final imageUrl = userData['profileImageUrl'] ?? '';
-                            final initials = (name as String).substring(0, 1).toUpperCase();
+                            final initials = (name as String)
+                                .substring(0, 1)
+                                .toUpperCase();
 
                             // Construct a Candidate object for the detail view
                             final c = Candidate(
@@ -2377,12 +3016,23 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               name: name,
                               role: role,
                               org: company,
-                              loc: userData['currentLocationName'] ?? userData['homeBase'] ?? '',
+                              loc:
+                                  userData['currentLocationName'] ??
+                                  userData['homeBase'] ??
+                                  '',
                               match: 95, // Default high match for favorites
-                              intent: List<String>.from(userData['intents'] ?? []).join(', '),
-                              tags: List<String>.from(userData['expertise'] ?? []),
-                              interests: List<String>.from(userData['interests'] ?? []),
-                              skills: List<String>.from(userData['skills'] ?? []),
+                              intent: List<String>.from(
+                                userData['intents'] ?? [],
+                              ).join(', '),
+                              tags: List<String>.from(
+                                userData['expertise'] ?? [],
+                              ),
+                              interests: List<String>.from(
+                                userData['interests'] ?? [],
+                              ),
+                              skills: List<String>.from(
+                                userData['skills'] ?? [],
+                              ),
                               homeBase: userData['homeBase'] ?? '',
                               bio: userData['bio'] ?? '',
                               initials: initials,
@@ -2392,41 +3042,78 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                               child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                                 leading: CircleAvatar(
                                   radius: 24,
                                   backgroundColor: const Color(0xFFFAF0E6),
-                                  backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+                                  backgroundImage: imageUrl.isNotEmpty
+                                      ? NetworkImage(imageUrl)
+                                      : null,
                                   child: imageUrl.isEmpty
-                                      ? Text(initials, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF7A432D)))
+                                      ? Text(
+                                          initials,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF7A432D),
+                                          ),
+                                        )
                                       : null,
                                 ),
                                 title: Text(
                                   name,
-                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF3E1F11)),
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Color(0xFF3E1F11),
+                                  ),
                                 ),
                                 subtitle: Text(
                                   '$role${company.isNotEmpty ? ' at $company' : ''}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B)),
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 11,
+                                    color: Color(0xFF8C736B),
+                                  ),
                                 ),
                                 trailing: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF7A432D),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
                                     visualDensity: VisualDensity.compact,
                                   ),
                                   onPressed: () {
-                                    Navigator.pop(context); // Close favorites sheet
-                                    _showFavoriteProfileDetailsSheet(context, c);
+                                    Navigator.pop(
+                                      context,
+                                    ); // Close favorites sheet
+                                    _showFavoriteProfileDetailsSheet(
+                                      context,
+                                      c,
+                                    );
                                   },
                                   child: const Text(
                                     'View Profile',
-                                    style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2489,7 +3176,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Color(0xFF8C736B)),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF8C736B),
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -2526,7 +3216,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       String priority = 'Medium';
       if (c.interestsWithPriority.isNotEmpty) {
         final match = c.interestsWithPriority.firstWhere(
-          (e) => e['name'].toString().toLowerCase().trim() == interest.toLowerCase().trim(),
+          (e) =>
+              e['name'].toString().toLowerCase().trim() ==
+              interest.toLowerCase().trim(),
           orElse: () => <String, dynamic>{},
         );
         if (match.isNotEmpty) {
@@ -2585,7 +3277,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF7A432D).withValues(alpha: 0.15),
+                                  color: const Color(
+                                    0xFF7A432D,
+                                  ).withValues(alpha: 0.15),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),
@@ -2640,18 +3334,29 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               runSpacing: 6,
                               children: c.badges.map((badge) {
                                 return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+                                    color: const Color(
+                                      0xFF2E7D32,
+                                    ).withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(6),
                                     border: Border.all(
-                                      color: const Color(0xFF2E7D32).withValues(alpha: 0.2),
+                                      color: const Color(
+                                        0xFF2E7D32,
+                                      ).withValues(alpha: 0.2),
                                     ),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.stars, size: 13, color: Color(0xFF2E7D32)),
+                                      const Icon(
+                                        Icons.stars,
+                                        size: 13,
+                                        color: Color(0xFF2E7D32),
+                                      ),
                                       const SizedBox(width: 4),
                                       Text(
                                         badge,
@@ -2679,7 +3384,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             spacing: 8,
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF0052FF),
                                   borderRadius: BorderRadius.circular(8),
@@ -2704,7 +3412,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 ),
                               ),
                               if (c.experience.isNotEmpty) ...[
-                                const Text('•', style: TextStyle(color: Color(0xFFE0D4CB))),
+                                const Text(
+                                  '•',
+                                  style: TextStyle(color: Color(0xFFE0D4CB)),
+                                ),
                                 Text(
                                   '${c.experience} yrs exp',
                                   style: const TextStyle(
@@ -2727,7 +3438,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               child: _buildQuickStatCard(
                                 Icons.place_outlined,
                                 'Location',
-                                c.loc.isNotEmpty ? c.loc.split(',').first.trim() : 'Remote',
+                                c.loc.isNotEmpty
+                                    ? c.loc.split(',').first.trim()
+                                    : 'Remote',
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -2789,7 +3502,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             decoration: BoxDecoration(
                               color: const Color(0xFFE3F2FD),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF90CAF9)),
+                              border: Border.all(
+                                color: const Color(0xFF90CAF9),
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2797,7 +3512,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF1565C0),
                                         borderRadius: BorderRadius.circular(12),
@@ -2819,9 +3537,17 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 6),
                                     child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        const Text('• ', style: TextStyle(color: Color(0xFF1565C0), fontSize: 14, fontWeight: FontWeight.bold)),
+                                        const Text(
+                                          '• ',
+                                          style: TextStyle(
+                                            color: Color(0xFF1565C0),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                         Expanded(
                                           child: Text(
                                             reason,
@@ -2845,27 +3571,41 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                         // Expertise (What I can share)
                         if (c.skills.isNotEmpty || c.tags.isNotEmpty) ...[
-                          _buildDetailSectionHeader('Expertise (What I can share)'),
+                          _buildDetailSectionHeader(
+                            'Expertise (What I can share)',
+                          ),
                           const SizedBox(height: 8),
                           _buildDetailCard(
                             child: Wrap(
                               spacing: 8,
                               runSpacing: 8,
-                              children: (c.skills.isNotEmpty ? c.skills : c.tags)
-                                  .map((exp) {
-                                    String level = 'Intermediate';
-                                    if (c.expertiseWithLevel.isNotEmpty) {
-                                      final match = c.expertiseWithLevel.firstWhere(
-                                        (e) => e['name'].toString().toLowerCase().trim() == exp.toLowerCase().trim(),
-                                        orElse: () => <String, dynamic>{},
-                                      );
-                                      if (match.isNotEmpty) {
-                                        level = match['level']?.toString() ?? 'Intermediate';
+                              children:
+                                  (c.skills.isNotEmpty ? c.skills : c.tags).map(
+                                    (exp) {
+                                      String level = 'Intermediate';
+                                      if (c.expertiseWithLevel.isNotEmpty) {
+                                        final match = c.expertiseWithLevel
+                                            .firstWhere(
+                                              (e) =>
+                                                  e['name']
+                                                      .toString()
+                                                      .toLowerCase()
+                                                      .trim() ==
+                                                  exp.toLowerCase().trim(),
+                                              orElse: () => <String, dynamic>{},
+                                            );
+                                        if (match.isNotEmpty) {
+                                          level =
+                                              match['level']?.toString() ??
+                                              'Intermediate';
+                                        }
                                       }
-                                    }
-                                    return _buildExpertiseChipWithLevel(exp, level);
-                                  })
-                                  .toList(),
+                                      return _buildExpertiseChipWithLevel(
+                                        exp,
+                                        level,
+                                      );
+                                    },
+                                  ).toList(),
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -2873,7 +3613,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                         // Interests (What I want to learn)
                         if (interestsList.isNotEmpty) ...[
-                          _buildDetailSectionHeader('Interests (What I want to learn)'),
+                          _buildDetailSectionHeader(
+                            'Interests (What I want to learn)',
+                          ),
                           const SizedBox(height: 8),
                           _buildDetailCard(
                             child: Wrap(
@@ -2892,18 +3634,27 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ...c.conversationStarters.map((starter) {
                             return Container(
                               margin: const EdgeInsets.only(bottom: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFAF1EC),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: const Color(0xFF7A432D).withValues(alpha: 0.15),
+                                  color: const Color(
+                                    0xFF7A432D,
+                                  ).withValues(alpha: 0.15),
                                 ),
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF7A432D)),
+                                  const Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 16,
+                                    color: Color(0xFF7A432D),
+                                  ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
@@ -3015,4 +3766,3 @@ class _InterestStyle {
   final Color foregroundColor;
   const _InterestStyle(this.icon, this.backgroundColor, this.foregroundColor);
 }
-
