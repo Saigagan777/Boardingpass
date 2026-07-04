@@ -10,9 +10,9 @@ import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
 import '../utils/match_calculator.dart';
-
-enum _SwipeAction { reject, like, favorite }
 import 'candidate_profile_sheet.dart';
+enum _SwipeAction { reject, like, favorite }
+
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
