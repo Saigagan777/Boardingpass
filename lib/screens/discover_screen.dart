@@ -772,20 +772,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       case _SwipeAction.reject:
         return Icons.close_rounded;
       case _SwipeAction.like:
-        return Icons.favorite_border_rounded;
+        return Icons.favorite_rounded;
       case _SwipeAction.favorite:
-        return Icons.star_border_rounded;
-    }
-  }
-
-  String _swipeActionLabel(_SwipeAction action) {
-    switch (action) {
-      case _SwipeAction.reject:
-        return 'REJECT';
-      case _SwipeAction.like:
-        return 'LIKE';
-      case _SwipeAction.favorite:
-        return 'FAVORITE';
+        return Icons.star_rounded;
     }
   }
 
@@ -918,6 +907,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         : action == _SwipeAction.like
         ? 0.9 + (progress * 0.32)
         : 0.92 + (progress * 0.22);
+    final iconSize = isFavorite ? 62 + (progress * 38) : 58 + (progress * 34);
 
     return Positioned.fill(
       child: IgnorePointer(
@@ -936,60 +926,28 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   scale: scale,
                   child: Opacity(
                     opacity: (0.12 + progress * 0.88).clamp(0.0, 1.0),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 18 + (progress * 8),
-                        vertical: 12 + (progress * 4),
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(
-                          alpha: 0.38 + progress * 0.12,
+                    child: Icon(
+                      _swipeActionIcon(action),
+                      size: iconSize,
+                      color: accent,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withValues(
+                            alpha: 0.28 + (progress * 0.14),
+                          ),
+                          blurRadius: 10 + (progress * 8),
                         ),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
+                        Shadow(
                           color: accent.withValues(
-                            alpha: 0.72 + progress * 0.28,
+                            alpha: isFavorite
+                                ? 0.52 * progress
+                                : 0.34 * progress,
                           ),
-                          width: 1.6 + (progress * 2.4),
+                          blurRadius: isFavorite
+                              ? 28 * progress
+                              : 18 * progress,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: accent.withValues(
-                              alpha: isFavorite
-                                  ? 0.32 * progress
-                                  : 0.20 * progress,
-                            ),
-                            blurRadius: isFavorite
-                                ? 26 * progress
-                                : 16 * progress,
-                            spreadRadius: isFavorite ? 2 * progress : 0,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _swipeActionIcon(action),
-                            size: 38 + (progress * 24),
-                            color: accent,
-                          ),
-                          const SizedBox(height: 6),
-                          Opacity(
-                            opacity: (progress * 1.2).clamp(0.0, 1.0),
-                            child: Text(
-                              _swipeActionLabel(action),
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 13 + (progress * 2),
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -1038,41 +996,31 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
-                      Container(
-                        width: action == _SwipeAction.favorite ? 96 : 86,
-                        height: action == _SwipeAction.favorite ? 96 : 86,
-                        decoration: BoxDecoration(
-                          color: _swipeActionBackground(
-                            action,
-                          ).withValues(alpha: 0.72),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: accent, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.withValues(
-                                alpha: action == _SwipeAction.favorite
-                                    ? 0.42
-                                    : 0.28,
-                              ),
-                              blurRadius: action == _SwipeAction.favorite
-                                  ? 34
-                                  : 24,
-                              spreadRadius: action == _SwipeAction.favorite
-                                  ? 4
-                                  : 1,
+                      Icon(
+                        _swipeActionIcon(action),
+                        color: accent,
+                        size: action == _SwipeAction.favorite ? 88 : 78,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withValues(alpha: 0.28),
+                            blurRadius: 16,
+                          ),
+                          Shadow(
+                            color: accent.withValues(
+                              alpha: action == _SwipeAction.favorite
+                                  ? 0.58
+                                  : 0.42,
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          _swipeActionIcon(action),
-                          color: accent,
-                          size: action == _SwipeAction.favorite ? 48 : 42,
-                        ),
+                            blurRadius: action == _SwipeAction.favorite
+                                ? 34
+                                : 24,
+                          ),
+                        ],
                       ),
                       if (action == _SwipeAction.favorite) ...[
                         const Positioned(
-                          top: -8,
-                          right: -6,
+                          top: -10,
+                          right: -8,
                           child: Icon(
                             Icons.auto_awesome_rounded,
                             color: Color(0xFFE5A475),
@@ -1080,12 +1028,21 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                         ),
                         const Positioned(
-                          left: -10,
-                          bottom: 4,
+                          left: -12,
+                          bottom: 2,
                           child: Icon(
                             Icons.auto_awesome_rounded,
                             color: Color(0xFFFFD37A),
                             size: 14,
+                          ),
+                        ),
+                        const Positioned(
+                          top: 18,
+                          left: -24,
+                          child: Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Color(0xFFE5A475),
+                            size: 11,
                           ),
                         ),
                       ],
@@ -1128,8 +1085,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       _isAnimating = false;
       _thresholdHapticAction = null;
     });
-
-    _showSwipeConfirmation(_SwipeAction.reject, currentCandidate);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
   }
 
   Future<void> _swipeRight(List<Candidate> filteredList) async {
@@ -1907,6 +1863,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     final filtered = filteredCandidates;
     final filteredCount = filtered.length;
+    final highlightedSwipeAction = _activeOverlayAction();
+
+    double buttonProgressFor(_SwipeAction action) {
+      return highlightedSwipeAction == action ? _progressForAction(action) : 0;
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5EFE9),
@@ -2248,6 +2209,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           borderColor: const Color(0xFFF1C8C8),
                           size: 58,
                           tooltip: 'Reject',
+                          highlightProgress: buttonProgressFor(
+                            _SwipeAction.reject,
+                          ),
                           onPressed: () => _swipeLeft(filtered),
                         ),
                         const SizedBox(width: 20),
@@ -2270,12 +2234,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             ],
                           ),
                           child: _buildRoundButton(
-                            icon: Icons.star_border_rounded,
+                            icon: Icons.star_rounded,
                             iconColor: Colors.white,
                             backgroundColor: Colors.transparent,
                             borderColor: Colors.transparent,
                             size: 70,
                             tooltip: 'Favorite',
+                            highlightColor: const Color(0xFFE5A475),
+                            highlightProgress: buttonProgressFor(
+                              _SwipeAction.favorite,
+                            ),
                             onPressed: () => _swipeUp(filtered),
                           ),
                         ),
@@ -2283,12 +2251,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                         // Like Button
                         _buildRoundButton(
-                          icon: Icons.favorite_border_rounded,
+                          icon: Icons.favorite_rounded,
                           iconColor: const Color(0xFF2E7D32),
                           backgroundColor: Colors.white,
                           borderColor: const Color(0xFFCFE8D4),
                           size: 58,
                           tooltip: 'Like',
+                          highlightProgress: buttonProgressFor(
+                            _SwipeAction.like,
+                          ),
                           onPressed: () => _swipeRight(filtered),
                         ),
                       ],
@@ -2847,30 +2818,54 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     required Color borderColor,
     required double size,
     String? tooltip,
+    Color? highlightColor,
+    double highlightProgress = 0,
     required VoidCallback onPressed,
   }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        shape: BoxShape.circle,
-        border: Border.all(color: borderColor, width: 1.5),
-        boxShadow: backgroundColor != Colors.transparent
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : [],
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: iconColor),
-        iconSize: size * 0.45,
-        tooltip: tooltip,
-        onPressed: onPressed,
+    final progress = highlightProgress.clamp(0.0, 1.0).toDouble();
+    final accent = highlightColor ?? iconColor;
+    final highlightFill = accent.withValues(
+      alpha: backgroundColor == Colors.transparent ? 0.18 : 0.14,
+    );
+    final fillColor = Color.lerp(backgroundColor, highlightFill, progress)!;
+    final effectiveBorderColor = Color.lerp(borderColor, accent, progress)!;
+    final effectiveIconColor = Color.lerp(iconColor, accent, progress)!;
+
+    return Transform.scale(
+      scale: 1 + (0.12 * progress),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 80),
+        curve: Curves.easeOut,
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: fillColor,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: effectiveBorderColor,
+            width: 1.5 + (2.2 * progress),
+          ),
+          boxShadow: [
+            if (backgroundColor != Colors.transparent)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            if (progress > 0)
+              BoxShadow(
+                color: accent.withValues(alpha: 0.18 + (0.28 * progress)),
+                blurRadius: 10 + (18 * progress),
+                spreadRadius: 1 + (3 * progress),
+              ),
+          ],
+        ),
+        child: IconButton(
+          icon: Icon(icon, color: effectiveIconColor),
+          iconSize: size * (0.45 + (0.08 * progress)),
+          tooltip: tooltip,
+          onPressed: onPressed,
+        ),
       ),
     );
   }
