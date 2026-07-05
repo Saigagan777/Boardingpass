@@ -82,7 +82,8 @@ class ChatService {
         'mutedBy': [],
         'pinnedMessages': [],
         'lastMessage': {
-          'text': 'Group created by ${imageUrl.isEmpty ? "Organizer" : "Admin"}',
+          'text':
+              'Group created by ${imageUrl.isEmpty ? "Organizer" : "Admin"}',
           'senderId': uid,
           'timestamp': FieldValue.serverTimestamp(),
         },
@@ -147,17 +148,14 @@ class ChatService {
   }
 
   /// Mutes or unmutes notifications for a specific group/chat.
-  Future<void> muteGroup({
-    required String chatId,
-    required bool mute,
-  }) async {
+  Future<void> muteGroup({required String chatId, required bool mute}) async {
     final uid = _currentUid;
     if (uid == null) return;
     try {
       await _chatsRef.doc(chatId).update({
         'mutedBy': mute
             ? FieldValue.arrayUnion([uid])
-            : FieldValue.arrayRemove([uid])
+            : FieldValue.arrayRemove([uid]),
       });
     } catch (e) {
       throw Exception('Failed to update group mute status: $e');
@@ -179,8 +177,8 @@ class ChatService {
             'text': text,
             'senderName': senderName,
             'timestamp': Timestamp.now(),
-          }
-        ])
+          },
+        ]),
       });
     } catch (e) {
       throw Exception('Failed to pin message: $e');
@@ -195,7 +193,10 @@ class ChatService {
     try {
       final doc = await _chatsRef.doc(chatId).get();
       final pinned = List<Map<String, dynamic>>.from(
-        (doc.data()?['pinnedMessages'] as List?)?.map((e) => Map<String, dynamic>.from(e)) ?? []
+        (doc.data()?['pinnedMessages'] as List?)?.map(
+              (e) => Map<String, dynamic>.from(e),
+            ) ??
+            [],
       );
       pinned.removeWhere((item) => item['id'] == messageId);
       await _chatsRef.doc(chatId).update({'pinnedMessages': pinned});
@@ -213,10 +214,15 @@ class ChatService {
     final uid = _currentUid;
     if (uid == null) return;
     try {
-      final msgRef = _chatsRef.doc(chatId).collection('messages').doc(messageId);
+      final msgRef = _chatsRef
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId);
       final doc = await msgRef.get();
-      final currentReactions = Map<String, dynamic>.from(doc.data()?['reactionsMap'] ?? {});
-      
+      final currentReactions = Map<String, dynamic>.from(
+        doc.data()?['reactionsMap'] ?? {},
+      );
+
       if (currentReactions[uid] == emoji) {
         // Remove reaction
         currentReactions.remove(uid);
@@ -224,7 +230,7 @@ class ChatService {
         // Set/Change reaction
         currentReactions[uid] = emoji;
       }
-      
+
       await msgRef.update({'reactionsMap': currentReactions});
     } catch (e) {
       throw Exception('Failed to toggle reaction: $e');
@@ -242,6 +248,103 @@ class ChatService {
       return doc.exists;
     } catch (e) {
       return false;
+    }
+  }
+
+  Future<void> unmatch({
+    required String currentUid,
+    required String otherUid,
+    String? chatId,
+  }) async {
+    try {
+      final userA = currentUid.compareTo(otherUid) < 0 ? currentUid : otherUid;
+      final userB = currentUid.compareTo(otherUid) < 0 ? otherUid : currentUid;
+      final now = FieldValue.serverTimestamp();
+
+      final connectionRef = _firestore
+          .collection('connections')
+          .doc('${userA}_$userB');
+      final connectionDoc = await connectionRef.get();
+
+      final chatRefs = <DocumentReference<Map<String, dynamic>>>[];
+      if (chatId != null && chatId.isNotEmpty) {
+        final chatRef = _chatsRef.doc(chatId);
+        final chatDoc = await chatRef.get();
+        final data = chatDoc.data();
+        final participants = List<String>.from(data?['participants'] ?? []);
+        if (chatDoc.exists &&
+            data?['isGroup'] != true &&
+            participants.contains(currentUid) &&
+            participants.contains(otherUid)) {
+          chatRefs.add(chatRef);
+        }
+      }
+
+      if (chatRefs.isEmpty) {
+        final query = await _chatsRef
+            .where('isGroup', isEqualTo: false)
+            .where('participants', arrayContains: currentUid)
+            .get();
+
+        for (final doc in query.docs) {
+          final participants = List<String>.from(
+            doc.data()['participants'] ?? [],
+          );
+          if (participants.contains(otherUid)) {
+            chatRefs.add(doc.reference);
+          }
+        }
+      }
+
+      final batch = _firestore.batch();
+      batch.delete(connectionRef);
+      batch.delete(
+        _firestore
+            .collection('connection_requests')
+            .doc('${currentUid}_$otherUid'),
+      );
+      batch.delete(
+        _firestore
+            .collection('connection_requests')
+            .doc('${otherUid}_$currentUid'),
+      );
+      batch.delete(
+        _firestore.collection('swipes').doc('${currentUid}_$otherUid'),
+      );
+      batch.delete(
+        _firestore.collection('swipes').doc('${otherUid}_$currentUid'),
+      );
+
+      if (connectionDoc.exists) {
+        batch.update(_firestore.collection('users').doc(currentUid), {
+          'connectionCount': FieldValue.increment(-1),
+        });
+        batch.update(_firestore.collection('users').doc(otherUid), {
+          'connectionCount': FieldValue.increment(-1),
+        });
+      }
+
+      for (final chatRef in chatRefs) {
+        batch.update(chatRef, {
+          'participants': <String>[],
+          'unreadCount': <String, int>{},
+          'typingStatus': <String, bool>{},
+          'isUnmatched': true,
+          'unmatchedBy': currentUid,
+          'unmatchedUsers': [currentUid, otherUid],
+          'unmatchedAt': now,
+          'lastMessage': {
+            'text': 'This connection was unmatched.',
+            'senderId': 'system',
+            'timestamp': now,
+          },
+          'updatedAt': now,
+        });
+      }
+
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to unmatch: $e');
     }
   }
 
@@ -282,9 +385,7 @@ class ChatService {
     final uid = _currentUid;
     if (uid == null) return const Stream.empty();
 
-    return _chatsRef
-        .where('participants', arrayContains: uid)
-        .snapshots();
+    return _chatsRef.where('participants', arrayContains: uid).snapshots();
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> streamUserGroupInvitations() {
@@ -307,7 +408,9 @@ class ChatService {
 
       final data = doc.data() ?? {};
       final participants = List<String>.from(data['participants'] ?? []);
-      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+      final pendingInvitations = List<String>.from(
+        data['pendingInvitations'] ?? [],
+      );
 
       if (pendingInvitations.contains(uid)) {
         pendingInvitations.remove(uid);
@@ -337,7 +440,8 @@ class ChatService {
           'senderId': 'system',
           'senderName': 'System',
           'type': MessageKind.text.name,
-          'text': '📢 $userName has accepted the invitation and joined the group.',
+          'text':
+              '📢 $userName has accepted the invitation and joined the group.',
           'createdAt': FieldValue.serverTimestamp(),
           'readBy': [uid],
         });
@@ -357,7 +461,9 @@ class ChatService {
       if (!doc.exists) return;
 
       final data = doc.data() ?? {};
-      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+      final pendingInvitations = List<String>.from(
+        data['pendingInvitations'] ?? [],
+      );
 
       if (pendingInvitations.contains(uid)) {
         pendingInvitations.remove(uid);
@@ -392,10 +498,13 @@ class ChatService {
       if (!doc.exists) return;
 
       final data = doc.data() ?? {};
-      final pendingInvitations = List<String>.from(data['pendingInvitations'] ?? []);
+      final pendingInvitations = List<String>.from(
+        data['pendingInvitations'] ?? [],
+      );
       final participants = List<String>.from(data['participants'] ?? []);
 
-      if (!participants.contains(userId) && !pendingInvitations.contains(userId)) {
+      if (!participants.contains(userId) &&
+          !pendingInvitations.contains(userId)) {
         pendingInvitations.add(userId);
         await docRef.update({
           'pendingInvitations': pendingInvitations,
@@ -429,11 +538,7 @@ class ChatService {
     await _sendMessage(
       chatId: chatId,
       type: MessageKind.text,
-      data: {
-        'text': text,
-        'replyTo':? replyTo,
-        'mentions': mentions,
-      },
+      data: {'text': text, 'replyTo': ?replyTo, 'mentions': mentions},
     );
   }
 
@@ -457,18 +562,16 @@ class ChatService {
     if (chatDoc.exists) {
       final chatData = chatDoc.data()!;
       final participants = List<String>.from(chatData['participants'] ?? []);
-      final unreadCount = Map<String, dynamic>.from(chatData['unreadCount'] ?? {});
+      final unreadCount = Map<String, dynamic>.from(
+        chatData['unreadCount'] ?? {},
+      );
 
       for (final p in participants) {
         unreadCount[p] = (unreadCount[p] ?? 0) + 1;
       }
 
       await _chatsRef.doc(chatId).update({
-        'lastMessage': {
-          'text': text,
-          'senderId': 'system',
-          'timestamp': now,
-        },
+        'lastMessage': {'text': text, 'senderId': 'system', 'timestamp': now},
         'unreadCount': unreadCount,
         'updatedAt': now,
       });
@@ -489,7 +592,7 @@ class ChatService {
       data: {
         'voiceDuration': voiceDuration,
         'audioUrl': audioUrl,
-        'replyTo':? replyTo,
+        'replyTo': ?replyTo,
         'mentions': mentions,
       },
     );
@@ -509,7 +612,7 @@ class ChatService {
       data: {
         'place': place,
         'meta': meta,
-        'replyTo':? replyTo,
+        'replyTo': ?replyTo,
         'mentions': mentions,
       },
     );
@@ -530,7 +633,7 @@ class ChatService {
         'question': question,
         'options': options,
         'picked': null,
-        'replyTo':? replyTo,
+        'replyTo': ?replyTo,
         'mentions': mentions,
       },
     );
@@ -546,11 +649,7 @@ class ChatService {
     await _sendMessage(
       chatId: chatId,
       type: MessageKind.image,
-      data: {
-        'imageUrl': imageUrl,
-        'replyTo':? replyTo,
-        'mentions': mentions,
-      },
+      data: {'imageUrl': imageUrl, 'replyTo': ?replyTo, 'mentions': mentions},
     );
   }
 
@@ -570,7 +669,7 @@ class ChatService {
         'fileUrl': fileUrl,
         'fileName': fileName,
         'fileSize': fileSize,
-        'replyTo':? replyTo,
+        'replyTo': ?replyTo,
         'mentions': mentions,
       },
     );
@@ -590,9 +689,9 @@ class ChatService {
       type: MessageKind.link,
       data: {
         'linkUrl': url,
-        'linkTitle':? title,
-        'linkDescription':? description,
-        'replyTo':? replyTo,
+        'linkTitle': ?title,
+        'linkDescription': ?description,
+        'replyTo': ?replyTo,
         'mentions': mentions,
       },
     );
@@ -653,12 +752,29 @@ class ChatService {
 
       // Fetch participants to update unread counts
       final chatDoc = await _chatsRef.doc(chatId).get();
+      if (!chatDoc.exists) {
+        throw Exception('This conversation is no longer available.');
+      }
       final chatMap = chatDoc.data() ?? {};
       final participants = List<String>.from(chatMap['participants'] ?? []);
+      if (!participants.contains(uid)) {
+        throw Exception('You are no longer part of this conversation.');
+      }
+      if (chatMap['isGroup'] != true) {
+        final otherUid = participants.firstWhere(
+          (participant) => participant != uid,
+          orElse: () => '',
+        );
+        if (otherUid.isEmpty || !await hasConnection(uid, otherUid)) {
+          throw Exception('You can only chat with accepted connections.');
+        }
+      }
 
       // Build unread count updates – increment for all other users
       final unreadUpdates = <String, dynamic>{};
-      final currentUnreadMap = Map<String, dynamic>.from(chatMap['unreadCount'] ?? {});
+      final currentUnreadMap = Map<String, dynamic>.from(
+        chatMap['unreadCount'] ?? {},
+      );
       for (final p in participants) {
         if (p == uid) {
           unreadUpdates[p] = 0;
@@ -694,12 +810,12 @@ class ChatService {
         if (p == uid) continue;
         final isMuted = muted.contains(p);
         final isMentioned = mentionsList.contains(p);
-        
+
         // Skip notify if group is muted, UNLESS the user is explicitly @mentioned!
         if (isMuted && !isMentioned) continue;
 
         final alertTitle = isGroup ? groupName : senderName;
-        final alertBody = isMentioned 
+        final alertBody = isMentioned
             ? '@$senderName mentioned you: $previewText'
             : '$senderName: $previewText';
 
@@ -714,10 +830,7 @@ class ChatService {
           'type': 'group_activity',
           'isRead': false,
           'shouldShowBanner': shouldShowBanner,
-          'metadata': {
-            'chatId': chatId,
-            'senderId': uid,
-          },
+          'metadata': {'chatId': chatId, 'senderId': uid},
           'timestamp': FieldValue.serverTimestamp(),
         });
       }
@@ -737,13 +850,22 @@ class ChatService {
     if (uid == null) return;
 
     try {
+      final chatDoc = await _chatsRef.doc(chatId).get();
+      final participants = List<String>.from(
+        chatDoc.data()?['participants'] ?? [],
+      );
+      if (!participants.contains(uid)) return;
+
       // Fetch unread messages
       final unreadQuery = await _chatsRef
           .doc(chatId)
           .collection('messages')
-          .where('readBy', whereNotIn: [
-            [uid]
-          ])
+          .where(
+            'readBy',
+            whereNotIn: [
+              [uid],
+            ],
+          )
           .get();
 
       if (unreadQuery.docs.isEmpty) return;
@@ -760,9 +882,7 @@ class ChatService {
       }
 
       // Reset unread count for this user
-      batch.update(_chatsRef.doc(chatId), {
-        'unreadCount.$uid': 0,
-      });
+      batch.update(_chatsRef.doc(chatId), {'unreadCount.$uid': 0});
 
       await batch.commit();
 
@@ -804,9 +924,13 @@ class ChatService {
     if (uid == null) return;
 
     try {
-      await _chatsRef.doc(chatId).update({
-        'typingStatus.$uid': isTyping,
-      });
+      final chatDoc = await _chatsRef.doc(chatId).get();
+      final participants = List<String>.from(
+        chatDoc.data()?['participants'] ?? [],
+      );
+      if (!participants.contains(uid)) return;
+
+      await _chatsRef.doc(chatId).update({'typingStatus.$uid': isTyping});
     } catch (e) {
       // Non-critical – swallow in production to avoid UX disruption.
       throw Exception('Failed to update typing status: $e');
@@ -820,11 +944,9 @@ class ChatService {
     required int optionIndex,
   }) async {
     try {
-      await _chatsRef
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId)
-          .update({'picked': optionIndex});
+      await _chatsRef.doc(chatId).collection('messages').doc(messageId).update({
+        'picked': optionIndex,
+      });
     } catch (e) {
       throw Exception('Failed to answer poll: $e');
     }
