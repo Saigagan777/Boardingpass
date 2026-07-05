@@ -3681,64 +3681,72 @@ class _ChatScreenState extends State<ChatScreen> {
           final messageDocs = snapshot.data?.docs ?? [];
           final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
-          final List<Message> filteredMsgs = messageDocs.map((doc) {
-            final data = doc.data();
-            final senderId = data['senderId'] ?? '';
-            final from = (senderId == currentUid)
-                ? MessageSender.me
-                : MessageSender.them;
+          final List<Message> filteredMsgs = messageDocs
+              .where((doc) {
+                final hiddenFor = List<String>.from(
+                  doc.data()['hiddenFor'] ?? [],
+                );
+                return currentUid == null || !hiddenFor.contains(currentUid);
+              })
+              .map((doc) {
+                final data = doc.data();
+                final senderId = data['senderId'] ?? '';
+                final from = (senderId == currentUid)
+                    ? MessageSender.me
+                    : MessageSender.them;
 
-            final ts = data['createdAt'] as Timestamp?;
-            final dt = ts?.toDate() ?? DateTime.now();
-            final time =
-                "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+                final ts = data['createdAt'] as Timestamp?;
+                final dt = ts?.toDate() ?? DateTime.now();
+                final time =
+                    "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
 
-            final typeStr = data['type'] ?? 'text';
-            final kind = MessageKind.values.firstWhere(
-              (k) => k.name == typeStr,
-              orElse: () => MessageKind.text,
-            );
+                final typeStr = data['type'] ?? 'text';
+                final kind = MessageKind.values.firstWhere(
+                  (k) => k.name == typeStr,
+                  orElse: () => MessageKind.text,
+                );
 
-            return Message(
-              id: doc.id,
-              kind: kind,
-              from: from,
-              time: time,
-              reactions: List<String>.from(data['reactions'] ?? []),
-              reactionsMap: Map<String, String>.from(
-                data['reactionsMap'] ?? {},
-              ),
-              senderId: senderId,
-              senderName: data['senderName'],
-              text: data['text'],
-              seconds: data['voiceDuration'],
-              audioUrl: data['audioUrl'],
-              place: data['place'],
-              meta: data['meta'],
-              question: data['question'],
-              options: data['options'] != null
-                  ? List<String>.from(data['options'])
-                  : null,
-              picked: data['picked'],
-              imageUrl: data['imageUrl'],
-              fileUrl: data['fileUrl'],
-              fileName: data['fileName'],
-              fileSize: data['fileSize'],
-              linkUrl: data['linkUrl'],
-              linkTitle: data['linkTitle'],
-              linkDescription: data['linkDescription'],
-              replyTo: data['replyTo'] != null
-                  ? Map<String, dynamic>.from(data['replyTo'])
-                  : null,
-              mentions: data['mentions'] != null
-                  ? List<String>.from(data['mentions'])
-                  : const [],
-              isRead:
-                  (data['readBy'] as List?) != null &&
-                  (data['readBy'] as List).length > 1,
-              createdAt: dt,
-            );
-          }).toList();
+                return Message(
+                  id: doc.id,
+                  kind: kind,
+                  from: from,
+                  time: time,
+                  reactions: List<String>.from(data['reactions'] ?? []),
+                  reactionsMap: Map<String, String>.from(
+                    data['reactionsMap'] ?? {},
+                  ),
+                  senderId: senderId,
+                  senderName: data['senderName'],
+                  text: data['text'],
+                  seconds: data['voiceDuration'],
+                  audioUrl: data['audioUrl'],
+                  place: data['place'],
+                  meta: data['meta'],
+                  question: data['question'],
+                  options: data['options'] != null
+                      ? List<String>.from(data['options'])
+                      : null,
+                  picked: data['picked'],
+                  imageUrl: data['imageUrl'],
+                  fileUrl: data['fileUrl'],
+                  fileName: data['fileName'],
+                  fileSize: data['fileSize'],
+                  linkUrl: data['linkUrl'],
+                  linkTitle: data['linkTitle'],
+                  linkDescription: data['linkDescription'],
+                  replyTo: data['replyTo'] != null
+                      ? Map<String, dynamic>.from(data['replyTo'])
+                      : null,
+                  mentions: data['mentions'] != null
+                      ? List<String>.from(data['mentions'])
+                      : const [],
+                  isRead:
+                      (data['readBy'] as List?) != null &&
+                      (data['readBy'] as List).length > 1,
+                  createdAt: dt,
+                );
+              })
+              .toList();
 
           // Mark messages as read reactively
           if (_chatId != null) {
@@ -6033,7 +6041,52 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _deleteMessageForMe(Message msg) async {
+    final chatId = _chatId;
+    if (chatId == null) return;
+
+    try {
+      await ChatService().deleteMessageForMe(chatId: chatId, messageId: msg.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFC62828),
+          content: Text(
+            'Failed to delete message: $e',
+            style: const TextStyle(fontFamily: 'PlusJakartaSans'),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteMessageForEveryone(Message msg) async {
+    final chatId = _chatId;
+    if (chatId == null) return;
+
+    try {
+      await ChatService().deleteMessageForEveryone(
+        chatId: chatId,
+        messageId: msg.id,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFFC62828),
+          content: Text(
+            'Failed to delete message for everyone: $e',
+            style: const TextStyle(fontFamily: 'PlusJakartaSans'),
+          ),
+        ),
+      );
+    }
+  }
+
   void _showMessageOptions(BuildContext context, Message msg) {
+    final isMyMessage = msg.from == MessageSender.me;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFFFAF7F5),
@@ -6127,6 +6180,43 @@ class _ChatScreenState extends State<ChatScreen> {
                   }
                 },
               ),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xFFC62828),
+                ),
+                title: const Text(
+                  'Delete for Me',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    color: Color(0xFFC62828),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteMessageForMe(msg);
+                },
+              ),
+              if (isMyMessage)
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_forever_outlined,
+                    color: Color(0xFFC62828),
+                  ),
+                  title: const Text(
+                    'Delete for Everyone',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      color: Color(0xFFC62828),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteMessageForEveryone(msg);
+                  },
+                ),
               const SizedBox(height: 8),
             ],
           ),

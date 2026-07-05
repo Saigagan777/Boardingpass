@@ -205,6 +205,70 @@ class ChatService {
     }
   }
 
+  Future<void> deleteMessageForMe({
+    required String chatId,
+    required String messageId,
+  }) async {
+    final uid = _currentUid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final chatDoc = await _chatsRef.doc(chatId).get();
+      final participants = List<String>.from(
+        chatDoc.data()?['participants'] ?? [],
+      );
+      if (!participants.contains(uid)) {
+        throw Exception('You are no longer part of this conversation.');
+      }
+
+      await _chatsRef.doc(chatId).collection('messages').doc(messageId).update({
+        'hiddenFor': FieldValue.arrayUnion([uid]),
+      });
+    } catch (e) {
+      throw Exception('Failed to delete message for you: $e');
+    }
+  }
+
+  Future<void> deleteMessageForEveryone({
+    required String chatId,
+    required String messageId,
+  }) async {
+    final uid = _currentUid;
+    if (uid == null) throw Exception('User not signed in');
+
+    try {
+      final chatRef = _chatsRef.doc(chatId);
+      final messageRef = chatRef.collection('messages').doc(messageId);
+      final messageDoc = await messageRef.get();
+      if (!messageDoc.exists) return;
+
+      final messageData = messageDoc.data() ?? {};
+      if (messageData['senderId'] != uid) {
+        throw Exception(
+          'Only the sender can delete this message for everyone.',
+        );
+      }
+
+      final chatDoc = await chatRef.get();
+      final pinned = List<Map<String, dynamic>>.from(
+        (chatDoc.data()?['pinnedMessages'] as List?)?.map(
+              (e) => Map<String, dynamic>.from(e),
+            ) ??
+            [],
+      )..removeWhere((item) => item['id'] == messageId);
+
+      final batch = _firestore.batch();
+      batch.delete(messageRef);
+      batch.update(chatRef, {
+        'pinnedMessages': pinned,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to delete message for everyone: $e');
+    }
+  }
+
   /// Toggles emoji reaction on a message.
   Future<void> toggleReaction({
     required String chatId,
@@ -717,6 +781,7 @@ class ChatService {
         'type': type.name,
         'createdAt': now,
         'readBy': [uid],
+        'hiddenFor': <String>[],
         'reactionsMap': {},
         ...data,
       };
