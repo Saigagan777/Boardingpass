@@ -124,6 +124,7 @@ class _HubScreenState extends State<HubScreen> {
   @override
   void initState() {
     super.initState();
+    _state.addListener(_onStateChanged);
     _tickerTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
       if (mounted && _carouselItemCount > 0) {
         setState(() {
@@ -133,8 +134,15 @@ class _HubScreenState extends State<HubScreen> {
     });
   }
 
+  void _onStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    _state.removeListener(_onStateChanged);
     _tickerTimer?.cancel();
     super.dispose();
   }
@@ -474,6 +482,7 @@ class _HubScreenState extends State<HubScreen> {
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isDiscoverable = _state.currentUserProfile?.isDiscoverable ?? true;
 
     final Map<String, dynamic>? focusedActivity =
         _hoveredIndex != null ? _activities[_hoveredIndex!] : null;
@@ -578,6 +587,44 @@ class _HubScreenState extends State<HubScreen> {
                   ),
                   Row(
                     children: [
+                      // Discovery Switch
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (screenWidth >= 380) ...[
+                            Text(
+                              isDiscoverable ? 'Discovery ON' : 'Discovery OFF',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: isDiscoverable ? const Color(0xFF7A432D) : const Color(0xFF8C736B),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Transform.scale(
+                            scale: 0.8,
+                            child: Switch(
+                              value: isDiscoverable,
+                              activeThumbColor: const Color(0xFF7A432D),
+                              activeTrackColor: const Color(0xFF7A432D).withValues(alpha: 0.2),
+                              inactiveThumbColor: const Color(0xFF8C736B),
+                              inactiveTrackColor: const Color(0xFFE8E2DD),
+                              onChanged: (value) async {
+                                final uid = FirebaseAuth.instance.currentUser?.uid;
+                                if (uid != null) {
+                                  await UserService().updateUserProfile(
+                                    userId: uid,
+                                    isDiscoverable: value,
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 10),
                       // Streamed Notifications Bell Icon with badge
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: _badgeStream,
