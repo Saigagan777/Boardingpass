@@ -31,6 +31,147 @@
 
   <title>NexMeet</title>
   <link rel="manifest" href="manifest.json">
+  <!-- Google Maps JavaScript API with Places library -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I&libraries=places&v=weekly"></script>
+  <script>
+    window.googlePlacesSearch = async function(query) {
+      console.warn('[Places JS] called with query:', query);
+      try {
+        // With synchronous loading (libraries=places&v=weekly),
+        // google.maps.places.Place is available directly — importLibrary is for async loading only
+        var Place = google.maps.places.Place;
+        console.warn('[Places JS] Place class available:', typeof Place, typeof Place.searchByText);
+
+        const request = {
+          textQuery: query,
+          fields: ['id', 'displayName', 'formattedAddress', 'location', 'rating', 'userRatingCount', 'priceLevel', 'types', 'photos'],
+        };
+        const response = await Place.searchByText(request);
+        const places = response ? response.places : null;
+        console.warn('[Places JS] searchByText response places count:', places ? places.length : 'null');
+
+        if (!places || places.length === 0) return JSON.stringify([]);
+
+        var mappedResults = places.map(function(place) {
+          // displayName is a LocalizedText object in Places API (New)
+          let nameText = '';
+          if (place.displayName) {
+            nameText = (typeof place.displayName === 'object')
+              ? (place.displayName.text || '')
+              : String(place.displayName);
+          }
+
+          // location is a LatLng object — call .lat() and .lng() safely
+          let lat = 0.0, lng = 0.0;
+          try {
+            if (place.location && typeof place.location.lat === 'function') {
+              lat = place.location.lat();
+              lng = place.location.lng();
+            }
+          } catch(locErr) {
+            console.warn('[Places JS] location error:', locErr);
+          }
+
+          // cover_image and image_urls extraction
+          let coverImg = 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=500&auto=format&fit=crop&q=60';
+          let imageUrls = [coverImg];
+          try {
+            if (place.photos && place.photos.length > 0) {
+              coverImg = place.photos[0].getURI({ maxWidth: 800, maxHeight: 600 });
+              imageUrls = place.photos.slice(0, 5).map(function(p) {
+                return p.getURI({ maxWidth: 800, maxHeight: 600 });
+              });
+            }
+          } catch(photoErr) {
+            console.warn('[Places JS] photo error:', photoErr);
+          }
+
+          return {
+            name: nameText,
+            formatted_address: place.formattedAddress || '',
+            place_id: place.id || ('place_' + Math.random().toString(36).substr(2, 9)),
+            rating: (place.rating != null) ? place.rating : 4.0,
+            user_ratings_total: (place.userRatingCount != null) ? place.userRatingCount : 50,
+            price_level: 2,
+            types: Array.isArray(place.types) ? place.types : [],
+            cover_image: coverImg,
+            image_urls: imageUrls,
+            geometry: {
+              location: { lat: lat, lng: lng }
+            }
+          };
+        });
+
+        console.warn('[Places JS] returning', mappedResults.length, 'mapped results');
+        return JSON.stringify(mappedResults);
+      } catch (e) {
+        console.warn('[Places JS] ERROR:', e.message, e.stack);
+        return JSON.stringify([]);
+      }
+    };
+
+    window.googleGeocode = function(address) {
+      return new Promise((resolve, reject) => {
+        try {
+          var geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ address: address }, function(results, status) {
+            if (status === 'OK') {
+              var mappedResults = results.map(function(item) {
+                return {
+                  formatted_address: item.formatted_address,
+                  geometry: {
+                    location: {
+                      lat: item.geometry.location.lat(),
+                      lng: item.geometry.location.lng()
+                    }
+                  }
+                };
+              });
+              resolve(JSON.stringify(mappedResults));
+            } else if (status === 'ZERO_RESULTS') {
+              resolve(JSON.stringify([]));
+            } else {
+              reject(status);
+            }
+          });
+        } catch(e) {
+          reject(e.toString());
+        }
+      });
+    };
+
+    window.googleReverseGeocode = function(lat, lng) {
+      return new Promise((resolve, reject) => {
+        try {
+          var geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ location: { lat: lat, lng: lng } }, function(results, status) {
+            if (status === 'OK' && results && results.length > 0) {
+              let city = '', state = '', country = '';
+              results[0].address_components.forEach(function(component) {
+                if (component.types.includes('locality')) {
+                  city = component.long_name;
+                } else if (component.types.includes('administrative_area_level_1')) {
+                  state = component.long_name;
+                } else if (component.types.includes('country')) {
+                  country = component.long_name;
+                }
+              });
+              resolve(JSON.stringify({
+                city: city,
+                state: state,
+                country: country,
+                formatted_address: results[0].formatted_address
+              }));
+            } else {
+              resolve(JSON.stringify({}));
+            }
+          });
+        } catch(e) {
+          reject(e.toString());
+        }
+      });
+    };
+  </script>
 </head>
 <body>
   <!--

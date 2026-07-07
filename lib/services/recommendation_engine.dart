@@ -25,7 +25,7 @@ class RecommendationEngine {
   /// Automatically detects same-city or multi-city options based on profile homeBases
   Future<MeetingCityResult> detectMeetingCity(List<String> participantIds) async {
     final List<String> cities = [];
-    String hostCity = 'Vijayawada'; // Default fallback
+    String hostCity = ''; // Default fallback
 
     for (int i = 0; i < participantIds.length; i++) {
       final profile = await UserService().getUserProfile(participantIds[i]);
@@ -44,8 +44,8 @@ class RecommendationEngine {
     if (cities.isEmpty) {
       return MeetingCityResult(
         sameCity: true,
-        primaryCity: 'Vijayawada',
-        cityOptions: ['Vijayawada'],
+        primaryCity: '',
+        cityOptions: const [],
       );
     }
 

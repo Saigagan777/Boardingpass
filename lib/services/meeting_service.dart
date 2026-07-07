@@ -75,7 +75,7 @@ class MeetingService {
         'suggestedAgenda': agenda,
         'cancellationReasons': {},
         'chatId': chatId,
-        'meetingCity': meetingCity ?? 'Vijayawada',
+        'meetingCity': meetingCity ?? '',
         'meetingPurpose': meetingPurpose ?? MeetingPurpose.custom.name,
         'meetingType': meetingType ?? 'in_person',
         'selectedVenueSnapshot': selectedVenueSnapshot,

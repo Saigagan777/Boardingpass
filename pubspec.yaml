@@ -42,7 +42,7 @@ dependencies:
   record: ^7.1.0
   audioplayers: ^6.7.1
   path_provider: ^2.1.5
-
+  phosphoricons_flutter: ^1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -52,7 +52,11 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/images/logo.jpg"
+  remove_alpha_ios: true
+  image_path: "assets/images/app_logo.png"
+  web:
+    generate: true
+    image_path: "assets/images/app_logo.png"
 
 flutter:
   uses-material-design: true

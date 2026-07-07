@@ -20,7 +20,7 @@ class LinkedInWebViewDialog extends StatefulWidget {
   State<LinkedInWebViewDialog> createState() => _LinkedInWebViewDialogState();
 }
 
-class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> with WidgetsBindingObserver {
+class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> {
   late final WebViewController _controller;
   bool _isLoading = true;
   bool _hasTimedOut = false;
@@ -30,7 +30,6 @@ class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> with Widg
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _initializeController();
     _startTimer();
   }
@@ -99,24 +98,7 @@ class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> with Widg
   @override
   void dispose() {
     _timeoutTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      debugPrint('App resumed. Reloading LinkedIn OAuth web session to prevent blank screen hang.');
-      // Restart/reload the flow cleanly on resuming from background
-      _controller.loadRequest(Uri.parse(widget.authUrl));
-      if (mounted) {
-        setState(() {
-          _hasTimedOut = false;
-          _isLoading = true;
-        });
-      }
-      _startTimer();
-    }
   }
 
   @override

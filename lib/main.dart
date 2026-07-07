@@ -127,13 +127,20 @@ class MainApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
+        // --- 60-30-10 Color System ---
+        // 60% Dominant Color: Cream/off-white background for canvas and surface
         scaffoldBackgroundColor: const Color(0xFFFAF7F5),
+        // 10% Accent Color: Vibrant terracotta for primary CTAs, links, and indicators
         primaryColor: const Color(0xFF7A432D),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF7A432D),
+          // 10% Accent
           primary: const Color(0xFF7A432D),
-          secondary: const Color(0xFFB06F4D),
+          // 30% Secondary: Espresso for structural components, borders, and typography
+          secondary: const Color(0xFF3E1F11),
+          // 60% Dominant
           surface: const Color(0xFFFAF7F5),
+          onSurface: const Color(0xFF3E1F11),
         ),
         fontFamily: 'PlusJakartaSans',
         textTheme: const TextTheme(
@@ -338,7 +345,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       body: Stack(
         children: [
           // Main content
-          (_state.isAuthCallbackInProgress || _state.isProfileLoading)
+          (!_state.isInitialized || _state.isAuthCallbackInProgress)
               ? const AuthCallbackScreen()
               : (!_state.isLoggedIn
                     ? const OnboardingScreen()

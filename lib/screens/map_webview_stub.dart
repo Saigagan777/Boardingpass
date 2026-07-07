@@ -10,7 +10,7 @@ class MapWebView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String viewId = 'google-map-$latitude-$longitude';
-    final String src = 'https://maps.google.com/maps?q=$latitude,$longitude&t=&z=14&ie=UTF8&iwloc=&output=embed';
+    final String src = 'https://www.google.com/maps/embed/v1/place?key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I&q=$latitude,$longitude';
 
     ui_web.platformViewRegistry.registerViewFactory(viewId, (int viewId) {
       final iframe = html.IFrameElement()

@@ -11,6 +11,8 @@ import '../services/user_service.dart';
 import '../models/user_profile.dart';
 import '../models/checkin.dart';
 import '../utils/app_logo.dart';
+import '../services/location_service.dart';
+import '../utils/google_search_helper.dart';
 
 class HexagonClipper extends CustomClipper<Path> {
   @override
@@ -62,9 +64,13 @@ class _HubScreenState extends State<HubScreen> {
 
   void _updateHoveredIndex(int? index) {
     if (_hoveredIndex != index) {
-      setState(() {
-        _hoveredIndex = index;
-        _hoverSequence++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _hoveredIndex != index) {
+          setState(() {
+            _hoveredIndex = index;
+            _hoverSequence++;
+          });
+        }
       });
     }
   }
@@ -131,6 +137,46 @@ class _HubScreenState extends State<HubScreen> {
         });
       }
     });
+    // Trigger dynamic location detection on startup/load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoDetectAndUpdateLocation();
+    });
+  }
+
+  Future<void> _autoDetectAndUpdateLocation() async {
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid == null) return;
+
+      // 1. Fetch current position from Geolocator
+      final position = await LocationService().getCurrentPosition();
+      final geoPoint = GeoPoint(position.latitude, position.longitude);
+      final geohash = LocationService().generateGeohash(position.latitude, position.longitude);
+
+      // 2. Perform reverse geocoding via Google Maps API
+      final addressData = await reverseGeocodeAddress(position.latitude, position.longitude);
+      if (addressData != null) {
+        final city = addressData['city'] ?? '';
+        final state = addressData['state'] ?? '';
+        final country = addressData['country'] ?? '';
+        if (city.isNotEmpty) {
+          final detectedLocName = [city, state, country].where((e) => e.isNotEmpty).join(', ');
+
+          // Only update if it has changed to save Firestore writes
+          final savedLoc = _state.profileData?['location'];
+          if (savedLoc != detectedLocName) {
+            await FirebaseFirestore.instance.collection('users').doc(currentUid).update({
+              'location': geoPoint,
+              'geohash': geohash,
+              'currentLocationName': detectedLocName,
+              'lastSeen': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error auto-detecting location in Hub: $e');
+    }
   }
 
   @override
@@ -478,7 +524,7 @@ class _HubScreenState extends State<HubScreen> {
     final Map<String, dynamic>? focusedActivity =
         _hoveredIndex != null ? _activities[_hoveredIndex!] : null;
 
-    final String fullName = _state.profileData?['name'] ?? 'Rohan';
+    final String fullName = _state.profileData?['name'] ?? 'User';
     final String userName = fullName.trim().split(' ').first;
 
     final activeCheckinId = _state.currentUserProfile?.currentCheckin;
@@ -734,6 +780,8 @@ class _HubScreenState extends State<HubScreen> {
                                         SizedBox(height: 2 * scale),
                                         Text(
                                           focusedActivity['label'],
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontFamily: 'PlayfairDisplay',
                                             fontSize: 16 * scale,
@@ -744,6 +792,8 @@ class _HubScreenState extends State<HubScreen> {
                                         Text(
                                           focusedActivity['hint'],
                                           textAlign: TextAlign.center,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontFamily: 'PlusJakartaSans',
                                             fontSize: 10 * scale,
@@ -779,6 +829,8 @@ class _HubScreenState extends State<HubScreen> {
                                         SizedBox(height: 6 * scale),
                                         Text(
                                           'HUB',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontFamily: 'PlusJakartaSans',
                                             fontSize: 10 * scale,

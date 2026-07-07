@@ -12,6 +12,7 @@ import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../utils/app_logo.dart';
 
+
 enum OnboardingView {
   slides,
   signIn,

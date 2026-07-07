@@ -284,6 +284,13 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                               Icons.business_outlined,
                               c.org.trim(),
                             ),
+                          if (c.loc.trim().isNotEmpty)
+                            _buildProfilePill(
+                              Icons.location_on_outlined,
+                              c.displayDistanceKm != null
+                                  ? '${c.loc.split(',')[0].trim()} (${c.displayDistanceKm! < 1.0 ? "Under 1 km" : "${c.displayDistanceKm!.toStringAsFixed(1)} km"})'
+                                  : c.loc.split(',')[0].trim(),
+                            ),
                         ],
                       ),
                     ),

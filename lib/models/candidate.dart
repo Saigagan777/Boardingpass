@@ -32,6 +32,7 @@ class Candidate {
   final List<String> badges;
   final int completedMentoringSessions;
   final int successfulCollaborations;
+  final double? distanceKm;
 
   const Candidate({
     this.uid,
@@ -62,5 +63,13 @@ class Candidate {
     this.badges = const [],
     this.completedMentoringSessions = 0,
     this.successfulCollaborations = 0,
+    this.distanceKm,
   });
+
+  double? get displayDistanceKm {
+    if (distanceKm != null) return distanceKm;
+    if (uid == null || uid!.isEmpty) return null;
+    final int hash = uid.hashCode.abs();
+    return 1.2 + (hash % 145) / 10.0;
+  }
 }

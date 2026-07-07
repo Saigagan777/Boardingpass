@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import '../state_manager.dart';
 import '../models/candidate.dart';
 import '../utils/card_renderer.dart';
@@ -2460,6 +2461,20 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       ),
                     ),
                   ),
+                  Positioned(
+                    left: 16,
+                    bottom: 16,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildLocationPill(c),
+                        if (c.displayDistanceKm != null) ...[
+                          const SizedBox(width: 8),
+                          _buildDistancePill(c),
+                        ],
+                      ],
+                    ),
+                  ),
                   if (isTop && c.customCards.isNotEmpty)
                     Positioned(
                       right: 16,
@@ -2568,6 +2583,70 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLocationPill(Candidate c) {
+    final String locationText = c.loc.isNotEmpty ? c.loc.split(',')[0].trim() : 'Location';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.location_on_rounded, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            locationText,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDistancePill(Candidate c) {
+    if (c.displayDistanceKm == null) return const SizedBox.shrink();
+    final String distanceText = c.displayDistanceKm! < 1.0
+        ? 'Under 1 km away'
+        : '${c.displayDistanceKm!.toStringAsFixed(1)} km away';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7A432D), // Beautiful primary terracotta brand color
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.near_me_rounded, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            distanceText,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3012,6 +3091,24 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 .toUpperCase();
 
                             // Construct a Candidate object for the detail view
+                            double? distanceKm;
+                            final candidateGeo = userData['location'] as GeoPoint?;
+                            final currentUserGeo = _state.currentUserProfile?.location;
+
+                            if (candidateGeo != null && currentUserGeo != null) {
+                              try {
+                                final double distanceMeters = Geolocator.distanceBetween(
+                                  currentUserGeo.latitude,
+                                  currentUserGeo.longitude,
+                                  candidateGeo.latitude,
+                                  candidateGeo.longitude,
+                                );
+                                distanceKm = distanceMeters / 1000;
+                              } catch (_) {
+                                // Fail silently
+                              }
+                            }
+
                             final c = Candidate(
                               uid: targetUid,
                               name: name,
@@ -3042,6 +3139,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               initials: initials,
                               profileImageUrl: imageUrl,
                               primaryColor: const Color(0xFFE5A475),
+                              distanceKm: distanceKm,
                             );
 
                             return Card(

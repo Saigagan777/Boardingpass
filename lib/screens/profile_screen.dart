@@ -7,7 +7,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:csc_picker_plus/csc_picker_plus.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
@@ -66,8 +65,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     total++;
     if ((profile.travelFrequency ?? '').trim().isNotEmpty && profile.travelFrequency != 'Select Frequency') completed++;
     total++;
-    if ((profile.homeBase ?? '').trim().isNotEmpty) completed++;
-    total++;
     if ((profile.currentLocationName ?? '').trim().isNotEmpty) completed++;
     total++;
     if (profile.careerTimeline.isNotEmpty) completed++;
@@ -104,35 +101,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final String name = profile.name.isNotEmpty ? profile.name : 'User';
         final String headline = (profile.headline != null && profile.headline!.isNotEmpty)
             ? profile.headline!
-            : 'Java Full Stack Developer';
+            : '';
         final String workingLocation = (profile.currentLocationName != null && profile.currentLocationName!.isNotEmpty)
             ? profile.currentLocationName!
-            : 'Bangalore, Karnataka, India';
+            : '';
         final String email = profile.email;
         final String bio = (profile.bio != null && profile.bio!.isNotEmpty)
             ? profile.bio!
             : 'No bio added yet. Tap Edit to introduce yourself!';
-        final String company = (profile.company != null && profile.company!.isNotEmpty)
-            ? profile.company!
-            : 'Company';
-        final String role = (profile.role != null && profile.role!.isNotEmpty)
-            ? profile.role!
-            : 'Role';
-        final String industry = (profile.industry != null && profile.industry!.isNotEmpty)
-            ? profile.industry!
-            : 'Sector';
-        final String experience = (profile.experience != null && profile.experience!.isNotEmpty)
-            ? profile.experience!
-            : 'Experience';
-        final String homeBase = (profile.homeBase != null && profile.homeBase!.isNotEmpty)
-            ? profile.homeBase!
-            : 'Home Base';
         final String currentLocation = (profile.currentLocationName != null && profile.currentLocationName!.isNotEmpty)
             ? profile.currentLocationName!
-            : 'Current Location';
+            : 'Not set';
         final String travelFrequency = (profile.travelFrequency != null && profile.travelFrequency!.isNotEmpty)
             ? profile.travelFrequency!
-            : 'Travel Frequency';
+            : 'Not set';
         final List<String> interests = profile.interests;
         final List<String> skills = profile.skills;
         final completeness = _calculateProfileCompleteness(profile);
@@ -170,10 +152,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           type: 'education',
                           emptyText: 'No education details added yet.',
                         ),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Professional', Icons.badge_outlined),
-                        const SizedBox(height: 12),
-                        _buildProfessionalCard(company, role, industry, experience),
+
                         const SizedBox(height: 24),
                         _buildSectionLabel('About Me', Icons.person_outline_rounded),
                         const SizedBox(height: 12),
@@ -189,7 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 24),
                         _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
                         const SizedBox(height: 12),
-                        _buildTravelCard(homeBase, currentLocation, travelFrequency),
+                        _buildTravelCard(currentLocation, travelFrequency),
                         const SizedBox(height: 24),
                         _buildSettingsMenu(context, profile),
                         const SizedBox(height: 40),
@@ -540,17 +519,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }).toList(),
             ),
           ],
-          const SizedBox(height: 4),
-          Text(
-            headline,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF5C473E),
-              height: 1.4,
+          if (headline.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              headline,
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 14,
+                color: Color(0xFF5C473E),
+                height: 1.4,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
+          ] else ...[
+            const SizedBox(height: 6),
+          ],
           if (email.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -569,25 +552,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-          Row(
-            children: [
-              Icon(Icons.place_outlined, size: 14, color: const Color(0xFF7A432D)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  workingLocation,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    color: Color(0xFF8C736B),
+          if (workingLocation.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(Icons.place_outlined, size: 14, color: const Color(0xFF7A432D)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    workingLocation,
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 12,
+                      color: Color(0xFF8C736B),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+              ],
+            ),
+            const SizedBox(height: 14),
+          ],
           _buildLinkedInButton(
             (profile.linkedinProfileUrl != null && profile.linkedinProfileUrl!.isNotEmpty) ||
                 profile.linkedinSynced || (profile.linkedinId != null && profile.linkedinId!.isNotEmpty),
@@ -985,66 +970,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildProfessionalCard(String company, String role, String industry, String experience) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: _buildCardContainer(child: _buildProfessionalBody(company, role, industry, experience)),
-    );
-  }
 
-  Widget _buildProfessionalBody(String company, String role, String industry, String experience) {
-    return Column(
-      children: [
-        _buildInfoRow(Icons.business_outlined, 'Company', company),
-        _buildInfoRow(Icons.work_outline, 'Role', role),
-        _buildInfoRow(Icons.category_outlined, 'Sector', industry),
-        Container(height: 1, color: const Color(0xFFE8E2DD)),
-        const SizedBox(height: 18),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.timeline_outlined, size: 16, color: const Color(0xFF7A432D)),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        experience,
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                      Text(
-                        'Experience',
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 10,
-                          color: Color(0xFF8C736B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-      ],
-    );
-  }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Column(
@@ -1266,17 +1192,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildTravelCard(String homeBase, String currentLocation, String travelFrequency) {
+  Widget _buildTravelCard(String currentLocation, String travelFrequency) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: _buildCardContainer(child: _buildTravelBody(homeBase, currentLocation, travelFrequency)),
+      child: _buildCardContainer(child: _buildTravelBody(currentLocation, travelFrequency)),
     );
   }
 
-  Widget _buildTravelBody(String homeBase, String currentLocation, String travelFrequency) {
+  Widget _buildTravelBody(String currentLocation, String travelFrequency) {
     return Column(
       children: [
-        _buildInfoRow(Icons.place_outlined, 'Home Base', homeBase),
         _buildInfoRow(Icons.my_location_rounded, 'Current', currentLocation),
         _buildInfoRow(Icons.flight_takeoff_outlined, 'Frequency', travelFrequency),
       ],
@@ -1862,9 +1787,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     'Content Creation',
   ];
 
-  late String _homeBaseCountry;
-  late String _homeBaseState;
-  late String _homeBaseCity;
 
   late String _currentLocationCountry;
   late String _currentLocationState;
@@ -1908,7 +1830,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       if (name.isNotEmpty) _localInterestsPriorities[name] = pri;
     }
 
-    _parseHomeBase(widget.profile.homeBase);
     _parseCurrentLocation(widget.profile.currentLocationName);
 
     _experienceController = TextEditingController(text: widget.profile.experience ?? '');
@@ -1972,7 +1893,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       completed++;
     }
     total++;
-    if (_homeBaseCountry.isNotEmpty || _homeBaseCity.isNotEmpty) completed++;
     total++;
     if (_currentLocationCountry.isNotEmpty || _currentLocationCity.isNotEmpty) completed++;
     total++;
@@ -1983,38 +1903,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     return total == 0 ? 0.0 : (completed / total) * 100.0;
   }
 
-  void _parseHomeBase(String? homeBaseStr) {
-    if (homeBaseStr == null || homeBaseStr.isEmpty) {
-      _homeBaseCountry = 'India';
-      _homeBaseState = 'Andhra Pradesh';
-      _homeBaseCity = 'Vijayawada';
-      return;
-    }
-    final parts = homeBaseStr.split(',').map((e) => e.trim()).toList();
-    if (parts.length >= 3) {
-      _homeBaseCity = parts[0];
-      _homeBaseState = parts[1];
-      _homeBaseCountry = parts[2];
-    } else if (parts.length == 2) {
-      _homeBaseCity = '';
-      _homeBaseState = parts[0];
-      _homeBaseCountry = parts[1];
-    } else if (parts.length == 1) {
-      _homeBaseCity = '';
-      _homeBaseState = '';
-      _homeBaseCountry = parts[0];
-    } else {
-      _homeBaseCountry = 'India';
-      _homeBaseState = 'Andhra Pradesh';
-      _homeBaseCity = 'Vijayawada';
-    }
-  }
-
   void _parseCurrentLocation(String? currentLocStr) {
     if (currentLocStr == null || currentLocStr.isEmpty) {
-      _currentLocationCountry = 'India';
-      _currentLocationState = 'Karnataka';
-      _currentLocationCity = 'Bangalore';
+      _currentLocationCountry = '';
+      _currentLocationState = '';
+      _currentLocationCity = '';
       return;
     }
     final parts = currentLocStr.split(',').map((e) => e.trim()).toList();
@@ -2031,39 +1924,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       _currentLocationState = '';
       _currentLocationCountry = parts[0];
     } else {
-      _currentLocationCountry = 'India';
-      _currentLocationState = 'Karnataka';
-      _currentLocationCity = 'Bangalore';
+      _currentLocationCountry = '';
+      _currentLocationState = '';
+      _currentLocationCity = '';
     }
   }
 
-  void _onHomeBaseCountryChanged(String country) {
-    setState(() {
-      _homeBaseCountry = country.contains('   ') ? country.split('   ').last : country;
-    });
-  }
 
-  void _onHomeBaseStateChanged(String? state) {
-    setState(() => _homeBaseState = state ?? '');
-  }
-
-  void _onHomeBaseCityChanged(String? city) {
-    setState(() => _homeBaseCity = city ?? '');
-  }
-
-  void _onCurrentLocationCountryChanged(String country) {
-    setState(() {
-      _currentLocationCountry = country.contains('   ') ? country.split('   ').last : country;
-    });
-  }
-
-  void _onCurrentLocationStateChanged(String? state) {
-    setState(() => _currentLocationState = state ?? '');
-  }
-
-  void _onCurrentLocationCityChanged(String? city) {
-    setState(() => _currentLocationCity = city ?? '');
-  }
 
   @override
   void dispose() {
@@ -2134,13 +2001,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
     final finalIndustry = _selectedIndustry == 'Other' ? _industryController.text.trim() : _selectedIndustry;
 
-    final homeBaseSegments = [
-      if (_homeBaseCity.isNotEmpty) _homeBaseCity,
-      if (_homeBaseState.isNotEmpty) _homeBaseState,
-      if (_homeBaseCountry.isNotEmpty) _homeBaseCountry,
-    ];
-    final finalHomeBase = homeBaseSegments.join(', ');
-
     final currentLocSegments = [
       if (_currentLocationCity.isNotEmpty) _currentLocationCity,
       if (_currentLocationState.isNotEmpty) _currentLocationState,
@@ -2158,7 +2018,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         role: _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : _selectedOccupation,
         industry: finalIndustry,
         experience: _experienceController.text.trim(),
-        homeBase: finalHomeBase,
+        homeBase: null,
         currentLocationName: finalCurrentLocation,
         travelFrequency: _selectedTravelFrequency,
         profileImageUrl: _profileImageUrlController.text.trim(),
@@ -2334,70 +2194,38 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     const SizedBox(height: 12),
                     _buildTextField('LinkedIn Profile URL', _linkedinUrlController, hintText: 'https://linkedin.com/in/yourprofile'),
                     const SizedBox(height: 20),
-                    _buildSectionHeader('Location'),
-                    const SizedBox(height: 12),
                     const Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('Home Base', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B))),
+                      child: Text('Current Location', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B))),
                     ),
                     const SizedBox(height: 6),
-                    CSCPickerPlus(
-                      layout: Layout.vertical,
-                      showStates: true,
-                      showCities: true,
-                      flagState: CountryFlag.DISABLE,
-                      currentCountry: getCountryForPicker(_homeBaseCountry),
-                      currentState: _homeBaseState,
-                      currentCity: _homeBaseCity,
-                      dropdownDecoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-                      ),
-                      disabledDropdownDecoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
                         color: const Color(0xFFFAF7F5),
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-                      ),
-                      selectedItemStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11), fontWeight: FontWeight.w600),
-                      dropdownHeadingStyle: const TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
-                      dropdownItemStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
-                      searchBarRadius: 10.0,
-                      onCountryChanged: _onHomeBaseCountryChanged,
-                      onStateChanged: _onHomeBaseStateChanged,
-                      onCityChanged: _onHomeBaseCityChanged,
-                    ),
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Current / Working Location', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B))),
-                    ),
-                    const SizedBox(height: 6),
-                    CSCPickerPlus(
-                      layout: Layout.vertical,
-                      showStates: true,
-                      showCities: true,
-                      flagState: CountryFlag.DISABLE,
-                      currentCountry: getCountryForPicker(_currentLocationCountry),
-                      currentState: _currentLocationState,
-                      currentCity: _currentLocationCity,
-                      dropdownDecoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        color: Colors.white,
                         border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
                       ),
-                      disabledDropdownDecoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: const Color(0xFFFAF7F5),
-                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.gps_fixed_rounded, size: 16, color: Color(0xFF7A432D)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              (widget.profile.currentLocationName != null && widget.profile.currentLocationName!.isNotEmpty)
+                                  ? widget.profile.currentLocationName!
+                                  : 'Detecting Location...',
+                              style: const TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 13,
+                                color: Color(0xFF3E1F11),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      selectedItemStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11), fontWeight: FontWeight.w600),
-                      dropdownHeadingStyle: const TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
-                      dropdownItemStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
-                      searchBarRadius: 10.0,
-                      onCountryChanged: _onCurrentLocationCountryChanged,
-                      onStateChanged: _onCurrentLocationStateChanged,
-                      onCityChanged: _onCurrentLocationCityChanged,
                     ),
                     const SizedBox(height: 12),
                     _buildDropdownField(

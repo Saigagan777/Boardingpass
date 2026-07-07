@@ -17,6 +17,8 @@ import '../utils/image_helper.dart';
 import '../services/user_service.dart';
 import '../utils/match_calculator.dart';
 import 'candidate_profile_sheet.dart';
+import '../models/venue.dart';
+import '../services/venue_repository.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? name;
@@ -1324,19 +1326,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
     DateTime selectedDate = DateTime.now().add(const Duration(hours: 1));
     TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
-    String selectedLocation = 'Plaza Premium Lounge';
+    String selectedLocation = '';
     final noteController = TextEditingController();
     int selectedReminderMinutes = 15;
     String? conflictWarning;
     bool isValidating = false;
     bool initialCheckDone = false;
 
-    final locations = [
-      'Plaza Premium Lounge',
-      'Gate 12 Lounge',
-      'Starbucks Reserve (Gate 14)',
-      'Transit Hotel Lobby',
-    ];
+    final searchController = TextEditingController(text: selectedLocation);
+    List<Venue> suggestions = [];
+    final venueRepository = VenueRepositoryImpl();
 
     Future<void> checkConflicts(StateSetter setSheetState) async {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
@@ -1458,41 +1457,88 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: locations.map((loc) {
-                      final isSelected = selectedLocation == loc;
-                      return ChoiceChip(
-                        label: Text(loc),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setSheetState(() => selectedLocation = loc);
-                        },
-                        selectedColor: const Color(0xFF7A432D),
-                        checkmarkColor: Colors.white,
-                        backgroundColor: Colors.transparent,
-                        labelStyle: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 11,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                          color: isSelected
-                              ? Colors.white
-                              : const Color(0xFF5C473E),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: isSelected
-                                ? Colors.transparent
-                                : const Color(0xFFE8E2DD),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                  TextField(
+                    controller: searchController,
+                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search meetings venue (e.g. Novotel, Cafe)...',
+                      hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF8C736B)),
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 16),
+                              onPressed: () {
+                                searchController.clear();
+                                setSheetState(() {
+                                  selectedLocation = '';
+                                  suggestions = [];
+                                });
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                      ),
+                    ),
+                    onChanged: (query) async {
+                      if (query.trim().length < 3) {
+                        setSheetState(() => suggestions = []);
+                        return;
+                      }
+                      final results = await venueRepository.searchVenues(query);
+                      setSheetState(() {
+                        suggestions = results;
+                      });
+                    },
                   ),
+
+                  // Autocomplete suggestions dropdown
+                  if (suggestions.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 160),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFFE8E2DD)),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Material(
+                        color: Colors.white,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: suggestions.length,
+                          itemBuilder: (context, index) {
+                            final v = suggestions[index];
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.location_on, size: 18, color: Color(0xFF7A432D)),
+                              title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold)),
+                              subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              onTap: () {
+                                setSheetState(() {
+                                  selectedLocation = v.name;
+                                  searchController.text = v.name;
+                                  suggestions = [];
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [

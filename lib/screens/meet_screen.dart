@@ -43,11 +43,11 @@ class _MeetScreenState extends State<MeetScreen> {
 
   String _meetingDate = '';
   String _meetingTime = '';
-  String _selectedLocation = 'Plaza Premium Lounge';
+  String _selectedLocation = '';
   int _selectedReminderMinutes = 15;
 
   // New discovery & reschedule poll variables
-  String _meetingCity = 'Vijayawada';
+  String _meetingCity = '';
   MeetingPurpose _meetingPurpose = MeetingPurpose.coffeeChat;
   String _meetingType = 'in_person'; // 'in_person' or 'online'
   Venue? _selectedVenue;
@@ -58,7 +58,9 @@ class _MeetScreenState extends State<MeetScreen> {
     super.initState();
     _activeTab = _state.meetingInitialTab;
     // Reset initial tab in state manager so future navigations default to 0
-    _state.meetingInitialTab = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _state.meetingInitialTab = 0;
+    });
     final now = DateTime.now();
     _meetingDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     _meetingTime = "${(now.hour + 1).toString().padLeft(2, '0')}:00";
@@ -80,6 +82,15 @@ class _MeetScreenState extends State<MeetScreen> {
 
       // Fetch current user profile
       _currentUserProfile = await UserService().getUserProfile(uid);
+      if (_currentUserProfile != null) {
+        final loc = (_currentUserProfile!.currentLocationName ?? _currentUserProfile!.homeBase ?? '').trim();
+        if (loc.isNotEmpty) {
+          final city = loc.split(',')[0].trim();
+          if (city.isNotEmpty) {
+            _meetingCity = city;
+          }
+        }
+      }
 
       // Query chats where current user is a participant
       final chatsSnapshot = await FirebaseFirestore.instance
@@ -1415,7 +1426,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                       context: context,
                                       builder: (ctx) => CreatePollDialog(
                                         meetingId: meetingId,
-                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        currentCity: data['meetingCity'] as String? ?? '',
                                         onPollCreated: () {
                                           setState(() {});
                                         },
@@ -1453,7 +1464,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                       context: context,
                                       builder: (ctx) => CreatePollDialog(
                                         meetingId: meetingId,
-                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        currentCity: data['meetingCity'] as String? ?? '',
                                         onPollCreated: () {
                                           setState(() {});
                                         },

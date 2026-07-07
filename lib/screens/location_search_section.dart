@@ -231,12 +231,14 @@ class _LocationSearchSectionState extends State<LocationSearchSection> {
           Container(
             constraints: const BoxConstraints(maxHeight: 200),
             decoration: BoxDecoration(
-              color: Colors.white,
               border: Border.all(color: const Color(0xFFE8E2DD)),
               borderRadius: BorderRadius.circular(16),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
             ),
-            child: ListView.builder(
+            clipBehavior: Clip.antiAlias,
+            child: Material(
+              color: Colors.white,
+              child: ListView.builder(
               shrinkWrap: true,
               itemCount: _suggestions.length,
               itemBuilder: (context, index) {
@@ -258,6 +260,7 @@ class _LocationSearchSectionState extends State<LocationSearchSection> {
               },
             ),
           ),
+        ),
         ],
 
         const SizedBox(height: 16),

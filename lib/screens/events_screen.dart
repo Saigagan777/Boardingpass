@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import '../utils/google_search_helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
@@ -94,23 +94,7 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _searchVenues(String query) async {
-    try {
-      final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5');
-      final response = await http.get(url, headers: {'User-Agent': 'BoardingPassApp/1.0'});
-      if (response.statusCode == 200) {
-        final list = jsonDecode(response.body) as List;
-        return list.map((item) {
-          return {
-            'display_name': item['display_name'] as String,
-            'lat': double.parse(item['lat'] as String),
-            'lon': double.parse(item['lon'] as String),
-          };
-        }).toList();
-      }
-    } catch (e) {
-      debugPrint('Geocoding search error: $e');
-    }
-    return [];
+    return searchGoogleGeocoding(query);
   }
 
   Map<String, double>? _extractCoordinatesFromUrl(String url) {
@@ -506,36 +490,41 @@ class _EventsScreenState extends State<EventsScreen> {
                           decoration: BoxDecoration(
                             border: Border.all(color: const Color(0xFFE8E2DD)),
                             borderRadius: BorderRadius.circular(10),
-                            color: Colors.white,
                           ),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: searchResults.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE8E2DD)),
-                            itemBuilder: (context, index) {
-                              final item = searchResults[index];
-                              return ListTile(
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                                title: Text(
-                                  item['display_name'],
-                                  style: const TextStyle(fontSize: 12, fontFamily: 'PlusJakartaSans', color: Color(0xFF3E1F11)),
-                                ),
-                                onTap: () {
-                                  setDialogState(() {
-                                    isSelectingVenue = true;
-                                    locController.text = item['display_name'];
-                                    latitude = item['lat'];
-                                    longitude = item['lon'];
-                                    mapsController.text = 'https://www.google.com/maps/search/?api=1&query=${item['lat']},${item['lon']}';
-                                    geocodeStatus = '✓ Location selected!';
-                                    searchResults = [];
-                                  });
-                                  isSelectingVenue = false;
-                                },
-                              );
-                            },
+                          clipBehavior: Clip.antiAlias,
+                          child: Material(
+                            color: Colors.white,
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: searchResults.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE8E2DD)),
+                              itemBuilder: (context, index) {
+                                final item = searchResults[index];
+                                return ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                  title: Text(
+                                    item['display_name'],
+                                    style: const TextStyle(fontSize: 12, fontFamily: 'PlusJakartaSans', color: Color(0xFF3E1F11)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onTap: () {
+                                    setDialogState(() {
+                                      isSelectingVenue = true;
+                                      locController.text = item['display_name'];
+                                      latitude = item['lat'];
+                                      longitude = item['lon'];
+                                      mapsController.text = 'https://www.google.com/maps/search/?api=1&query=${item['lat']},${item['lon']}';
+                                      geocodeStatus = '✓ Location selected!';
+                                      searchResults = [];
+                                    });
+                                    isSelectingVenue = false;
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ],
