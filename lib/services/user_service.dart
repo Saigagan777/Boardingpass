@@ -166,7 +166,10 @@ class UserService {
       if (completedMentoringSessions != null) updates['completedMentoringSessions'] = completedMentoringSessions;
       if (successfulCollaborations != null) updates['successfulCollaborations'] = successfulCollaborations;
 
-      await _usersRef.doc(userId).update(updates);
+      await _usersRef
+          .doc(userId)
+          .set(updates, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 10));
     } catch (e) {
       throw Exception('Failed to update user profile: $e');
     }

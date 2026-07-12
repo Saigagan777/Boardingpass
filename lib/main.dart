@@ -54,13 +54,15 @@ void main() async {
   }
 
   // Initialize notifications (non-blocking)
-  try {
-    await NotificationService().initialize();
-    await NotificationService().requestPermission();
-    await NotificationService().getAndStoreFcmToken();
-  } catch (e) {
-    debugPrint('Notification init error: $e');
-  }
+  unawaited(Future(() async {
+    try {
+      await NotificationService().initialize();
+      await NotificationService().requestPermission();
+      await NotificationService().getAndStoreFcmToken();
+    } catch (e) {
+      debugPrint('Notification init error: $e');
+    }
+  }));
 
   appState.init();
   runApp(const MainApp());

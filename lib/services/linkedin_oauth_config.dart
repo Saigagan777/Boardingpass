@@ -12,16 +12,11 @@ class LinkedInOAuthConfig {
     }
 
     final baseUri = Uri.base;
-    // Force the exact registered redirect URI when running locally/debug to avoid 127.0.0.1 vs localhost mismatch
-    if (kDebugMode || baseUri.host == 'localhost' || baseUri.host == '127.0.0.1') {
-      return 'http://localhost:5000';
-    }
-
     if (baseUri.hasScheme && baseUri.hasAuthority) {
       return '${baseUri.scheme}://${baseUri.authority}';
     }
 
-    return 'http://localhost:8080';
+    return 'http://localhost:5000';
   }
 
   static String authorizationUrl({required String redirectUri}) {

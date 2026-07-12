@@ -485,7 +485,11 @@ class AppStateManager extends ChangeNotifier {
   Future<void> loadCandidates() async {
     try {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUid == null) return;
+      debugPrint('[DEBUG loadCandidates] called. currentUid: $currentUid');
+      if (currentUid == null) {
+        debugPrint('[DEBUG loadCandidates] currentUid is null. Returning.');
+        return;
+      }
 
       // 1. Fetch current user's swipes to partition them
       final swipesSnapshot = await FirebaseFirestore.instance
@@ -587,12 +591,14 @@ class AppStateManager extends ChangeNotifier {
         ...connSnap2.docs.map((doc) => doc.data()['userA'] as String),
       };
 
+      debugPrint('[DEBUG loadCandidates] swipes=${swipesSnapshot.docs.length}, conn=${connectedUids.length}, outgoing=${outgoingReqs.docs.length}, incoming=${incomingReqs.docs.length}');
+
       // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
-          .where('isDiscoverable', isEqualTo: true)
           .limit(100)
           .get();
+      debugPrint('[DEBUG loadCandidates] users collection fetched count: ${querySnapshot.docs.length}');
 
       // 2.5 Fetch current user details to calculate dynamic match scores
       final currentUserDoc = await FirebaseFirestore.instance
@@ -626,12 +632,43 @@ class AppStateManager extends ChangeNotifier {
 
       final List<Candidate> allProfiles = [];
       final docsToProcess = querySnapshot.docs.where(
-        (doc) =>
-            doc.id != currentUid &&
-            !permanentlyExcludedUids.contains(doc.id) &&
-            !pendingReqUids.contains(doc.id) &&
-            !connectedUids.contains(doc.id),
-      );
+        (doc) {
+          final data = doc.data();
+          final isDiscoverable = data['isDiscoverable'] ?? true;
+          final pass = doc.id != currentUid &&
+              isDiscoverable &&
+              !permanentlyExcludedUids.contains(doc.id) &&
+              !pendingReqUids.contains(doc.id) &&
+              !connectedUids.contains(doc.id);
+          debugPrint('[DEBUG loadCandidates] User doc: ${doc.id}, name: ${data['name']}, isDiscoverable: $isDiscoverable, pass: $pass');
+          return pass;
+        },
+      ).toList();
+      debugPrint('[DEBUG loadCandidates] docsToProcess count: ${docsToProcess.length}');
+
+      // Resolve current user's location once before the loop to avoid redundant geocoding queries
+      GeoPoint? currentUserGeo = _currentUserProfile?.location;
+      if (currentUserGeo == null) {
+        final String userCity = (_currentUserProfile?.currentLocationName ?? _currentUserProfile?.homeBase ?? '').toString();
+        if (userCity.isNotEmpty) {
+          currentUserGeo = _getOfflineCoordinatesForCity(userCity);
+          if (currentUserGeo == null) {
+            try {
+              final geocodeResults = await searchGoogleGeocoding(userCity).timeout(const Duration(seconds: 2));
+              if (geocodeResults.isNotEmpty) {
+                currentUserGeo = GeoPoint(
+                  geocodeResults.first['lat'] as double,
+                  geocodeResults.first['lon'] as double,
+                );
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(currentUid)
+                    .update({'location': currentUserGeo}).catchError((_) => null);
+              }
+            } catch (_) {}
+          }
+        }
+      }
 
       for (final doc in docsToProcess) {
         final data = doc.data();
@@ -701,45 +738,21 @@ class AppStateManager extends ChangeNotifier {
         if (candidateGeo == null) {
           final String candCity = (data['currentLocationName'] ?? data['homeBase'] ?? '').toString();
           if (candCity.isNotEmpty) {
-            try {
-              final geocodeResults = await searchGoogleGeocoding(candCity);
-              if (geocodeResults.isNotEmpty) {
-                candidateGeo = GeoPoint(
-                  geocodeResults.first['lat'] as double,
-                  geocodeResults.first['lon'] as double,
-                );
-                FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(doc.id)
-                    .update({'location': candidateGeo}).catchError((_) => null);
-              } else {
-                candidateGeo = _getOfflineCoordinatesForCity(candCity);
-              }
-            } catch (_) {
-              candidateGeo = _getOfflineCoordinatesForCity(candCity);
-            }
-          }
-        }
-        GeoPoint? currentUserGeo = _currentUserProfile?.location;
-        if (currentUserGeo == null) {
-          final String userCity = (_currentUserProfile?.currentLocationName ?? _currentUserProfile?.homeBase ?? '').toString();
-          if (userCity.isNotEmpty) {
-            try {
-              final geocodeResults = await searchGoogleGeocoding(userCity);
-              if (geocodeResults.isNotEmpty) {
-                currentUserGeo = GeoPoint(
-                  geocodeResults.first['lat'] as double,
-                  geocodeResults.first['lon'] as double,
-                );
-                FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(currentUid)
-                    .update({'location': currentUserGeo}).catchError((_) => null);
-              } else {
-                currentUserGeo = _getOfflineCoordinatesForCity(userCity);
-              }
-            } catch (_) {
-              currentUserGeo = _getOfflineCoordinatesForCity(userCity);
+            candidateGeo = _getOfflineCoordinatesForCity(candCity);
+            if (candidateGeo == null) {
+              try {
+                final geocodeResults = await searchGoogleGeocoding(candCity).timeout(const Duration(milliseconds: 500));
+                if (geocodeResults.isNotEmpty) {
+                  candidateGeo = GeoPoint(
+                    geocodeResults.first['lat'] as double,
+                    geocodeResults.first['lon'] as double,
+                  );
+                  FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(doc.id)
+                      .update({'location': candidateGeo}).catchError((_) => null);
+                }
+              } catch (_) {}
             }
           }
         }
@@ -827,6 +840,7 @@ class AppStateManager extends ChangeNotifier {
 
       _candidates.addAll([...nonDisliked, ...disliked]);
       _activeCandidateIndex = 0;
+      debugPrint('[DEBUG loadCandidates] finished. Final _candidates length: ${_candidates.length}');
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
