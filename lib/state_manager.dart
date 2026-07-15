@@ -68,10 +68,14 @@ class AppStateManager extends ChangeNotifier {
   AppScreen _currentScreen = AppScreen.hub;
   bool _isAdminView = false;
   String? _activeChatContact;
+  Offset? _lastTappedSegmentCenter;
+  List<String>? _activityOrder;
 
   AppScreen get currentScreen => _currentScreen;
   bool get isAdminView => _isAdminView;
   String? get activeChatContact => _activeChatContact;
+  Offset? get lastTappedSegmentCenter => _lastTappedSegmentCenter;
+  List<String>? get activityOrder => _activityOrder;
 
   set currentScreen(AppScreen screen) {
     _currentScreen = screen;
@@ -86,6 +90,14 @@ class AppStateManager extends ChangeNotifier {
   set activeChatContact(String? val) {
     _activeChatContact = val;
     notifyListeners();
+  }
+
+  set lastTappedSegmentCenter(Offset? val) {
+    _lastTappedSegmentCenter = val;
+  }
+
+  set activityOrder(List<String>? val) {
+    _activityOrder = val;
   }
 
   int _meetingInitialTab = 0;

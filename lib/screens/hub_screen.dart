@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -39,14 +42,26 @@ class HubScreen extends StatefulWidget {
   State<HubScreen> createState() => _HubScreenState();
 }
 
-class _HubScreenState extends State<HubScreen> {
+class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
   final AppStateManager _state = AppStateManager();
-  int? _hoveredIndex;
-  int _hoverSequence = 0;
   int _tickerIndex = 0;
   Timer? _tickerTimer;
   int _carouselItemCount = 2;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _notificationsBadgeStream;
+
+  // Apple Watch Dial Interaction State
+  late List<Map<String, dynamic>> _orderedActivities;
+  double _rotationAngle = 0.0;
+  int _lastFocusedIndex = 0;
+  late AnimationController _snapController;
+  late AnimationController _wiggleController;
+  bool _isEditMode = false;
+  int? _draggedIndex;
+  double? _draggedAngle;
+
+  double _lastTouchAngle = 0.0;
+  DateTime _lastUpdateTime = DateTime.now();
+  double _angularVelocity = 0.0;
 
   Stream<QuerySnapshot<Map<String, dynamic>>>? get _badgeStream {
     if (_notificationsBadgeStream == null) {
@@ -62,20 +77,7 @@ class _HubScreenState extends State<HubScreen> {
     return _notificationsBadgeStream;
   }
 
-  void _updateHoveredIndex(int? index) {
-    if (_hoveredIndex != index) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _hoveredIndex != index) {
-          setState(() {
-            _hoveredIndex = index;
-            _hoverSequence++;
-          });
-        }
-      });
-    }
-  }
-
-  // 6 Honeycomb activities
+  // 6 Dial activities
   final List<Map<String, dynamic>> _activities = [
     {
       'screen': AppScreen.profile,
@@ -131,6 +133,40 @@ class _HubScreenState extends State<HubScreen> {
   void initState() {
     super.initState();
     _state.addListener(_onStateChanged);
+    
+    // Initialize ordered activities list
+    _orderedActivities = List.from(_activities);
+    
+    // Apply persisted customization order if present
+    if (_state.activityOrder != null) {
+      final orderMap = {for (var i = 0; i < _state.activityOrder!.length; i++) _state.activityOrder![i]: i};
+      _orderedActivities.sort((a, b) {
+        final aIndex = orderMap[a['label']] ?? 99;
+        final bIndex = orderMap[b['label']] ?? 99;
+        return aIndex.compareTo(bIndex);
+      });
+    }
+
+    _snapController = AnimationController.unbounded(
+      vsync: this,
+      value: 0.0,
+    )..addListener(() {
+        setState(() {
+          _rotationAngle = _snapController.value;
+          
+          final int currentFocused = _getFocusedIndex();
+          if (currentFocused != _lastFocusedIndex) {
+            HapticFeedback.selectionClick();
+            _lastFocusedIndex = currentFocused;
+          }
+        });
+      });
+
+    _wiggleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+
     _tickerTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
       if (mounted && _carouselItemCount > 0) {
         setState(() {
@@ -138,10 +174,104 @@ class _HubScreenState extends State<HubScreen> {
         });
       }
     });
-    // Trigger dynamic location detection on startup/load
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoDetectAndUpdateLocation();
     });
+  }
+
+  // Physics-based dial helpers
+  void _onPanStart(DragStartDetails details, Offset dialCenter) {
+    _snapController.stop();
+    final localPosition = details.globalPosition - dialCenter;
+    _lastTouchAngle = math.atan2(localPosition.dy, localPosition.dx);
+    _lastUpdateTime = DateTime.now();
+    _angularVelocity = 0.0;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details, Offset dialCenter) {
+    final localPosition = details.globalPosition - dialCenter;
+    final double touchAngle = math.atan2(localPosition.dy, localPosition.dx);
+    double delta = touchAngle - _lastTouchAngle;
+    
+    if (delta > math.pi) delta -= 2 * math.pi;
+    if (delta < -math.pi) delta += 2 * math.pi;
+    
+    final now = DateTime.now();
+    final double dt = now.difference(_lastUpdateTime).inMicroseconds / 1000000.0;
+    if (dt > 0.002) {
+      final double instantVelocity = delta / dt;
+      final double clampedInstant = instantVelocity.clamp(-20.0, 20.0);
+      _angularVelocity = 0.85 * _angularVelocity + 0.15 * clampedInstant;
+    }
+    _lastUpdateTime = now;
+    
+    setState(() {
+      _rotationAngle += delta;
+      
+      final int currentFocused = _getFocusedIndex();
+      if (currentFocused != _lastFocusedIndex) {
+        HapticFeedback.selectionClick();
+        _lastFocusedIndex = currentFocused;
+      }
+    });
+    _lastTouchAngle = touchAngle;
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    double velocity = _angularVelocity.clamp(-15.0, 15.0);
+    double rawStopAngle = _rotationAngle + (velocity * 0.15);
+    double spacing = 2 * math.pi / 6;
+    double targetAngle = (rawStopAngle / spacing).round() * spacing;
+    _startSpringAnimation(targetAngle, velocity);
+  }
+
+  void _startSpringAnimation(double targetAngle, double startingVelocity) {
+    _snapController.stop();
+    final spring = SpringDescription(
+      mass: 1.0,
+      stiffness: 110.0,
+      damping: 12.0,
+    );
+    final simulation = SpringSimulation(
+      spring,
+      _rotationAngle,
+      targetAngle,
+      startingVelocity,
+    );
+    _snapController.animateWith(simulation);
+  }
+
+  int _getFocusedIndex() {
+    double normalizedRot = -_rotationAngle % (2 * math.pi);
+    if (normalizedRot < 0) normalizedRot += 2 * math.pi;
+    final spacing = 2 * math.pi / 6;
+    return ((normalizedRot / spacing).round()) % 6;
+  }
+
+  void _onReorderUpdate(DragUpdateDetails details, Offset dialCenter) {
+    final localPos = details.globalPosition - dialCenter;
+    final double touchAngle = math.atan2(localPos.dy, localPos.dx);
+    
+    setState(() {
+      _draggedAngle = touchAngle;
+    });
+
+    double relativeAngle = touchAngle - _rotationAngle + math.pi / 2;
+    relativeAngle = relativeAngle % (2 * math.pi);
+    if (relativeAngle < 0) relativeAngle += 2 * math.pi;
+    final spacing = 2 * math.pi / 6;
+    int targetSlot = (relativeAngle / spacing).round() % 6;
+
+    if (targetSlot != _draggedIndex && _draggedIndex != null) {
+      final item = _orderedActivities.removeAt(_draggedIndex!);
+      _orderedActivities.insert(targetSlot, item);
+      setState(() {
+        _draggedIndex = targetSlot;
+      });
+      HapticFeedback.lightImpact();
+      _state.activityOrder = _orderedActivities.map((a) => a['label'] as String).toList();
+    }
   }
 
   Future<void> _autoDetectAndUpdateLocation() async {
@@ -149,12 +279,10 @@ class _HubScreenState extends State<HubScreen> {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       if (currentUid == null) return;
 
-      // 1. Fetch current position from Geolocator
       final position = await LocationService().getCurrentPosition();
       final geoPoint = GeoPoint(position.latitude, position.longitude);
       final geohash = LocationService().generateGeohash(position.latitude, position.longitude);
 
-      // 2. Perform reverse geocoding via Google Maps API
       final addressData = await reverseGeocodeAddress(position.latitude, position.longitude);
       if (addressData != null) {
         final city = addressData['city'] ?? '';
@@ -163,7 +291,6 @@ class _HubScreenState extends State<HubScreen> {
         if (city.isNotEmpty) {
           final detectedLocName = [city, state, country].where((e) => e.isNotEmpty).join(', ');
 
-          // Only update if it has changed to save Firestore writes
           final savedLoc = _state.profileData?['location'];
           if (savedLoc != detectedLocName) {
             await FirebaseFirestore.instance.collection('users').doc(currentUid).update({
@@ -190,6 +317,8 @@ class _HubScreenState extends State<HubScreen> {
   void dispose() {
     _state.removeListener(_onStateChanged);
     _tickerTimer?.cancel();
+    _snapController.dispose();
+    _wiggleController.dispose();
     super.dispose();
   }
 
@@ -398,7 +527,7 @@ class _HubScreenState extends State<HubScreen> {
                           final aTime = a.data()['timestamp'] as Timestamp?;
                           final bTime = b.data()['timestamp'] as Timestamp?;
                           if (aTime == null && bTime == null) return 0;
-                          if (aTime == null) return 1; // Null/missing timestamps at the end
+                          if (aTime == null) return 1;
                           if (bTime == null) return -1;
                           return bTime.compareTo(aTime);
                         });
@@ -530,9 +659,6 @@ class _HubScreenState extends State<HubScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isDiscoverable = _state.currentUserProfile?.isDiscoverable ?? true;
 
-    final Map<String, dynamic>? focusedActivity =
-        _hoveredIndex != null ? _activities[_hoveredIndex!] : null;
-
     final String fullName = _state.profileData?['name'] ?? 'User';
     final String userName = fullName.trim().split(' ').first;
 
@@ -576,7 +702,6 @@ class _HubScreenState extends State<HubScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Welcome Row
             Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: screenWidth * 0.07,
@@ -633,7 +758,6 @@ class _HubScreenState extends State<HubScreen> {
                   ),
                   Row(
                     children: [
-                      // Discovery Switch
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -671,7 +795,6 @@ class _HubScreenState extends State<HubScreen> {
                         ],
                       ),
                       const SizedBox(width: 10),
-                      // Streamed Notifications Bell Icon with badge
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: _badgeStream,
                         builder: (context, snapshot) {
@@ -752,14 +875,11 @@ class _HubScreenState extends State<HubScreen> {
                           ),
                         ),
                       ),
-
                     ],
                   ),
                 ],
               ),
             ),
-
-            // Hexagon Stage
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -771,16 +891,12 @@ class _HubScreenState extends State<HubScreen> {
 
                   final double stageWidth = 320 * scale;
                   final double stageHeight = 340 * scale;
-                  final double R = 106.0 * scale;
+                  final Offset dialCenter = Offset(stageWidth / 2, stageHeight / 2);
+                  final double rOrbit = 106.0 * scale;
+                  final double rCenter = 56.0 * scale;
 
-                  final List<Offset> positions = [
-                    Offset(0, -R),
-                    Offset(R * 0.866, -R * 0.5),
-                    Offset(R * 0.866, R * 0.5),
-                    Offset(0, R),
-                    Offset(-R * 0.866, R * 0.5),
-                    Offset(-R * 0.866, -R * 0.5),
-                  ];
+                  final focusedSlotIndex = _getFocusedIndex();
+                  final focusedActivity = _orderedActivities[focusedSlotIndex];
 
                   return Center(
                     child: SizedBox(
@@ -790,28 +906,89 @@ class _HubScreenState extends State<HubScreen> {
                         alignment: Alignment.center,
                         children: [
                           Container(
-                            width: 280 * scale,
-                            height: 280 * scale,
+                            width: (rOrbit * 2) + 2.0,
+                            height: (rOrbit * 2) + 2.0,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  const Color(0xFF7A432D).withValues(alpha: 0.08),
-                                  const Color(0xFF7A432D).withValues(alpha: 0.02),
-                                  Colors.transparent,
-                                ],
+                              border: Border.all(
+                                color: const Color(0xFFEDD8C4).withValues(alpha: 0.1),
+                                width: 1.0,
                               ),
                             ),
                           ),
-
-                          SizedBox(
-                            width: 110 * scale,
-                            height: 110 * scale,
+                          GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onPanStart: (details) {
+                              final RenderBox? box = context.findRenderObject() as RenderBox?;
+                              if (box != null) {
+                                final globalDialCenter = box.localToGlobal(dialCenter);
+                                _onPanStart(details, globalDialCenter);
+                              }
+                            },
+                            onPanUpdate: (details) {
+                              final RenderBox? box = context.findRenderObject() as RenderBox?;
+                              if (box != null) {
+                                final globalDialCenter = box.localToGlobal(dialCenter);
+                                _onPanUpdate(details, globalDialCenter);
+                              }
+                            },
+                            onPanEnd: _onPanEnd,
+                            child: Container(
+                              width: (rOrbit * 2) + (62.0 * scale),
+                              height: (rOrbit * 2) + (62.0 * scale),
+                              color: Colors.transparent,
+                            ),
+                          ),
+                          Container(
+                            width: rCenter * 2,
+                            height: rCenter * 2,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFFFAF7F5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 8 * scale,
+                                  offset: const Offset(0, 3),
+                                )
+                              ],
+                              border: Border.all(
+                                color: const Color(0xFFEDD8C4),
+                                width: 2.0,
+                              ),
+                            ),
+                            alignment: Alignment.center,
                             child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: focusedActivity != null
-                                  ? Column(
-                                      key: ValueKey('hub_center_$_hoverSequence'),
+                              duration: const Duration(milliseconds: 250),
+                              child: _isEditMode
+                                  ? GestureDetector(
+                                      key: const ValueKey('edit_mode_center'),
+                                      onTap: () {
+                                        setState(() {
+                                          _isEditMode = false;
+                                          _draggedIndex = null;
+                                          _draggedAngle = null;
+                                        });
+                                        _wiggleController.stop();
+                                        HapticFeedback.mediumImpact();
+                                      },
+                                      child: Container(
+                                        width: 50 * scale,
+                                        height: 50 * scale,
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Color(0xFF7A432D),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: const Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      ),
+                                    )
+                                  : Column(
+                                      key: ValueKey('hub_center_focused_$focusedSlotIndex'),
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
                                         Text(
@@ -820,18 +997,18 @@ class _HubScreenState extends State<HubScreen> {
                                             fontFamily: 'PlusJakartaSans',
                                             fontSize: 9 * scale,
                                             fontWeight: FontWeight.bold,
-                                            letterSpacing: 2 * scale,
+                                            letterSpacing: 1.8 * scale,
                                             color: const Color(0xFF8C736B),
                                           ),
                                         ),
-                                        SizedBox(height: 2 * scale),
+                                        const SizedBox(height: 1),
                                         Text(
                                           focusedActivity['label'],
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontFamily: 'PlayfairDisplay',
-                                            fontSize: 16 * scale,
+                                            fontSize: 14 * scale,
                                             fontWeight: FontWeight.w700,
                                             color: const Color(0xFF3E1F11),
                                           ),
@@ -843,158 +1020,125 @@ class _HubScreenState extends State<HubScreen> {
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10 * scale,
+                                            fontSize: 9 * scale,
                                             color: const Color(0xFF8C736B),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : Column(
-                                      key: ValueKey('hub_center_$_hoverSequence'),
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Container(
-                                          width: 60 * scale,
-                                          height: 60 * scale,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: const Color(0xFF7A432D),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: const Color(0xFF7A432D).withValues(alpha: 0.22),
-                                                blurRadius: 10 * scale,
-                                                offset: Offset(0, 4 * scale),
-                                              )
-                                            ],
-                                          ),
-                                          child: Icon(
-                                            Icons.airplanemode_active,
-                                            color: Colors.white,
-                                            size: 26 * scale,
-                                          ),
-                                        ),
-                                        SizedBox(height: 6 * scale),
-                                        Text(
-                                          'HUB',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10 * scale,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 2.5 * scale,
-                                            color: const Color(0xFF7A432D),
                                           ),
                                         ),
                                       ],
                                     ),
                             ),
                           ),
+                          ...List.generate(6, (slotIndex) {
+                            final activity = _orderedActivities[slotIndex];
+                            final label = activity['label'] as String;
+                            final color = activity['color'] as Color;
+                            final textColor = activity['textColor'] as Color;
+                            final icon = activity['icon'] as IconData;
+                            final screen = activity['screen'] as AppScreen;
 
-                          ...List.generate(6, (index) {
-                            final act = _activities[index];
-                            final pos = positions[index];
-                            final isFocused = _hoveredIndex == index;
-                            final isAnyFocused = _hoveredIndex != null;
+                            final double relativeSlotAngle = slotIndex * (2 * math.pi / 6);
+                            final isFocused = focusedSlotIndex == slotIndex && !_isEditMode;
+                            final isDragged = _draggedIndex == slotIndex;
 
-                            return Positioned(
-                              left: (stageWidth / 2) + pos.dx - (36 * scale),
-                              top: (stageHeight / 2) + pos.dy - (40 * scale),
-                              child: GestureDetector(
-                                onPanDown: (_) => _updateHoveredIndex(index),
-                                onPanCancel: () => _updateHoveredIndex(null),
-                                onPanEnd: (_) => _updateHoveredIndex(null),
-                                onTapDown: (_) => _updateHoveredIndex(index),
-                                onTapUp: (_) => _updateHoveredIndex(null),
-                                onTap: () {
-                                  _state.currentScreen = act['screen'];
+                            if (_isEditMode) {
+                              return TweenAnimationBuilder<double>(
+                                key: ValueKey('dial_slot_edit_$label'),
+                                tween: Tween<double>(begin: relativeSlotAngle, end: relativeSlotAngle),
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOutBack,
+                                builder: (context, animatedRelativeAngle, childWidget) {
+                                  double angle = _rotationAngle + animatedRelativeAngle - math.pi / 2;
+                                  if (isDragged && _draggedAngle != null) {
+                                    angle = _draggedAngle!;
+                                  }
+
+                                  final double x = (stageWidth / 2) + rOrbit * math.cos(angle) - (72 * scale / 2);
+                                  final double y = (stageHeight / 2) + rOrbit * math.sin(angle) - (80 * scale / 2);
+
+                                  double wiggleAngle = 0.0;
+                                  if (!isDragged) {
+                                    final phaseShift = slotIndex * math.pi / 3;
+                                    wiggleAngle = 0.04 * math.sin((_wiggleController.value * 2 * math.pi) + phaseShift);
+                                  }
+
+                                  return Positioned(
+                                    left: x,
+                                    top: y,
+                                    child: GestureDetector(
+                                      onPanStart: (details) {
+                                        setState(() {
+                                          _draggedIndex = slotIndex;
+                                          _draggedAngle = angle;
+                                        });
+                                        HapticFeedback.lightImpact();
+                                      },
+                                      onPanUpdate: (details) {
+                                        if (_draggedIndex != null) {
+                                          final RenderBox? box = context.findRenderObject() as RenderBox?;
+                                          if (box != null) {
+                                            final globalDialCenter = box.localToGlobal(dialCenter);
+                                            _onReorderUpdate(details, globalDialCenter);
+                                          }
+                                        }
+                                      },
+                                      onPanEnd: (details) {
+                                        setState(() {
+                                          _draggedIndex = null;
+                                          _draggedAngle = null;
+                                        });
+                                        HapticFeedback.mediumImpact();
+                                      },
+                                      onTap: () {
+                                        setState(() {
+                                          _isEditMode = false;
+                                          _draggedIndex = null;
+                                          _draggedAngle = null;
+                                        });
+                                        _wiggleController.stop();
+                                        HapticFeedback.mediumImpact();
+                                      },
+                                      child: Transform.rotate(
+                                        angle: wiggleAngle,
+                                        child: AnimatedScale(
+                                          duration: const Duration(milliseconds: 200),
+                                          scale: isDragged ? 1.25 : 1.0,
+                                          child: _buildSegmentNodeContent(scale, color, textColor, icon, label),
+                                        ),
+                                      ),
+                                    ),
+                                  );
                                 },
-                                child: MouseRegion(
-                                  onEnter: (_) => _updateHoveredIndex(index),
-                                  onExit: (_) => _updateHoveredIndex(null),
+                              );
+                            } else {
+                              final double angle = _rotationAngle + relativeSlotAngle - math.pi / 2;
+                              final double x = (stageWidth / 2) + rOrbit * math.cos(angle) - (72 * scale / 2);
+                              final double y = (stageHeight / 2) + rOrbit * math.sin(angle) - (80 * scale / 2);
+
+                              return Positioned(
+                                left: x,
+                                top: y,
+                                child: GestureDetector(
+                                  onLongPress: () {
+                                    HapticFeedback.heavyImpact();
+                                    setState(() {
+                                      _isEditMode = true;
+                                      _draggedIndex = slotIndex;
+                                      _draggedAngle = angle;
+                                    });
+                                    _wiggleController.repeat(reverse: true);
+                                  },
+                                  onTapUp: (details) {
+                                    _state.lastTappedSegmentCenter = details.globalPosition;
+                                    _state.currentScreen = screen;
+                                  },
                                   child: AnimatedScale(
                                     duration: const Duration(milliseconds: 200),
-                                    scale: isFocused
-                                        ? 1.15
-                                        : (isAnyFocused ? 0.88 : 1.0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (pos.dy < 0) ...[
-                                          AnimatedOpacity(
-                                            duration: const Duration(milliseconds: 200),
-                                            opacity: isFocused ? 1.0 : 0.6,
-                                            child: Text(
-                                              act['label'],
-                                              style: TextStyle(
-                                                fontFamily: 'PlusJakartaSans',
-                                                fontSize: 10 * scale,
-                                                fontWeight: FontWeight.bold,
-                                                color: isFocused
-                                                    ? const Color(0xFF3E1F11)
-                                                    : const Color(0xFF8C736B),
-                                              ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 4 * scale),
-                                        ],
-                                        Stack(
-                                          alignment: Alignment.center,
-                                          children: [
-                                            Container(
-                                              width: 58 * scale,
-                                              height: 58 * scale,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: const Color(0xFF7A432D).withValues(alpha: isFocused ? 0.14 : 0.06),
-                                                    blurRadius: isFocused ? 12 * scale : 6 * scale,
-                                                    offset: Offset(0, isFocused ? 4 * scale : 2 * scale),
-                                                  )
-                                                ],
-                                              ),
-                                            ),
-                                            ClipPath(
-                                              clipper: HexagonClipper(),
-                                              child: Container(
-                                                width: 72 * scale,
-                                                height: 80 * scale,
-                                                color: act['color'],
-                                                alignment: Alignment.center,
-                                                child: Icon(
-                                                  act['icon'],
-                                                  color: act['textColor'],
-                                                  size: 26 * scale,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (pos.dy >= 0) ...[
-                                          SizedBox(height: 4 * scale),
-                                          AnimatedOpacity(
-                                            duration: const Duration(milliseconds: 200),
-                                            opacity: isFocused ? 1.0 : 0.6,
-                                            child: Text(
-                                              act['label'],
-                                              style: TextStyle(
-                                                fontFamily: 'PlusJakartaSans',
-                                                fontSize: 10 * scale,
-                                                fontWeight: FontWeight.bold,
-                                                color: isFocused
-                                                    ? const Color(0xFF3E1F11)
-                                                    : const Color(0xFF8C736B),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
+                                    scale: isFocused ? 1.15 : 1.0,
+                                    child: _buildSegmentNodeContent(scale, color, textColor, icon, label, isFocused: isFocused),
                                   ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           }),
                         ],
                       ),
@@ -1003,8 +1147,7 @@ class _HubScreenState extends State<HubScreen> {
                 },
               ),
             ),
-
-            // Ad / Notifications Carousel
+            SizedBox(height: screenHeight < 650 ? 4 : 10),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
               child: _buildAdNotifCarousel(),
@@ -1456,11 +1599,64 @@ class _HubScreenState extends State<HubScreen> {
     );
   }
 
+
+
   String _formatDateTime(DateTime dt) {
     final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final hourStr = dt.hour.toString().padLeft(2, '0');
     final minStr = dt.minute.toString().padLeft(2, '0');
     return "${dt.day} ${months[dt.month - 1]} at $hourStr:$minStr";
+  }
+
+  Widget _buildSegmentNodeContent(double scale, Color color, Color textColor, IconData icon, String label, {bool isFocused = false}) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 58 * scale,
+          height: 58 * scale,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7A432D).withValues(alpha: isFocused ? 0.16 : 0.06),
+                blurRadius: isFocused ? 12 * scale : 6 * scale,
+                offset: Offset(0, isFocused ? 4 * scale : 2 * scale),
+              )
+            ],
+          ),
+        ),
+        ClipPath(
+          clipper: HexagonClipper(),
+          child: Container(
+            width: 72 * scale,
+            height: 80 * scale,
+            color: color,
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  color: textColor,
+                  size: 24 * scale,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 9.0 * scale,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _launchURL(String urlString) async {
@@ -1471,3 +1667,5 @@ class _HubScreenState extends State<HubScreen> {
     }
   }
 }
+
+

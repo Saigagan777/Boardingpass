@@ -476,7 +476,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }
 
   Widget _buildMobileAppShell() {
-    return _buildAppNavigation();
+    return RadialMorphSwitcher(
+      currentScreen: _state.currentScreen,
+      child: _buildAppNavigation(),
+    );
   }
 
   // Standard standard app navigation flow with active screen selector
@@ -524,7 +527,121 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         break;
     }
 
-    return activeWidget;
+    return KeyedSubtree(
+      key: ValueKey(_state.currentScreen),
+      child: activeWidget,
+    );
+  }
+}
+
+class RadialMorphSwitcher extends StatelessWidget {
+  final AppScreen currentScreen;
+  final Widget child;
+
+  const RadialMorphSwitcher({
+    super.key,
+    required this.currentScreen,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateManager();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 650),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+        final List<Widget> children = [];
+        if (currentScreen == AppScreen.hub) {
+          if (currentChild != null) children.add(currentChild);
+          children.addAll(previousChildren);
+        } else {
+          children.addAll(previousChildren);
+          if (currentChild != null) children.add(currentChild);
+        }
+        return Stack(
+          clipBehavior: Clip.none,
+          children: children,
+        );
+      },
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final ValueKey<AppScreen>? valueKey = child.key as ValueKey<AppScreen>?;
+        final screen = valueKey?.value;
+
+        if (screen == AppScreen.hub) {
+          return FadeTransition(
+            opacity: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
+            child: child,
+          );
+        } else {
+          return AnimatedBuilder(
+            animation: animation,
+            builder: (context, childWidget) {
+              final center = state.lastTappedSegmentCenter ?? MediaQuery.of(context).size.center(Offset.zero);
+              return ClipPath(
+                clipper: RadialCircleClipper(
+                  fraction: animation.value,
+                  center: center,
+                ),
+                child: childWidget,
+              );
+            },
+            child: child,
+          );
+        }
+      },
+      child: child,
+    );
+  }
+}
+
+class RadialCircleClipper extends CustomClipper<Path> {
+  final double fraction;
+  final Offset center;
+
+  RadialCircleClipper({
+    required this.fraction,
+    required this.center,
+  });
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    if (fraction <= 0.0) {
+      return path;
+    }
+    if (fraction >= 1.0) {
+      path.addRect(Offset.zero & size);
+      return path;
+    }
+
+    final double maxRadius = _calcMaxRadius(size, center);
+    final double radius = fraction * maxRadius;
+    path.addOval(Rect.fromCircle(center: center, radius: radius));
+    return path;
+  }
+
+  double _calcMaxRadius(Size size, Offset center) {
+    final corners = [
+      Offset.zero,
+      Offset(size.width, 0),
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+    ];
+    double maxDist = 0.0;
+    for (final corner in corners) {
+      final dist = (center - corner).distance;
+      if (dist > maxDist) {
+        maxDist = dist;
+      }
+    }
+    return maxDist;
+  }
+
+  @override
+  bool shouldReclip(covariant RadialCircleClipper oldClipper) {
+    return oldClipper.fraction != fraction || oldClipper.center != center;
   }
 }
 
