@@ -16,7 +16,7 @@ class _MapWebViewState extends State<MapWebView> {
   @override
   void initState() {
     super.initState();
-    final String src = 'https://www.google.com/maps/embed/v1/place?key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I&q=${widget.latitude},${widget.longitude}';
+    final String src = 'https://www.google.com/maps/embed/v1/place?key=AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw&q=${widget.latitude},${widget.longitude}';
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..loadRequest(Uri.parse(src));

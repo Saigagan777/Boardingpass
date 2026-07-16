@@ -12,7 +12,7 @@ Future<List<Venue>> searchGooglePlaces(String query, {String? city, Map<String, 
     '/maps/api/place/textsearch/json',
     {
       'query': trimmedQuery,
-      'key': 'AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I',
+      'key': 'AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw',
     },
   );
 
@@ -69,7 +69,7 @@ Future<List<Venue>> searchGooglePlaces(String query, {String? city, Map<String, 
         if (firstPhoto is Map) {
           final photoRef = firstPhoto['photo_reference']?.toString() ?? '';
           if (photoRef.isNotEmpty) {
-            coverImg = 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=$photoRef&key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I';
+            coverImg = 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=$photoRef&key=AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw';
           }
         }
         imageUrls = [];
@@ -77,7 +77,7 @@ Future<List<Venue>> searchGooglePlaces(String query, {String? city, Map<String, 
           if (p is Map) {
             final ref = p['photo_reference']?.toString() ?? '';
             if (ref.isNotEmpty) {
-              imageUrls.add('https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=$ref&key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I');
+              imageUrls.add('https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=$ref&key=AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw');
             }
           }
         }
@@ -129,7 +129,7 @@ Future<List<Venue>> searchGooglePlaces(String query, {String? city, Map<String, 
 
 Future<List<Map<String, dynamic>>> searchGoogleGeocoding(String query) async {
   try {
-    final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}&key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I');
+    final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}&key=AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw');
     final response = await http.get(url);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -153,7 +153,7 @@ Future<List<Map<String, dynamic>>> searchGoogleGeocoding(String query) async {
 
 Future<Map<String, String>?> reverseGeocodeAddress(double lat, double lng) async {
   try {
-    final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I');
+    final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw');
     final response = await http.get(url);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);

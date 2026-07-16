@@ -10,7 +10,7 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     // Uncomment this line when google_maps_flutter is added to pubspec.yaml
-    // GMSServices.provideAPIKey("AIzaSyArjlbJ8ESHujeB_mBlyjEHC1IZoN99Y0I")
+    // GMSServices.provideAPIKey("AIzaSyAXjzGoUZVyISPLug4ZeovvBPr6vAJSxWw")
     
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
