@@ -707,57 +707,36 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                 horizontal: screenWidth * 0.07,
                 vertical: screenHeight < 650 ? screenHeight * 0.015 : screenHeight * 0.025,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const AppLogo(size: 22),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'ACTIVITY HUB',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2.5,
-                              color: Color(0xFF7A432D),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const AppLogo(size: 22),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'ACTIVITY HUB',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 2.5,
+                                color: Color(0xFF7A432D),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_getGreeting()}, $userName',
-                          style: TextStyle(
-                            fontFamily: 'PlayfairDisplay',
-                            fontSize: screenHeight < 650 ? 20 : 24,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF3E1F11),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'Pick any cell — no order, no funnel.',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 12,
-                            color: Color(0xFF8C736B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Row(
-                    children: [
+                        ],
+                      ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -792,90 +771,109 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                               },
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: _badgeStream,
-                        builder: (context, snapshot) {
-                          final unreadCount = snapshot.data?.docs.length ?? 0;
-                          return Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              IconButton(
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                icon: const Icon(Icons.notifications_none_outlined, color: Color(0xFF7A432D), size: 22),
-                                onPressed: () => _showNotificationsBottomSheet(context),
+                          const SizedBox(width: 10),
+                          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                            stream: _badgeStream,
+                            builder: (context, snapshot) {
+                              final unreadCount = snapshot.data?.docs.length ?? 0;
+                              return Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    icon: const Icon(Icons.notifications_none_outlined, color: Color(0xFF7A432D), size: 22),
+                                    onPressed: () => _showNotificationsBottomSheet(context),
+                                  ),
+                                  if (unreadCount > 0)
+                                    Positioned(
+                                      top: -2,
+                                      right: -2,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFC62828)),
+                                        constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          '$unreadCount',
+                                          style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 14),
+                          GestureDetector(
+                            onTap: () {
+                              _state.currentScreen = AppScreen.profile;
+                            },
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFFFFE8D6),
+                                    Color(0xFFE8D5C4),
+                                  ],
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x22000000),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                                border: Border.all(color: Colors.white, width: 2.5),
                               ),
-                              if (unreadCount > 0)
-                                Positioned(
-                                  top: -2,
-                                  right: -2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFC62828)),
-                                    constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
-                                    alignment: Alignment.center,
+                              child: ClipOval(
+                                child: buildProfileImage(
+                                  _state.profileData?['picture'] ?? '',
+                                  width: 46,
+                                  height: 46,
+                                  fit: BoxFit.cover,
+                                  fallback: Center(
                                     child: Text(
-                                      '$unreadCount',
-                                      style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                      userName.isNotEmpty ? userName.substring(0, 1).toUpperCase() : 'U',
+                                      style: const TextStyle(
+                                        fontFamily: 'PlayfairDisplay',
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18,
+                                        color: Color(0xFF7A432D),
+                                      ),
                                     ),
                                   ),
                                 ),
-                            ],
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 14),
-                      GestureDetector(
-                        onTap: () {
-                          _state.currentScreen = AppScreen.profile;
-                        },
-                        child: Container(
-                          width: 46,
-                          height: 46,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFFFFE8D6),
-                                Color(0xFFE8D5C4),
-                              ],
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x22000000),
-                                blurRadius: 8,
-                                offset: Offset(0, 3),
-                              )
-                            ],
-                            border: Border.all(color: Colors.white, width: 2.5),
-                          ),
-                          child: ClipOval(
-                            child: buildProfileImage(
-                              _state.profileData?['picture'] ?? '',
-                              width: 46,
-                              height: 46,
-                              fit: BoxFit.cover,
-                              fallback: Center(
-                                child: Text(
-                                  userName.isNotEmpty ? userName.substring(0, 1).toUpperCase() : 'U',
-                                  style: const TextStyle(
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Color(0xFF7A432D),
-                                  ),
-                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${_getGreeting()}, $userName',
+                    style: TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: screenHeight < 650 ? 20 : 24,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF3E1F11),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Pick any cell — no order, no funnel.',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 12,
+                      color: Color(0xFF8C736B),
+                    ),
                   ),
                 ],
               ),

@@ -836,8 +836,14 @@ class _EventsScreenState extends State<EventsScreen> {
                                     final double lat = event.latitude!;
                                     final double lon = event.longitude!;
                                     final url = event.mapUrl ?? 'https://www.google.com/maps/search/?api=1&query=$lat,$lon';
-                                    if (await canLaunchUrl(Uri.parse(url))) {
-                                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                    final uri = Uri.parse(url);
+                                    try {
+                                      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      if (!launched) {
+                                        await launchUrl(uri, mode: LaunchMode.platformDefault);
+                                      }
+                                    } catch (e) {
+                                      debugPrint('Could not launch map URL: $url - Error: $e');
                                     }
                                   },
                                   child: Container(
@@ -876,8 +882,14 @@ class _EventsScreenState extends State<EventsScreen> {
                         icon: const Icon(Icons.map, color: Color(0xFF7A432D), size: 16),
                         label: const Text('Open Location on Google Maps', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontWeight: FontWeight.bold)),
                         onPressed: () async {
-                          if (await canLaunchUrl(Uri.parse(event.mapUrl!))) {
-                            await launchUrl(Uri.parse(event.mapUrl!), mode: LaunchMode.externalApplication);
+                          final uri = Uri.parse(event.mapUrl!);
+                          try {
+                            final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            if (!launched) {
+                              await launchUrl(uri, mode: LaunchMode.platformDefault);
+                            }
+                          } catch (e) {
+                            debugPrint('Could not launch map URL: ${event.mapUrl!} - Error: $e');
                           }
                         },
                       ),
@@ -950,11 +962,17 @@ class _EventsScreenState extends State<EventsScreen> {
                               ),
                               onPressed: () async {
                                 final nav = Navigator.of(context);
-                                if (event.mapUrl != null &&
-                                    await canLaunchUrl(
-                                        Uri.parse(event.mapUrl!))) {
-                                  await launchUrl(Uri.parse(event.mapUrl!),
-                                      mode: LaunchMode.externalApplication);
+                                if (event.mapUrl != null) {
+                                  final uri = Uri.parse(event.mapUrl!);
+                                  try {
+                                    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                    if (!launched) {
+                                      await launchUrl(uri, mode: LaunchMode.platformDefault);
+                                    }
+                                  } catch (e) {
+                                    debugPrint('Could not launch map URL: ${event.mapUrl!} - Error: $e');
+                                    nav.pop();
+                                  }
                                 } else {
                                   nav.pop();
                                 }
