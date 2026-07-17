@@ -126,6 +126,7 @@ class CandidateHelper {
       interests: interests,
       skills: skills,
       homeBase: data['homeBase'] ?? '',
+      currentLocationName: data['currentLocationName'] ?? '',
       industry: data['industry'] ?? '',
       experience: data['experience'] ?? '',
       careerTimeline: careerTimeline,

@@ -33,7 +33,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   final TextEditingController _searchQuery = TextEditingController();
   String? _selectedIndustry;
   String? _selectedInterest;
-  String? _selectedLocation;
+  String? _selectedHomeBase;
+  String? _selectedCurrentLocation;
   String? _selectedFilterExpertise;
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
@@ -177,14 +178,25 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         }
       }
 
-      // 4. Location filter
-      if (_selectedLocation != null) {
-        if (!c.loc.toLowerCase().contains(_selectedLocation!.toLowerCase())) {
+      // 4. Home base filter
+      if (_selectedHomeBase != null) {
+        if (!c.homeBase.toLowerCase().contains(
+          _selectedHomeBase!.toLowerCase(),
+        )) {
           return false;
         }
       }
 
-      // 5. Expertise filter
+      // 5. Current location filter
+      if (_selectedCurrentLocation != null) {
+        if (!c.currentLocationName.toLowerCase().contains(
+          _selectedCurrentLocation!.toLowerCase(),
+        )) {
+          return false;
+        }
+      }
+
+      // 6. Expertise filter
       if (_selectedFilterExpertise != null) {
         bool hasExpertise =
             c.skills.any(
@@ -1229,6 +1241,88 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
+  Widget _buildLocationFilterDropdown({
+    required String label,
+    required List<String> locations,
+    required String? selectedValue,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Color(0xFF3E1F11),
+          ),
+        ),
+        const SizedBox(height: 8),
+        InputDecorator(
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Color(0xFF7A432D),
+                width: 1.5,
+              ),
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: selectedValue,
+              hint: const Text(
+                'Select location',
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 14,
+                  color: Color(0xFF8C736B),
+                ),
+              ),
+              isExpanded: true,
+              isDense: true,
+              dropdownColor: Colors.white,
+              icon: const Icon(
+                Icons.arrow_drop_down,
+                color: Color(0xFF7A432D),
+              ),
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 14,
+                color: Color(0xFF3E1F11),
+              ),
+              items: locations
+                  .map(
+                    (location) => DropdownMenuItem<String?>(
+                      value: location,
+                      child: Text(location),
+                    ),
+                  )
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showFilterBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -1284,7 +1378,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           setModalState(() {
                             _selectedIndustry = null;
                             _selectedInterest = null;
-                            _selectedLocation = null;
+                            _selectedHomeBase = null;
+                            _selectedCurrentLocation = null;
                             _selectedFilterExpertise = null;
                           });
                           setState(() {});
@@ -1656,91 +1751,50 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                           const SizedBox(height: 20),
 
-                          // Location Dropdown
-                          const Text(
-                            'Location',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
-                              final candidateLocations =
+                              final homeBaseLocations =
                                   _state.candidates
-                                      .where((c) => c.loc.isNotEmpty)
-                                      .map((c) => c.loc)
+                                      .where((c) => c.homeBase.isNotEmpty)
+                                      .map((c) => c.homeBase)
                                       .toSet()
                                       .toList()
                                     ..sort();
-                              return InputDecorator(
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 4,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFF7A432D),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String?>(
-                                    value: _selectedLocation,
-                                    hint: const Text(
-                                      'Select location',
-                                      style: TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 14,
-                                        color: Color(0xFF8C736B),
-                                      ),
-                                    ),
-                                    isExpanded: true,
-                                    isDense: true,
-                                    dropdownColor: Colors.white,
-                                    icon: const Icon(
-                                      Icons.arrow_drop_down,
-                                      color: Color(0xFF7A432D),
-                                    ),
-                                    style: const TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 14,
-                                      color: Color(0xFF3E1F11),
-                                    ),
-                                    items: candidateLocations.map((val) {
-                                      return DropdownMenuItem<String?>(
-                                        value: val,
-                                        child: Text(val),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) {
+                              final currentLocationOptions =
+                                  _state.candidates
+                                      .where(
+                                        (c) => c.currentLocationName.isNotEmpty,
+                                      )
+                                      .map((c) => c.currentLocationName)
+                                      .toSet()
+                                      .toList()
+                                    ..sort();
+                              return Column(
+                                children: [
+                                  _buildLocationFilterDropdown(
+                                    label: 'Home Base',
+                                    locations: homeBaseLocations,
+                                    selectedValue: _selectedHomeBase,
+                                    onChanged: (value) {
                                       setModalState(() {
-                                        _selectedLocation = val;
+                                        _selectedHomeBase = value;
                                       });
                                       setState(() {});
                                     },
                                   ),
-                                ),
+                                  const SizedBox(height: 20),
+                                  _buildLocationFilterDropdown(
+                                    label: 'Current Location',
+                                    locations: currentLocationOptions,
+                                    selectedValue: _selectedCurrentLocation,
+                                    onChanged: (value) {
+                                      setModalState(() {
+                                        _selectedCurrentLocation = value;
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           ),
@@ -1830,7 +1884,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   _searchQuery.clear();
                   _selectedIndustry = null;
                   _selectedInterest = null;
-                  _selectedLocation = null;
+                  _selectedHomeBase = null;
+                  _selectedCurrentLocation = null;
                   _selectedFilterExpertise = null;
                 });
               },
@@ -1911,7 +1966,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 const Icon(Icons.tune_rounded, color: Color(0xFF3E1F11)),
                 if (_selectedIndustry != null ||
                     _selectedInterest != null ||
-                    _selectedLocation != null ||
+                    _selectedHomeBase != null ||
+                    _selectedCurrentLocation != null ||
                     _selectedFilterExpertise != null)
                   Positioned(
                     right: 0,
@@ -2008,7 +2064,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 // Active Filter Chips
                 if (_selectedIndustry != null ||
                     _selectedInterest != null ||
-                    _selectedLocation != null ||
+                    _selectedHomeBase != null ||
+                    _selectedCurrentLocation != null ||
                     _selectedFilterExpertise != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -2035,12 +2092,21 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 });
                               },
                             ),
-                          if (_selectedLocation != null)
+                          if (_selectedHomeBase != null)
                             _buildFilterChip(
-                              label: 'Location: $_selectedLocation',
+                              label: 'Home Base: $_selectedHomeBase',
                               onClear: () {
                                 setState(() {
-                                  _selectedLocation = null;
+                                  _selectedHomeBase = null;
+                                });
+                              },
+                            ),
+                          if (_selectedCurrentLocation != null)
+                            _buildFilterChip(
+                              label: 'Current Location: $_selectedCurrentLocation',
+                              onClear: () {
+                                setState(() {
+                                  _selectedCurrentLocation = null;
                                 });
                               },
                             ),
@@ -2058,7 +2124,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               setState(() {
                                 _selectedIndustry = null;
                                 _selectedInterest = null;
-                                _selectedLocation = null;
+                                _selectedHomeBase = null;
+                                _selectedCurrentLocation = null;
                                 _selectedFilterExpertise = null;
                               });
                             },
@@ -3133,6 +3200,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 userData['skills'] ?? [],
                               ),
                               homeBase: userData['homeBase'] ?? '',
+                              currentLocationName:
+                                  userData['currentLocationName'] ?? '',
                               careerTimeline: careerTimeline,
                               educationTimeline: educationTimeline,
                               bio: userData['bio'] ?? '',

@@ -11,6 +11,8 @@ import 'package:csc_picker_plus/csc_picker_plus.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../utils/app_logo.dart';
+import '../services/location_service.dart';
+import 'package:geocoding/geocoding.dart';
 
 
 enum OnboardingView {
@@ -279,6 +281,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _experienceController.addListener(_onFieldChanged);
     _bioController.addListener(_onFieldChanged);
     _industryController.addListener(_onFieldChanged);
+
+    // Auto-detect current location
+    _autoDetectCurrentLocation();
   }
 
   @override
@@ -969,6 +974,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     bool readOnly = false,
     VoidCallback? onTap,
     bool isPassword = false,
+    bool isRequired = false,
   }) {
     return TextFormField(
       controller: controller,
@@ -978,7 +984,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       readOnly: readOnly,
       onTap: onTap,
       decoration: InputDecoration(
-        labelText: labelText,
+        label: isRequired
+            ? Text.rich(
+                TextSpan(
+                  text: labelText,
+                  children: const [
+                    TextSpan(
+                      text: ' *',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ],
+                ),
+              )
+            : null,
+        labelText: isRequired ? null : labelText,
         hintText: hintText,
         hintStyle: const TextStyle(
           fontFamily: 'PlusJakartaSans',
@@ -1233,6 +1252,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             controller: _nameController,
             labelText: 'Full Name',
             hintText: 'e.g. Rohan Mehta',
+            isRequired: true,
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -1240,6 +1260,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             labelText: 'Email Address',
             hintText: 'e.g. rohan@example.com',
             keyboardType: TextInputType.emailAddress,
+            isRequired: true,
           ),
           if (_emailErrorText.isNotEmpty)
             Padding(
@@ -1260,6 +1281,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             hintText: 'Create a strong password',
             obscureText: _obscurePassword,
             isPassword: true,
+            isRequired: true,
           ),
           if (_passwordReqs.isNotEmpty)
             Padding(
@@ -1269,13 +1291,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 24),
 
           // Profile Image Picker Section
-          const Text(
-            'Profile Image',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF8C736B),
+          const Text.rich(
+            TextSpan(
+              text: 'Profile Image',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF8C736B),
+              ),
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
@@ -1565,6 +1598,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             currentValue: _selectedOccupation,
             items: _occupations,
             hintText: 'Select occupation',
+            isRequired: true,
             onChanged: (val) {
               setState(() => _selectedOccupation = val);
             },
@@ -1573,6 +1607,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     controller: _customOccupationController,
                     labelText: 'Custom Occupation',
                     hintText: 'e.g. BioTech Consultant',
+                    isRequired: true,
                   )
                 : null,
           ),
@@ -1581,6 +1616,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             controller: _companyController,
             labelText: 'Company / Organization',
             hintText: 'e.g. Stripe, Lumen Ventures, SME Credit',
+            isRequired: true,
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -1601,17 +1637,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           // Section 2: Expertise & Experience
           _buildSectionHeader('Expertise & Experience'),
           const SizedBox(height: 12),
-          const Text(
-            'Expertise Areas (What can you share?):',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+          const Text.rich(
+            TextSpan(
+              text: 'Expertise Areas (What can you share?):',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          _buildMultiSelectChipGrid(
+          _buildMultiSelectDropdown(
             options: _expertiseOptions,
             selectedList: _selectedExpertise,
             customController: _customExpertiseController,
@@ -1619,6 +1666,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onListChanged: _onFieldChanged,
             isExpertise: true,
             levelsMap: _expertiseLevels,
+            placeholder: 'Select expertise area',
           ),
           const SizedBox(height: 16),
           Row(
@@ -1630,6 +1678,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   currentValue: _selectedIndustry,
                   items: _industries,
                   hintText: 'Select industry',
+                  isRequired: true,
                   onChanged: (val) {
                     setState(() => _selectedIndustry = val);
                   },
@@ -1638,6 +1687,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           controller: _industryController,
                           labelText: 'Custom Industry',
                           hintText: 'e.g. BioTech',
+                          isRequired: true,
                         )
                       : null,
                 ),
@@ -1649,6 +1699,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   labelText: 'Experience (Years)',
                   hintText: 'e.g. 5',
                   keyboardType: TextInputType.number,
+                  isRequired: true,
                 ),
               ),
             ],
@@ -1663,19 +1714,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             labelText: 'Short Biography',
             hintText: 'Describe what you do and who you want to meet...',
             maxLines: 3,
+            isRequired: true,
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Interests (What are you looking for / want to learn?):',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+          const Text.rich(
+            TextSpan(
+              text: 'Interests (What are you looking for / want to learn?):',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          _buildMultiSelectChipGrid(
+          _buildMultiSelectDropdown(
             options: _interestOptions,
             selectedList: _selectedInterests,
             customController: _customInterestController,
@@ -1683,6 +1746,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             onListChanged: _onFieldChanged,
             isExpertise: false,
             prioritiesMap: _interestsPriorities,
+            placeholder: 'Select interest area',
           ),
           const SizedBox(height: 24),
 
@@ -1727,7 +1791,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             disabledDropdownDecoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: const Color(0xFFFAF7F5),
+              color: const Color(0xFFF8F9FA),
               border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
             ),
             selectedItemStyle: const TextStyle(
@@ -1777,63 +1841,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          CSCPickerPlus(
-            layout: Layout.vertical,
-            showStates: true,
-            showCities: true,
-            flagState: CountryFlag.DISABLE,
-            currentCountry: getCountryForPicker(_currentLocationCountry),
-            currentState: _currentLocationState,
-            currentCity: _currentLocationCity,
-            countryDropdownLabel: 'Select country',
-            stateDropdownLabel: 'Select state',
-            cityDropdownLabel: 'Select city',
-            dropdownDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-            ),
-            disabledDropdownDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: const Color(0xFFFAF7F5),
-              border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-            ),
-            selectedItemStyle: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF3E1F11),
-              fontWeight: FontWeight.w600,
-            ),
-            dropdownHeadingStyle: const TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
-            ),
-            dropdownItemStyle: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF3E1F11),
-            ),
-            searchBarRadius: 10.0,
-            onCountryChanged: (value) {
-              setState(() {
-                _currentLocationCountry = value.contains('   ')
-                    ? value.split('   ').last
-                    : value;
-              });
-            },
-            onStateChanged: (value) {
-              setState(() {
-                _currentLocationState = value ?? '';
-              });
-            },
-            onCityChanged: (value) {
-              setState(() {
-                _currentLocationCity = value ?? '';
-              });
-            },
-          ),
+          _buildAutoLocationWidget(),
           const SizedBox(height: 24),
 
           // Section 5: Work Experience (Career Timeline)
@@ -1924,12 +1932,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: _workCompanyController,
                   labelText: 'Company',
                   hintText: 'e.g. Google',
+                  isRequired: true,
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
                   controller: _workRoleController,
                   labelText: 'Role / Job Title',
                   hintText: 'e.g. Software Engineer',
+                  isRequired: true,
                 ),
                 const SizedBox(height: 8),
                 // Employment Type Dropdown
@@ -1943,7 +1953,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       color: Color(0xFF8C736B),
                     ),
                     filled: true,
-                    fillColor: const Color(0xFFFAF7F5),
+                    fillColor: const Color(0xFFF8F9FA),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -2133,12 +2143,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: _eduDegreeController,
                   labelText: 'Degree / Course',
                   hintText: 'e.g. B.S. in Computer Science',
+                  isRequired: true,
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
                   controller: _eduSchoolController,
                   labelText: 'School / University',
                   hintText: 'e.g. Stanford University',
+                  isRequired: true,
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -2219,7 +2231,135 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Widget _buildMultiSelectChipGrid({
+  bool _isLocating = false;
+
+  Future<void> _autoDetectCurrentLocation() async {
+    if (_isLocating) return;
+    try {
+      setState(() => _isLocating = true);
+      final position = await LocationService().getCurrentPosition();
+      List<Placemark> placemarks = [];
+      try {
+        placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+      } catch (_) {
+        // Geocoding can fail on some devices/regions — silently ignore
+      }
+      if (placemarks.isNotEmpty) {
+        final pm = placemarks.first;
+        final country = pm.country ?? '';
+        final state = pm.administrativeArea ?? '';
+        final city = (pm.locality?.isNotEmpty == true)
+            ? pm.locality!
+            : (pm.subAdministrativeArea ?? '');
+        setState(() {
+          _currentLocationCountry = country;
+          _currentLocationState = state;
+          _currentLocationCity = city;
+        });
+        _onFieldChanged();
+      }
+    } catch (e) {
+      debugPrint('Auto detect current location failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLocating = false);
+      }
+    }
+  }
+
+  Widget _buildAutoLocationWidget() {
+    if (_isLocating) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8E2DD)),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text(
+              'Detecting current location...',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                color: Color(0xFF8C736B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final hasLocation = _currentLocationCountry.isNotEmpty ||
+        _currentLocationState.isNotEmpty ||
+        _currentLocationCity.isNotEmpty;
+
+    final locationText = [
+      if (_currentLocationCity.isNotEmpty) _currentLocationCity,
+      if (_currentLocationState.isNotEmpty) _currentLocationState,
+      if (_currentLocationCountry.isNotEmpty) _currentLocationCountry,
+    ].join(', ');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8E2DD)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on, color: Color(0xFF7A432D), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              hasLocation ? locationText : 'Location not detected',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                fontWeight: hasLocation ? FontWeight.w600 : FontWeight.normal,
+                color: hasLocation ? const Color(0xFF3E1F11) : const Color(0xFF8C736B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: _autoDetectCurrentLocation,
+            icon: const Icon(Icons.my_location, size: 14, color: Color(0xFF7A432D)),
+            label: Text(
+              hasLocation ? 'Retry' : 'Detect',
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF7A432D),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiSelectDropdown({
     required List<String> options,
     required List<String> selectedList,
     required TextEditingController customController,
@@ -2228,75 +2368,80 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     bool isExpertise = false,
     Map<String, String>? levelsMap,
     Map<String, String>? prioritiesMap,
+    required String placeholder,
   }) {
+    final availableOptions = options.where((opt) => !selectedList.contains(opt)).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: options.map((opt) {
-            final isSelected = selectedList.contains(opt);
-            return FilterChip(
-              label: Text(opt),
-              labelStyle: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.white : const Color(0xFF7A432D),
-              ),
-              selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  if (selected) {
-                    selectedList.add(opt);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap[opt] = 'Intermediate';
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap[opt] = 'Medium';
-                    }
-                  } else {
-                    selectedList.remove(opt);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap.remove(opt);
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap.remove(opt);
-                    }
-                  }
-                  onListChanged();
-                });
-              },
-              selectedColor: const Color(0xFF7A432D),
-              backgroundColor: Colors.white,
-              checkmarkColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: null,
+              hint: Text(
+                placeholder,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 13,
+                  color: Color(0xFF8C736B),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-        if (selectedList.any((opt) => !options.contains(opt))) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'Custom Additions:',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF8C736B),
+              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+              dropdownColor: Colors.white,
+              items: availableOptions.map((String opt) {
+                return DropdownMenuItem<String>(
+                  value: opt,
+                  child: Text(
+                    opt,
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? val) {
+                if (val != null) {
+                  setState(() {
+                    selectedList.add(val);
+                    if (isExpertise && levelsMap != null) {
+                      levelsMap[val] = 'Intermediate';
+                    } else if (!isExpertise && prioritiesMap != null) {
+                      prioritiesMap[val] = 'Medium';
+                    }
+                    onListChanged();
+                  });
+                }
+              },
             ),
           ),
-          const SizedBox(height: 4),
+        ),
+        if (selectedList.isNotEmpty) ...[
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: selectedList.where((opt) => !options.contains(opt)).map((opt) {
+            children: selectedList.map((opt) {
               return Chip(
                 backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                label: Text(opt, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
+                label: Text(
+                  opt,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 12,
+                    color: Color(0xFF7A432D),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
                 onDeleted: () {
                   setState(() {
@@ -2370,7 +2515,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ],
         ),
-
       ],
     );
   }
@@ -2404,6 +2548,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     required ValueChanged<String?> onChanged,
     Widget? secondaryField,
     String? hintText,
+    bool isRequired = false,
   }) {
     final List<String> safeItems = List<String>.from(items);
     return Column(
@@ -2412,7 +2557,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       children: [
         InputDecorator(
           decoration: InputDecoration(
-            labelText: label,
+            label: isRequired
+                ? Text.rich(
+                    TextSpan(
+                      text: label,
+                      children: const [
+                        TextSpan(
+                          text: ' *',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ),
+                  )
+                : null,
+            labelText: isRequired ? null : label,
             labelStyle: const TextStyle(
               fontFamily: 'PlusJakartaSans',
               color: Color(0xFF8C736B),
@@ -2536,7 +2694,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final bool isSmallScreen = screenHeight < 700;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF7F5),
+      resizeToAvoidBottomInset: true,
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
           // Subtle warm gradient background
@@ -2547,9 +2706,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFFFFF8F4),
-                    Color(0xFFFAF7F5),
-                    Color(0xFFF5EDE6),
+                    Colors.white,
+                    Colors.white,
+                    Color(0xFFF1F3F4),
                   ],
                   stops: [0.0, 0.5, 1.0],
                 ),
@@ -2719,7 +2878,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 28),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFAF7F5),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
@@ -2804,7 +2963,7 @@ class OnboardingPage extends StatelessWidget {
             margin: EdgeInsets.only(bottom: screenHeight * 0.025),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              color: const Color(0xFFFFF5EE),
+              color: Colors.white,
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF7A432D).withValues(alpha: 0.08),
@@ -2865,7 +3024,7 @@ class OnboardingPage extends StatelessWidget {
                     height: 1,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Color(0xFFFAF7F5), Color(0xFFD5C4BB)],
+                        colors: [Colors.white, Color(0xFFD5C4BB)],
                       ),
                     ),
                   ),
@@ -2888,7 +3047,7 @@ class OnboardingPage extends StatelessWidget {
                     height: 1,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Color(0xFFD5C4BB), Color(0xFFFAF7F5)],
+                        colors: [Color(0xFFD5C4BB), Colors.white],
                       ),
                     ),
                   ),

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
@@ -193,13 +194,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _isUnmatching = false;
-        _selectedContactName = null;
-        _chatId = null;
-        _chatDocStream = null;
-        _otherUid = null;
-        _otherUserProfileImage = null;
-        _otherUserInitials = null;
-        _isBlocked = false;
+        _isBlocked = true;
         _showSearch = false;
         _selectedReplyMsg = null;
         _selectedMentionUids = [];
@@ -207,12 +202,11 @@ class _ChatScreenState extends State<ChatScreen> {
         _inputController.clear();
         _searchController.clear();
       });
-      _state.activeChatContact = null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF7A432D),
           content: Text(
-            '$targetName was moved back to Discovery.',
+            'Unmatched with $targetName. Conversation is now read-only.',
             style: const TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontWeight: FontWeight.bold,
@@ -220,7 +214,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       );
-      _state.currentScreen = AppScreen.discover;
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -344,23 +337,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Check if users are connected
-      final isConnected = await ChatService().hasConnection(
-        currentUid,
-        otherUid,
-      );
-      if (!isConnected) {
-        if (mounted && _selectedContactName == contactName) {
-          setState(() {
-            _isBlocked = true;
-            _chatId = null;
-            _chatDocStream = null;
-          });
-        }
-        return;
-      }
-
-      // If connected, query if there is already a chat doc
+      // Query if there is already a chat doc
       final chatQuery = await FirebaseFirestore.instance
           .collection('chats')
           .where('isGroup', isEqualTo: false)
@@ -376,6 +353,39 @@ class _ChatScreenState extends State<ChatScreen> {
           foundChatId = doc.id;
           break;
         }
+      }
+
+      // Check if users are connected
+      final isConnected = await ChatService().hasConnection(
+        currentUid,
+        otherUid,
+      );
+
+      if (!isConnected) {
+        if (foundChatId != null) {
+          // Unmatched, but past conversation exists. Allow viewing, block messaging.
+          if (mounted && _selectedContactName == contactName) {
+            setState(() {
+              _isBlocked = true;
+              _chatId = foundChatId;
+              _chatDocStream = FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(foundChatId)
+                  .snapshots();
+            });
+            _scrollToBottom();
+          }
+        } else {
+          // Never matched / no conversation
+          if (mounted && _selectedContactName == contactName) {
+            setState(() {
+              _isBlocked = true;
+              _chatId = null;
+              _chatDocStream = null;
+            });
+          }
+        }
+        return;
       }
 
       if (mounted && _selectedContactName == contactName) {
@@ -1910,6 +1920,29 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _openDirections(String location, Map<String, dynamic>? venueSnapshot) async {
+    double? lat;
+    double? lng;
+    if (venueSnapshot != null) {
+      lat = double.tryParse(venueSnapshot['latitude'].toString());
+      lng = double.tryParse(venueSnapshot['longitude'].toString());
+    }
+
+    String url;
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
+    } else {
+      url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(location)}';
+    }
+
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      debugPrint('Could not launch map URL: $url');
+    }
+  }
+
   Widget _buildInlineMeetingRequestCard(Message msg, String text) {
     final isMe = msg.from == MessageSender.me;
 
@@ -2021,6 +2054,111 @@ class _ChatScreenState extends State<ChatScreen> {
               color: isMe ? Colors.white : const Color(0xFF3E1F11),
             ),
           ),
+          if (embeddedMeetingId != null)
+            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('meetings')
+                  .doc(embeddedMeetingId)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  final isVirtual = venue.toLowerCase().contains('virtual') ||
+                      venue.toLowerCase().contains('online') ||
+                      venue == 'Not specified';
+                  if (isVirtual) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: isMe ? Colors.white : const Color(0xFF7A432D),
+                          side: BorderSide(color: isMe ? Colors.white60 : const Color(0xFF7A432D)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                        ),
+                        icon: Icon(Icons.map_outlined, size: 14, color: isMe ? Colors.white : const Color(0xFF7A432D)),
+                        label: const Text(
+                          'Directions',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () => _openDirections(venue, null),
+                      ),
+                    ),
+                  );
+                }
+
+                final mData = snapshot.data!.data()!;
+                final mLoc = mData['location'] as String? ?? venue;
+                final isVirtual = mLoc.toLowerCase().contains('virtual') ||
+                    mLoc.toLowerCase().contains('online') ||
+                    mLoc == 'Not specified';
+                if (isVirtual) return const SizedBox.shrink();
+
+                final venueSnapshot = mData['selectedVenueSnapshot'] as Map<String, dynamic>?;
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isMe ? Colors.white : const Color(0xFF7A432D),
+                        side: BorderSide(color: isMe ? Colors.white60 : const Color(0xFF7A432D)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      ),
+                      icon: Icon(Icons.map_outlined, size: 14, color: isMe ? Colors.white : const Color(0xFF7A432D)),
+                      label: const Text(
+                        'Directions',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onPressed: () => _openDirections(mLoc, venueSnapshot),
+                    ),
+                  ),
+                );
+              },
+            )
+          else ...[
+            Builder(builder: (context) {
+              final isVirtual = venue.toLowerCase().contains('virtual') ||
+                  venue.toLowerCase().contains('online') ||
+                  venue == 'Not specified';
+              if (isVirtual) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isMe ? Colors.white : const Color(0xFF7A432D),
+                      side: BorderSide(color: isMe ? Colors.white60 : const Color(0xFF7A432D)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    ),
+                    icon: Icon(Icons.map_outlined, size: 14, color: isMe ? Colors.white : const Color(0xFF7A432D)),
+                    label: const Text(
+                      'Directions',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    onPressed: () => _openDirections(venue, null),
+                  ),
+                ),
+              );
+            }),
+          ],
           if (!isMe) ...[
             const SizedBox(height: 12),
             embeddedMeetingId != null
@@ -3816,7 +3954,6 @@ class _ChatScreenState extends State<ChatScreen> {
               final isChatUnavailable =
                   chatSnapshot.hasData &&
                   (chatSnapshot.data?.exists == false ||
-                      chatData?['isUnmatched'] == true ||
                       (chatData != null &&
                           currentUid != null &&
                           !participants.contains(currentUid)));
@@ -3914,7 +4051,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     _buildMentionsSuggestionOverlay(),
 
                   // Bottom Input Bar
-                  _buildInputBar(),
+                  _buildInputBar(
+                    isBlocked: _isBlocked ||
+                        chatData?['isUnmatched'] == true,
+                  ),
                 ],
               );
             },
@@ -4545,7 +4685,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildInputBar() {
+  Widget _buildInputBar({required bool isBlocked}) {
+    if (isBlocked) {
+      return _buildConnectionRequiredBar(
+        'Match again before messaging this user.',
+      );
+    }
     if (_isRecording) {
       return Container(
         decoration: const BoxDecoration(
@@ -4664,99 +4809,95 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ),
           ),
-        _isBlocked
-            ? _buildConnectionRequiredBar(
-                'You must be connected with this user to start a conversation.',
-              )
-            : Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(
-                    top: BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+        Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              top: BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                // Attachment drawer
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_circle_outline,
+                    color: Color(0xFF8C736B),
+                  ),
+                  onPressed: _showAttachmentDrawer,
+                ),
+
+                // Voice memo button
+                IconButton(
+                  icon: const Icon(
+                    Icons.mic_none_outlined,
+                    color: Color(0xFF8C736B),
+                  ),
+                  onPressed: _startRecording,
+                ),
+
+                // Meeting request button
+                IconButton(
+                  icon: const Icon(
+                    Icons.calendar_month_outlined,
+                    color: Color(0xFF7A432D),
+                  ),
+                  onPressed: _otherUid != null
+                      ? () => _showQuickMeetingRequestSheet()
+                      : null,
+                ),
+
+                // Input field
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAF7F5),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFE8E2DD)),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: TextField(
+                      controller: _inputController,
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 13,
+                        color: Color(0xFF3E1F11),
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message...',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF8C736B),
+                          fontSize: 13,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      ),
+                      onSubmitted: (_) => _handleSendMessage(),
+                    ),
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Row(
-                    children: [
-                      // Attachment drawer
-                      IconButton(
-                        icon: const Icon(
-                          Icons.add_circle_outline,
-                          color: Color(0xFF8C736B),
-                        ),
-                        onPressed: _showAttachmentDrawer,
-                      ),
 
-                      // Voice memo button
-                      IconButton(
-                        icon: const Icon(
-                          Icons.mic_none_outlined,
-                          color: Color(0xFF8C736B),
-                        ),
-                        onPressed: _startRecording,
-                      ),
+                const SizedBox(width: 8),
 
-                      // Meeting request button
-                      IconButton(
-                        icon: const Icon(
-                          Icons.calendar_month_outlined,
-                          color: Color(0xFF7A432D),
-                        ),
-                        onPressed: _otherUid != null
-                            ? () => _showQuickMeetingRequestSheet()
-                            : null,
-                      ),
-
-                      // Input field
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFAF7F5),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFE8E2DD)),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: TextField(
-                            controller: _inputController,
-                            style: const TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                            decoration: const InputDecoration(
-                              hintText: 'Type a message...',
-                              hintStyle: TextStyle(
-                                color: Color(0xFF8C736B),
-                                fontSize: 13,
-                              ),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 8),
-                            ),
-                            onSubmitted: (_) => _handleSendMessage(),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      // Send button
-                      IconButton(
-                        icon: const Icon(
-                          Icons.send_rounded,
-                          color: Color(0xFF7A432D),
-                        ),
-                        onPressed: _handleSendMessage,
-                      ),
-                    ],
+                // Send button
+                IconButton(
+                  icon: const Icon(
+                    Icons.send_rounded,
+                    color: Color(0xFF7A432D),
                   ),
+                  onPressed: _handleSendMessage,
                 ),
-              ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../state_manager.dart';
@@ -739,6 +740,29 @@ class _MeetScreenState extends State<MeetScreen> {
     return results.whereType<UserProfile>().toList();
   }
 
+  Future<void> _openDirections(String location, Map<String, dynamic>? venueSnapshot) async {
+    double? lat;
+    double? lng;
+    if (venueSnapshot != null) {
+      lat = double.tryParse(venueSnapshot['latitude'].toString());
+      lng = double.tryParse(venueSnapshot['longitude'].toString());
+    }
+
+    String url;
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
+    } else {
+      url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(location)}';
+    }
+
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      debugPrint('Could not launch map URL: $url');
+    }
+  }
+
   Widget _buildMeetingCard(String meetingId, Map<String, dynamic> data) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final requesterId = data['requesterId'] as String;
@@ -917,6 +941,38 @@ class _MeetScreenState extends State<MeetScreen> {
                           ),
                         ),
                       ),
+                      Builder(builder: (context) {
+                        final isVirtual = location.toLowerCase().contains('virtual') ||
+                            location.toLowerCase().contains('online') ||
+                            location == 'Not specified';
+                        if (isVirtual) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: InkWell(
+                            onTap: () => _openDirections(location, data['selectedVenueSnapshot']),
+                            borderRadius: BorderRadius.circular(4),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.directions_outlined, size: 14, color: Color(0xFF7A432D)),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Directions',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     ],
                   ),
                   if (reminderMinutes != null && reminderMinutes > 0) ...[

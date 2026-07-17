@@ -390,7 +390,6 @@ class ChatService {
 
       for (final chatRef in chatRefs) {
         batch.update(chatRef, {
-          'participants': <String>[],
           'unreadCount': <String, int>{},
           'typingStatus': <String, bool>{},
           'isUnmatched': true,

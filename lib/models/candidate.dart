@@ -19,6 +19,7 @@ class Candidate {
   final List<String> interests;
   final List<String> skills;
   final String homeBase;
+  final String currentLocationName;
   final String industry;
   final String experience;
   final List<Map<String, dynamic>> careerTimeline;
@@ -52,6 +53,7 @@ class Candidate {
     this.interests = const [],
     this.skills = const [],
     this.homeBase = '',
+    this.currentLocationName = '',
     this.industry = '',
     this.experience = '',
     this.careerTimeline = const [],

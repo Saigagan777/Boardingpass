@@ -185,7 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final pictureUrl = profile.profileImageUrl ?? '';
     final coverUrl = (profile.coverImageUrl != null && profile.coverImageUrl!.isNotEmpty)
         ? profile.coverImageUrl!
-        : pictureUrl;
+        : '';
     final initials = profile.name.isNotEmpty
         ? profile.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
         : 'U';
@@ -2640,13 +2640,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                             ),
                           )
                         : buildProfileImage(
-                            _coverImageUrlController.text.isNotEmpty
-                                ? _coverImageUrlController.text
-                                : _profileImageUrlController.text,
+                            _coverImageUrlController.text,
                             width: 60,
                             height: 40,
                             fit: BoxFit.cover,
-                            fallback: const Icon(Icons.image, size: 24, color: Color(0xFF7A432D)),
+                            fallback: Container(color: Colors.black),
                           ),
                   ),
                 ),
