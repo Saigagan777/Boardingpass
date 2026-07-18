@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../state_manager.dart';
+import 'package:flutter/material.dart';
+import '../services/moderation_service.dart';
 import '../services/sponsor_service.dart';
+import '../state_manager.dart';
 
 class AdminPanel extends StatefulWidget {
   const AdminPanel({super.key});
@@ -11,759 +12,261 @@ class AdminPanel extends StatefulWidget {
 }
 
 class _AdminPanelState extends State<AdminPanel> {
-  final AppStateManager _state = AppStateManager();
+  static const _ink = Color(0xFF3E1F11);
+  static const _brand = Color(0xFF7A432D);
+  static const _surface = Color(0xFFFAF7F5);
+  static const _line = Color(0xFFE8E2DD);
+  final _state = AppStateManager();
+  final _search = TextEditingController();
+  int _section = 0;
+  String _filter = 'All';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final logs = _state.adminLogs;
-        final resolvedLogs = logs.where((l) => l.isResolved).toList();
-        final pendingLogs = logs.where((l) => !l.isResolved).toList();
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFFAF7F5),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFFFAF7F5),
-            elevation: 0,
-            title: Row(
-              children: const [
-                Icon(Icons.shield_outlined, color: Color(0xFF3E1F11)),
-                SizedBox(width: 8),
-                Text(
-                  'Admin Dashboard',
-                  style: TextStyle(
-                    fontFamily: 'PlayfairDisplay',
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3E1F11),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.logout, color: Color(0xFF3E1F11)),
-                onPressed: () {
-                  _state.logOut();
-                },
-              ),
-            ],
-          ),
-          body: SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'System statistics, active flags, and moderator controls.',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 12,
-                      color: Color(0xFF8C736B),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Analytics Grids
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                    childAspectRatio: 1.1,
-                    children: [
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('users').snapshots(),
-                        builder: (context, snapshot) {
-                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                          return _buildStatCard('Active Users', count.toString(), Icons.people_outline, const Color(0xFF7A432D));
-                        },
-                      ),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('connections').snapshots(),
-                        builder: (context, snapshot) {
-                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                          return _buildStatCard('Connections', count.toString(), Icons.handshake_outlined, const Color(0xFFB06F4D));
-                        },
-                      ),
-                      _buildStatCard('Pending Flags', pendingLogs.length.toString(), Icons.flag_outlined, const Color(0xFF3E1F11)),
-                    ],
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  // Pending Flags Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Pending Flags (${pendingLogs.length})',
-                        style: const TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                      if (pendingLogs.isNotEmpty)
-                        const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 18),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Flags list
-                  if (pendingLogs.isEmpty)
-                    Container(
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE8E2DD)),
-                      ),
-                      alignment: Alignment.center,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(Icons.check_circle_outline, color: Colors.green, size: 32),
-                          SizedBox(height: 8),
-                          Text(
-                            'All flags resolved!',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF8C736B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: pendingLogs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final log = pendingLogs[index];
-                        return _buildFlagCard(log);
-                      },
-                    ),
-
-                  const SizedBox(height: 28),
-
-                  // History Log Header
-                  Text(
-                    'Resolved Logs (${resolvedLogs.length})',
-                    style: const TextStyle(
-                      fontFamily: 'PlayfairDisplay',
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF3E1F11),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  if (resolvedLogs.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'No resolved logs in this session.',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          color: Color(0xFF8C736B),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: resolvedLogs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final log = resolvedLogs[index];
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8E2DD).withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      log.title,
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF8C736B),
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Reported by ${log.reporter}',
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 10,
-                                        color: Color(0xFF8C736B),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.check, color: Colors.green, size: 16),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  const Divider(height: 40, thickness: 1.5, color: Color(0xFFE8E2DD)),
-
-                  // Sponsors Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Sponsor Banners',
-                        style: TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7A432D),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(110, 32),
-                        ),
-                        onPressed: () => _showAddSponsorDialog(context),
-                        icon: const Icon(Icons.add, size: 14, color: Colors.white),
-                        label: const Text(
-                          'Add Sponsor',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Sponsors list using StreamBuilder
-                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: SponsorService().streamSponsors(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Color(0xFF7A432D)));
-                      }
-                      final docs = snapshot.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return Container(
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFE8E2DD)),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'No sponsor banners. Add one above!',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF8C736B),
-                            ),
-                          ),
-                        );
-                      }
-
-                      return ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: docs.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final doc = docs[index];
-                          final data = doc.data();
-                          final id = doc.id;
-                          final brand = data['brand'] ?? 'Brand';
-                          final title = data['title'] ?? '';
-                          final cta = data['cta'] ?? 'Learn';
-                          final iconName = data['icon'] ?? 'star';
-
-                          IconData iconData = Icons.star_outline_rounded;
-                          if (iconName == 'coffee') iconData = Icons.coffee;
-                          if (iconName == 'flight') iconData = Icons.flight_outlined;
-                          if (iconName == 'percent') iconData = Icons.percent;
-                          if (iconName == 'business') iconData = Icons.business_outlined;
-
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFE8E2DD)),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFFAF5F0),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Icon(iconData, color: const Color(0xFF7A432D), size: 18),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'SPONSORED · $brand'.toUpperCase(),
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF8C736B),
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF3E1F11),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFAF7F5),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFFE8E2DD)),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  child: Text(
-                                    cta,
-                                    style: const TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF7A432D),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                                  onPressed: () async {
-                                    try {
-                                      await SponsorService().deleteSponsor(id);
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Sponsor deleted successfully')),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Error: $e')),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 30),
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      builder: (context, usersSnapshot) {
+        final users = usersSnapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('reports').orderBy('createdAt', descending: true).snapshots(),
+          builder: (context, reportsSnapshot) {
+            final reports = reportsSnapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+            final userNames = {for (final user in users) user.id: (user.data()['name'] as String?)?.trim().isNotEmpty == true ? user.data()['name'] as String : 'Unnamed user'};
+            return Scaffold(
+              backgroundColor: _surface,
+              appBar: AppBar(
+                backgroundColor: _surface,
+                surfaceTintColor: _surface,
+                elevation: 0,
+                titleSpacing: 20,
+                title: const Row(children: [Icon(Icons.admin_panel_settings_outlined, color: _brand), SizedBox(width: 10), Text('Control centre', style: TextStyle(fontFamily: 'PlayfairDisplay', color: _ink, fontWeight: FontWeight.bold))]),
+                actions: [
+                  IconButton(tooltip: 'Sign out', icon: const Icon(Icons.logout_outlined, color: _ink), onPressed: _state.logOut),
                 ],
               ),
-            ),
-          ),
-        );
-  }
-
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E2DD)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 10,
-              color: Color(0xFF8C736B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFlagCard(AdminLog log) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E2DD)),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, 1),
-          )
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  log.title,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3E1F11),
-                  ),
-                ),
-              ),
-              Text(
-                log.timeAgo,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 10,
-                  color: Color(0xFF8C736B),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Reporter: ${log.reporter}',
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 10.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFB06F4D),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Details text
-          Text(
-            log.details,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 12,
-              color: Color(0xFF5C473E),
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Moderation actions
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Dismiss button
-              TextButton(
-                onPressed: () {
-                  _state.resolveLog(log.id);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Warning dismissed.'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 850;
+                  final content = _body(users, reports, userNames);
+                  return Row(
+                    children: [
+                      if (wide) _rail(),
+                      Expanded(child: content),
+                    ],
                   );
                 },
-                child: const Text(
-                  'Dismiss',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF8C736B),
-                  ),
-                ),
               ),
-              const SizedBox(width: 8),
-
-              // Ban User button
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7A432D),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  minimumSize: const Size(80, 32),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                onPressed: () {
-                  _state.banUser(log.id);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('User / Event permanently banned.'),
-                      backgroundColor: Color(0xFF3E1F11),
-                    ),
-                  );
-                },
-                child: const Text(
-                  'Ban Item',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddSponsorDialog(BuildContext context) {
-    final brandController = TextEditingController();
-    final titleController = TextEditingController();
-    final ctaController = TextEditingController(text: 'Learn');
-    final urlController = TextEditingController();
-    String selectedIcon = 'star';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: const BorderSide(color: Color(0xFFE8E2DD), width: 1.5),
-              ),
-              title: const Text(
-                'Add Sponsor Banner',
-                style: TextStyle(
-                  fontFamily: 'PlayfairDisplay',
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3E1F11),
-                ),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'BRAND NAME',
-                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: brandController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. Amex Platinum',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'BANNER TITLE / OFFER',
-                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: titleController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. Free lounge access at 1,400+ airports',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'CTA LABEL',
-                                style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
-                              ),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: ctaController,
-                                decoration: InputDecoration(
-                                  hintText: 'e.g. Learn',
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'ICON',
-                                style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
-                              ),
-                              const SizedBox(height: 6),
-                              DropdownButtonFormField<String>(
-                                initialValue: selectedIcon,
-                                decoration: InputDecoration(
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                ),
-                                items: const [
-                                  DropdownMenuItem(value: 'star', child: Text('Star')),
-                                  DropdownMenuItem(value: 'coffee', child: Text('Coffee')),
-                                  DropdownMenuItem(value: 'flight', child: Text('Flight')),
-                                  DropdownMenuItem(value: 'percent', child: Text('Percent')),
-                                  DropdownMenuItem(value: 'business', child: Text('Business')),
-                                ],
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setDialogState(() {
-                                      selectedIcon = val;
-                                    });
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'REDIRECT URL',
-                      style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF8C736B)),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: urlController,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. https://americanexpress.com',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C736B))),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
-                  onPressed: () async {
-                    if (brandController.text.trim().isNotEmpty && titleController.text.trim().isNotEmpty) {
-                      try {
-                        await SponsorService().addSponsor(
-                          brand: brandController.text.trim(),
-                          title: titleController.text.trim(),
-                          cta: ctaController.text.trim(),
-                          url: urlController.text.trim(),
-                          icon: selectedIcon,
-                        );
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sponsor banner added successfully!'),
-                              backgroundColor: Color(0xFF7A432D),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error adding sponsor: $e'),
-                              backgroundColor: Colors.redAccent,
-                            ),
-                          );
-                        }
-                      }
-                    }
-                  },
-                  child: const Text('Add', style: TextStyle(color: Colors.white)),
-                ),
-              ],
+              bottomNavigationBar: MediaQuery.sizeOf(context).width < 850 ? NavigationBar(
+                selectedIndex: _section,
+                onDestinationSelected: (value) => setState(() => _section = value),
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Overview'),
+                  NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'People'),
+                  NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Reports'),
+                  NavigationDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: 'Ads'),
+                ],
+              ) : null,
             );
           },
         );
       },
     );
   }
+
+  Widget _rail() => NavigationRail(
+    selectedIndex: _section,
+    onDestinationSelected: (value) => setState(() => _section = value),
+    backgroundColor: Colors.white,
+    labelType: NavigationRailLabelType.all,
+    leading: const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Icon(Icons.shield_outlined, color: _brand)),
+    destinations: const [
+      NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Overview')),
+      NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('People')),
+      NavigationRailDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: Text('Reports')),
+      NavigationRailDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: Text('Ads')),
+    ],
+  );
+
+  Widget _body(List<QueryDocumentSnapshot<Map<String, dynamic>>> users, List<QueryDocumentSnapshot<Map<String, dynamic>>> reports, Map<String, String> names) {
+    final pending = reports.where((r) => r.data()['status'] == 'pending').length;
+    final restricted = users.where((u) => u.data()['isLoginRestricted'] == true).length;
+    final discoverable = users.where((u) => u.data()['isDiscoverable'] != false && u.data()['isLoginRestricted'] != true).length;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(MediaQuery.sizeOf(context).width >= 850 ? 32 : 16, 16, MediaQuery.sizeOf(context).width >= 850 ? 32 : 16, 32),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1180),
+        child: switch (_section) {
+          0 => _overview(users.length, discoverable, pending, restricted, reports, names),
+          1 => _people(users),
+          2 => _reports(reports, names),
+          _ => _ads(),
+        },
+      ),
+    );
+  }
+
+  Widget _overview(int users, int discoverable, int pending, int restricted, List<QueryDocumentSnapshot<Map<String, dynamic>>> reports, Map<String, String> names) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('System at a glance', style: TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 28, color: _ink, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 6),
+      const Text('Live account health, safety queue, and moderation actions.', style: TextStyle(color: Color(0xFF6B5A52))),
+      const SizedBox(height: 24),
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        _metric('Total users', '$users', Icons.people_outline, _brand),
+        _metric('In discovery', '$discoverable', Icons.explore_outlined, const Color(0xFF276749)),
+        _metric('Needs review', '$pending', Icons.flag_outlined, const Color(0xFFB45309)),
+        _metric('Restricted', '$restricted', Icons.lock_outline, const Color(0xFFC62828)),
+      ]),
+      const SizedBox(height: 32),
+      Row(children: [const Expanded(child: Text('Newest safety reports', style: TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 20, color: _ink, fontWeight: FontWeight.bold))), TextButton(onPressed: () => setState(() => _section = 2), child: const Text('Open queue'))]),
+      const SizedBox(height: 8),
+      if (reports.isEmpty) _empty('No reports have been submitted.'),
+      ...reports.take(4).map((report) => _reportCard(report, names, compact: true)),
+    ],
+  );
+
+  Widget _metric(String label, String value, IconData icon, Color color) => SizedBox(
+    width: 210,
+    child: Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: _line)),
+      child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [Container(width: 44, height: 44, decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color)), const SizedBox(width: 14), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _ink)), Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF6B5A52)))])])),
+    ),
+  );
+
+  Widget _people(List<QueryDocumentSnapshot<Map<String, dynamic>>> users) {
+    final query = _search.text.trim().toLowerCase();
+    final filtered = users.where((user) {
+      final data = user.data();
+      final haystack = '${data['name'] ?? ''} ${data['email'] ?? ''} ${data['company'] ?? ''}'.toLowerCase();
+      final matchesFilter = _filter == 'All' || (_filter == 'Restricted' ? data['isLoginRestricted'] == true : data['isDiscoverable'] != false && data['isLoginRestricted'] != true);
+      return haystack.contains(query) && matchesFilter;
+    }).toList()..sort((a, b) => ((b.data()['reportCount'] as num?)?.toInt() ?? 0).compareTo((a.data()['reportCount'] as num?)?.toInt() ?? 0));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('People', style: TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 28, color: _ink, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 6), const Text('Search accounts, inspect report counts, and apply safety restrictions.'),
+      const SizedBox(height: 20),
+      TextField(controller: _search, onChanged: (_) => setState(() {}), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search name, email, or company', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _line)))),
+      const SizedBox(height: 12),
+      Wrap(spacing: 8, children: ['All', 'Active', 'Restricted'].map((item) => ChoiceChip(label: Text(item), selected: _filter == item, onSelected: (_) => setState(() => _filter = item))).toList()),
+      const SizedBox(height: 16),
+      if (filtered.isEmpty) _empty('No users match these filters.'),
+      ...filtered.map(_userCard),
+    ]);
+  }
+
+  Widget _userCard(QueryDocumentSnapshot<Map<String, dynamic>> user) {
+    final data = user.data();
+    final restricted = data['isLoginRestricted'] == true;
+    final reportCount = (data['reportCount'] as num?)?.toInt() ?? 0;
+    final name = (data['name'] as String?)?.trim().isNotEmpty == true ? data['name'] as String : 'Unnamed user';
+    return Card(
+      elevation: 0, margin: const EdgeInsets.only(bottom: 10), color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: _line)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(backgroundColor: _brand.withValues(alpha: .12), child: Text(name.substring(0, 1).toUpperCase(), style: const TextStyle(color: _brand, fontWeight: FontWeight.bold))),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, color: _ink)),
+        subtitle: Text('${data['email'] ?? 'No email'}  •  $reportCount report${reportCount == 1 ? '' : 's'}'),
+        trailing: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          _statusChip(restricted ? 'Restricted' : (data['isDiscoverable'] == false ? 'Hidden' : 'Active'), restricted ? const Color(0xFFC62828) : _brand),
+          IconButton(tooltip: restricted ? 'Restore account' : 'Restrict account', icon: Icon(restricted ? Icons.lock_open_outlined : Icons.lock_outline, color: restricted ? _brand : const Color(0xFFC62828)), onPressed: () => _confirmRestriction(user.id, name, !restricted)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _reports(List<QueryDocumentSnapshot<Map<String, dynamic>>> reports, Map<String, String> names) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Safety reports', style: TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 28, color: _ink, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 6), const Text('Every report records a reason and can be resolved or dismissed by a moderator.'),
+    const SizedBox(height: 20),
+    if (reports.isEmpty) _empty('The safety queue is clear.'),
+    ...reports.map((report) => _reportCard(report, names)),
+  ]);
+
+  Widget _reportCard(QueryDocumentSnapshot<Map<String, dynamic>> report, Map<String, String> names, {bool compact = false}) {
+    final data = report.data();
+    final status = data['status'] as String? ?? 'pending';
+    final reportedId = data['reportedUserId'] as String? ?? '';
+    final reporterId = data['reporterId'] as String? ?? '';
+    return Card(
+      elevation: 0, margin: const EdgeInsets.only(bottom: 10), color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: _line)),
+      child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text('${names[reportedId] ?? 'Unknown user'} was reported', style: const TextStyle(fontWeight: FontWeight.bold, color: _ink))), _statusChip(status[0].toUpperCase() + status.substring(1), status == 'pending' ? const Color(0xFFB45309) : _brand)]),
+        const SizedBox(height: 6), Text('Reported by ${names[reporterId] ?? 'Unknown user'}', style: const TextStyle(fontSize: 12, color: Color(0xFF6B5A52))),
+        if (!compact) ...[const SizedBox(height: 12), Text(data['reason'] as String? ?? 'No reason supplied', style: const TextStyle(height: 1.35)), const SizedBox(height: 12), Align(alignment: Alignment.centerRight, child: Wrap(spacing: 8, children: [TextButton(onPressed: status == 'pending' ? () => ModerationService.instance.setReportStatus(report.id, 'dismissed') : null, child: const Text('Dismiss')), FilledButton(onPressed: status == 'pending' ? () => ModerationService.instance.setReportStatus(report.id, 'resolved') : null, style: FilledButton.styleFrom(backgroundColor: _brand), child: const Text('Resolve'))]))],
+      ])),
+    );
+  }
+
+  Widget _ads() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Advertisements', style: TextStyle(fontFamily: 'PlayfairDisplay', fontSize: 28, color: _ink, fontWeight: FontWeight.bold)), SizedBox(height: 6), Text('Create, pause, and remove promotions shown in the hub.') ])), FilledButton.icon(onPressed: _showAddAdDialog, style: FilledButton.styleFrom(backgroundColor: _brand), icon: const Icon(Icons.add), label: const Text('Add ad'))]),
+    const SizedBox(height: 20),
+    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: SponsorService().streamSponsors(), builder: (context, snapshot) {
+      final ads = snapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+      if (ads.isEmpty) return _empty('No advertisements yet.');
+      return Column(
+        children: ads.map((ad) {
+          final data = ad.data();
+          final active = data['isActive'] != false;
+          return Card(
+            elevation: 0,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: _line),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.campaign_outlined, color: _brand),
+              title: Text(
+                data['brand'] ?? 'Unnamed advertiser',
+                style: const TextStyle(fontWeight: FontWeight.bold, color: _ink),
+              ),
+              subtitle: Text(data['title'] ?? ''),
+              trailing: Wrap(
+                spacing: 4,
+                children: [
+                  Switch(
+                    value: active,
+                    onChanged: (value) => SponsorService().setSponsorActive(ad.id, value),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete ad',
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Color(0xFFC62828),
+                    ),
+                    onPressed: () => SponsorService().deleteSponsor(ad.id),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      );
+    }),
+  ]);
+
+  Widget _statusChip(String label, Color color) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)), child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)));
+  Widget _empty(String message) => Container(width: double.infinity, padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: _line)), child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF6B5A52))));
+
+  Future<void> _confirmRestriction(String userId, String name, bool restrict) async {
+    final ok = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: Text('${restrict ? 'Restrict' : 'Restore'} $name?'), content: Text(restrict ? 'This immediately removes the account from discovery and stops access to the app.' : 'This restores discovery and app access.'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: restrict ? const Color(0xFFC62828) : _brand), child: Text(restrict ? 'Restrict' : 'Restore'))]));
+    if (ok == true) await ModerationService.instance.setUserRestriction(userId, restrict);
+  }
+
+  void _showAddAdDialog() {
+    final brand = TextEditingController(); final title = TextEditingController(); final cta = TextEditingController(text: 'Learn more'); final url = TextEditingController();
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Add advertisement'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [_field(brand, 'Advertiser / brand'), const SizedBox(height: 12), _field(title, 'Offer title'), const SizedBox(height: 12), _field(cta, 'Button label'), const SizedBox(height: 12), _field(url, 'Destination URL')])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () async { if (brand.text.trim().isEmpty || title.text.trim().isEmpty) return; await SponsorService().addSponsor(brand: brand.text.trim(), title: title.text.trim(), cta: cta.text.trim(), url: url.text.trim()); if (context.mounted) Navigator.pop(context); }, style: FilledButton.styleFrom(backgroundColor: _brand), child: const Text('Publish'))]));
+  }
+  Widget _field(TextEditingController controller, String label) => TextField(controller: controller, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()));
 }

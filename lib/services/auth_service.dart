@@ -20,8 +20,11 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Dev-mode admin email – bypasses custom-claims check.
-  static const String _devAdminEmail = 'gagan123@gmail.com';
+  /// Dev-mode admin emails – bypasses custom-claims check.
+  static const List<String> _devAdminEmails = [
+    'gagan123@gmail.com',
+    'gagan90@gmail.com',
+  ];
 
   // ---------------------------------------------------------------------------
   // Auth state
@@ -142,6 +145,7 @@ class AuthService {
 
       // Touch the user's lastSeen timestamp
       if (credential.user != null) {
+        await _ensureAccessAllowed(credential.user!);
         await _firestore
             .collection('users')
             .doc(credential.user!.uid)
@@ -154,6 +158,20 @@ class AuthService {
       rethrow;
     } catch (e) {
       throw Exception('Sign-in failed: $e');
+    }
+  }
+
+  /// Enforces a moderation restriction in the client session. A Firebase
+  /// Admin SDK/Cloud Function is still required to disable the Auth account
+  /// itself server-side; this prevents access to the app immediately.
+  Future<void> _ensureAccessAllowed(User user) async {
+    final profile = await _firestore.collection('users').doc(user.uid).get();
+    if (profile.data()?['isLoginRestricted'] == true) {
+      await _auth.signOut();
+      throw FirebaseAuthException(
+        code: 'account-restricted',
+        message: 'This account has been restricted by the safety team.',
+      );
     }
   }
 
@@ -265,6 +283,7 @@ class AuthService {
 
       // 4. Save/Update Profile details in Firestore
       if (credential.user != null) {
+        await _ensureAccessAllowed(credential.user!);
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
         final snapshot = await docRef.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 5));
 
@@ -344,14 +363,14 @@ class AuthService {
       }
 
       // Dev-mode fallback: match by email (case-insensitive)
-      if (user.email?.toLowerCase() == _devAdminEmail.toLowerCase()) {
+      if (user.email != null && _devAdminEmails.contains(user.email!.toLowerCase())) {
         return true;
       }
 
       return false;
     } catch (e) {
       // If claims fetch fails, fall back to email check only
-      return user.email?.toLowerCase() == _devAdminEmail.toLowerCase();
+      return user.email != null && _devAdminEmails.contains(user.email!.toLowerCase());
     }
   }
 

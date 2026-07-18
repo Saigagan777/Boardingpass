@@ -17,6 +17,7 @@ import '../state_manager.dart';
 import '../models/message.dart';
 import '../models/user_profile.dart';
 import '../services/chat_service.dart';
+import '../services/moderation_service.dart';
 import '../services/meeting_service.dart';
 import '../utils/image_helper.dart';
 import '../services/user_service.dart';
@@ -232,6 +233,76 @@ class _ChatScreenState extends State<ChatScreen> {
             style: const TextStyle(fontFamily: 'PlusJakartaSans'),
           ),
         ),
+      );
+    }
+  }
+
+  Future<void> _showReportDialog() async {
+    final targetUid = _otherUid;
+    if (targetUid == null) return;
+    final reasonController = TextEditingController();
+    var submitting = false;
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Report this user'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Tell our safety team what happened. Your report is private.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Reason',
+                  hintText: 'Describe the abusive or unsafe behaviour',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: submitting ? null : () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: submitting ? null : () async {
+                setDialogState(() => submitting = true);
+                try {
+                  await ModerationService.instance.reportUser(
+                    reportedUserId: targetUid,
+                    reason: reasonController.text,
+                    chatId: _chatId,
+                  );
+                  if (context.mounted) Navigator.pop(dialogContext, true);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                    );
+                  }
+                  setDialogState(() => submitting = false);
+                }
+              },
+              icon: submitting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.flag_outlined),
+              label: const Text('Send report'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reasonController.dispose();
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report submitted. Our safety team will review it.')),
       );
     }
   }
@@ -3937,6 +4008,8 @@ class _ChatScreenState extends State<ChatScreen> {
               onSelected: (value) {
                 if (value == 'unmatch') {
                   _handleUnmatch();
+                } else if (value == 'report') {
+                  _showReportDialog();
                 }
               },
               itemBuilder: (context) => [
@@ -3958,6 +4031,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: Color(0xFFC62828),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      Icon(Icons.flag_outlined, size: 18, color: Color(0xFFC62828)),
+                      SizedBox(width: 10),
+                      Text('Report user', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, color: Color(0xFFC62828))),
                     ],
                   ),
                 ),

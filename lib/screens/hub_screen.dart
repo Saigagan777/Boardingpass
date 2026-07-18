@@ -1267,7 +1267,7 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
       stream: MeetingService().streamUserMeetings(),
       builder: (context, meetingSnapshot) {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: SponsorService().streamSponsors(),
+          stream: SponsorService().streamActiveSponsors(),
           builder: (context, sponsorSnapshot) {
             final currentUid = FirebaseAuth.instance.currentUser?.uid;
             final List<Map<String, dynamic>> carouselItems = [];
@@ -1320,6 +1320,7 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
             if (sponsorSnapshot.hasData) {
               for (final doc in sponsorSnapshot.data!.docs) {
                 final data = doc.data();
+                if (data['isActive'] == false) continue;
                 final brand = data['brand'] ?? 'Sponsor';
                 final title = data['title'] ?? '';
                 final cta = data['cta'] ?? 'Learn';

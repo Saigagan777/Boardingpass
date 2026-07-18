@@ -343,7 +343,8 @@ class AppStateManager extends ChangeNotifier {
       _isAdminView = isAdminUser;
     } catch (e) {
       _isAdminView =
-          user.email?.toLowerCase() == 'gagan123@gmail.com'; // Dev fallback
+          user.email?.toLowerCase() == 'gagan123@gmail.com' ||
+          user.email?.toLowerCase() == 'gagan90@gmail.com'; // Dev fallback
     }
 
     _profileSubscription = UserService().streamCurrentUserProfile().listen((
