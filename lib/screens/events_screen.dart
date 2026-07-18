@@ -963,12 +963,8 @@ class _EventsScreenState extends State<EventsScreen> {
                               ),
                               onPressed: () async {
                                 final nav = Navigator.of(context);
-                                if (event.mapUrl != null &&
-                                    await canLaunchUrl(
-                                        Uri.parse(event.mapUrl!))) {
-                                  await launchUrl(Uri.parse(event.mapUrl!),
-                                      mode: LaunchMode.externalApplication);
-                                } else {
+                                final messenger = ScaffoldMessenger.of(context);
+                                if (event.isJoined) {
                                   nav.pop();
                                   messenger.showSnackBar(
                                     const SnackBar(
