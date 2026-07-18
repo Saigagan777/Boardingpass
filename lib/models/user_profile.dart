@@ -90,6 +90,7 @@ class UserProfile {
   final bool resumeParsed;
   final DateTime? resumeParsedAt;
   final bool directPasswordSet;
+  final bool hasCompletedFeatureTour;
 
   // Match score
   final int? matchScore;
@@ -141,6 +142,7 @@ class UserProfile {
     this.resumeParsed = false,
     this.resumeParsedAt,
     this.directPasswordSet = false,
+    this.hasCompletedFeatureTour = true,
     this.matchScore,
     this.expertiseWithLevel = const [],
     this.interestsWithPriority = const [],
@@ -207,6 +209,8 @@ class UserProfile {
       resumeParsed: data['resumeParsed'] ?? false,
       resumeParsedAt: (data['resumeParsedAt'] as Timestamp?)?.toDate(),
       directPasswordSet: data['directPasswordSet'] ?? false,
+      // Existing accounts should not be interrupted by the new-user tour.
+      hasCompletedFeatureTour: data['hasCompletedFeatureTour'] ?? true,
       matchScore: data['matchScore'] as int?,
       expertiseWithLevel: (data['expertiseWithLevel'] as List?)
               ?.map((item) => Map<String, dynamic>.from(item))
@@ -269,6 +273,7 @@ class UserProfile {
       'resumeParsed': resumeParsed,
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
       'directPasswordSet': directPasswordSet,
+      'hasCompletedFeatureTour': hasCompletedFeatureTour,
       'matchScore': matchScore,
       'expertiseWithLevel': expertiseWithLevel,
       'interestsWithPriority': interestsWithPriority,
@@ -323,6 +328,7 @@ class UserProfile {
     bool? resumeParsed,
     DateTime? resumeParsedAt,
     bool? directPasswordSet,
+    bool? hasCompletedFeatureTour,
     int? matchScore,
     List<Map<String, dynamic>>? expertiseWithLevel,
     List<Map<String, dynamic>>? interestsWithPriority,
@@ -377,6 +383,8 @@ class UserProfile {
       resumeParsed: resumeParsed ?? this.resumeParsed,
       resumeParsedAt: resumeParsedAt ?? this.resumeParsedAt,
       directPasswordSet: directPasswordSet ?? this.directPasswordSet,
+      hasCompletedFeatureTour:
+          hasCompletedFeatureTour ?? this.hasCompletedFeatureTour,
       matchScore: matchScore ?? this.matchScore,
       expertiseWithLevel: expertiseWithLevel ?? this.expertiseWithLevel,
       interestsWithPriority: interestsWithPriority ?? this.interestsWithPriority,

@@ -426,6 +426,7 @@ class AppStateManager extends ChangeNotifier {
             location: data['location'] ?? '',
             time: data['time'] ?? '',
             attendees: '${attendeesList.length} interested',
+            attendeeIds: attendeesList,
             category: data['category'] ?? 'Meetups',
             price: data['price'] ?? 'Free',
             mapUrl: data['mapUrl'],

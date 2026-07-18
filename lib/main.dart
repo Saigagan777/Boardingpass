@@ -19,6 +19,7 @@ import 'screens/discover_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/meet_screen.dart';
 import 'screens/admin_panel.dart';
+import 'screens/feature_tour_screen.dart';
 import 'utils/web_helper.dart';
 import 'services/notification_service.dart';
 
@@ -235,6 +236,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   String? _latestUnreadNotificationId;
   bool _showNotificationBanner = false;
   String? _currentUid;
+  bool _isCompletingFeatureTour = false;
 
   @override
   void initState() {
@@ -331,6 +333,24 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             debugPrint("Error listening to notifications: $err");
           },
         );
+  }
+
+  Future<void> _completeFeatureTour() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _isCompletingFeatureTour) return;
+
+    setState(() => _isCompletingFeatureTour = true);
+    try {
+      await UserService().updateUserProfile(
+        userId: uid,
+        hasCompletedFeatureTour: true,
+      );
+    } catch (e) {
+      debugPrint('Unable to save feature tour completion: $e');
+      rethrow;
+    } finally {
+      if (mounted) setState(() => _isCompletingFeatureTour = false);
+    }
   }
 
   @override
@@ -469,6 +489,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                   ),
                 ),
               ),
+            ),
+          if (_state.isLoggedIn &&
+              _state.isProfileComplete &&
+              _state.currentUserProfile?.hasCompletedFeatureTour == false &&
+              !_isCompletingFeatureTour)
+            Positioned.fill(
+              child: FeatureTourScreen(onComplete: _completeFeatureTour),
             ),
         ],
       ),

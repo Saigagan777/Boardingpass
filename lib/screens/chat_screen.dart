@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -55,6 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _chatId;
   bool _isBlocked = false;
   bool _isUnmatching = false;
+  bool _isUploadingAttachment = false;
   String? _selectedContactName;
 
   // Audio services
@@ -493,6 +498,151 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       debugPrint('Error sending message: $e');
     }
+  }
+
+  Future<void> _pickAndSendPhoto({
+    ImageSource source = ImageSource.gallery,
+  }) async {
+    try {
+      final image = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      await _uploadAndSendAttachment(
+        bytes: await image.readAsBytes(),
+        fileName: image.name.isEmpty ? 'photo.jpg' : image.name,
+        isPhoto: true,
+      );
+    } catch (e) {
+      _showAttachmentError('Could not select that photo.');
+      debugPrint('Photo selection failed: $e');
+    }
+  }
+
+  Future<void> _pickAndSendDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'],
+        withData: true,
+      );
+      final file = result?.files.single;
+      if (file == null || file.bytes == null) return;
+
+      await _uploadAndSendAttachment(
+        bytes: file.bytes!,
+        fileName: file.name,
+        isPhoto: false,
+      );
+    } catch (e) {
+      _showAttachmentError('Could not select that document.');
+      debugPrint('Document selection failed: $e');
+    }
+  }
+
+  Future<void> _uploadAndSendAttachment({
+    required List<int> bytes,
+    required String fileName,
+    required bool isPhoto,
+  }) async {
+    final cid = await _ensureChatId();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (cid == null || uid == null) {
+      _showAttachmentError('Unable to open this conversation.');
+      return;
+    }
+
+    if (mounted) setState(() => _isUploadingAttachment = true);
+    try {
+      final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path = 'chat_attachments/$cid/$uid/${timestamp}_$safeName';
+      final ref = FirebaseStorage.instance.ref().child(path);
+      await ref.putData(
+        Uint8List.fromList(bytes),
+        SettableMetadata(contentType: _contentTypeFor(fileName, isPhoto)),
+      );
+      final downloadUrl = await ref.getDownloadURL();
+      final replyTo = _selectedReplyMsg;
+      final mentions = List<String>.from(_selectedMentionUids);
+
+      if (isPhoto) {
+        await ChatService().sendImageMessage(
+          chatId: cid,
+          imageUrl: downloadUrl,
+          replyTo: replyTo,
+          mentions: mentions,
+        );
+      } else {
+        await ChatService().sendFileMessage(
+          chatId: cid,
+          fileUrl: downloadUrl,
+          fileName: fileName,
+          fileSize: bytes.length,
+          replyTo: replyTo,
+          mentions: mentions,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _selectedReplyMsg = null;
+        _selectedMentionUids = [];
+        _showMentionsList = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      _showAttachmentError('Upload failed. Please try again.');
+      debugPrint('Attachment upload failed: $e');
+    } finally {
+      if (mounted) setState(() => _isUploadingAttachment = false);
+    }
+  }
+
+  String _contentTypeFor(String fileName, bool isPhoto) {
+    final extension = fileName.split('.').last.toLowerCase();
+    if (isPhoto) {
+      return switch (extension) {
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'heic' => 'image/heic',
+        _ => 'image/jpeg',
+      };
+    }
+    return switch (extension) {
+      'pdf' => 'application/pdf',
+      'doc' => 'application/msword',
+      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls' => 'application/vnd.ms-excel',
+      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'ppt' => 'application/vnd.ms-powerpoint',
+      'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'txt' => 'text/plain',
+      _ => 'application/octet-stream',
+    };
+  }
+
+  void _showAttachmentError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(backgroundColor: const Color(0xFFC62828), content: Text(message)),
+    );
+  }
+
+  void _openImagePreview(Message message) {
+    final imageUrl = message.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _ChatImagePreview(
+          imageUrl: imageUrl,
+          heroTag: 'chat-image-${message.id}',
+        ),
+      ),
+    );
   }
 
   void _initAudioPlayerListener() {
@@ -4541,63 +4691,86 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       case MessageKind.image:
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            msg.imageUrl ?? '',
-            width: 200,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 200,
-              height: 120,
-              color: Colors.grey[200],
-              child: const Icon(Icons.broken_image, color: Colors.grey),
+        return Semantics(
+          button: true,
+          label: 'Open image in full screen',
+          child: GestureDetector(
+            onTap: () => _openImagePreview(msg),
+            child: Hero(
+              tag: 'chat-image-${msg.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  msg.imageUrl ?? '',
+                  width: 200,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 200,
+                    height: 120,
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.broken_image, color: Colors.grey),
+                  ),
+                ),
+              ),
             ),
           ),
         );
 
       case MessageKind.file:
-        return Container(
-          width: 200,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.05),
+        return Semantics(
+          button: true,
+          label: 'Open ${msg.fileName ?? 'document'}',
+          child: InkWell(
             borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.insert_drive_file, color: textColor, size: 28),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      msg.fileName ?? 'Document.pdf',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                    ),
-                    Text(
-                      msg.fileSize != null
-                          ? '${(msg.fileSize! / 1024 / 1024).toStringAsFixed(1)} MB'
-                          : '1.2 MB',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 10,
-                        color: textColor.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                ),
+            onTap: msg.fileUrl == null || msg.fileUrl!.isEmpty
+                ? null
+                : () => launchUrl(
+                    Uri.parse(msg.fileUrl!),
+                    mode: LaunchMode.externalApplication,
+                  ),
+            child: Container(
+              width: 200,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
               ),
-              Icon(Icons.download, color: textColor, size: 20),
-            ],
+              child: Row(
+                children: [
+                  Icon(Icons.insert_drive_file, color: textColor, size: 28),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          msg.fileName ?? 'Document.pdf',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Text(
+                          msg.fileSize != null
+                              ? '${(msg.fileSize! / 1024 / 1024).toStringAsFixed(1)} MB'
+                              : 'Unknown size',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 10,
+                            color: textColor.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.download, color: textColor, size: 20),
+                ],
+              ),
+            ),
           ),
         );
 
@@ -4826,11 +4999,18 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 // Attachment drawer
                 IconButton(
-                  icon: const Icon(
-                    Icons.add_circle_outline,
+                  tooltip: _isUploadingAttachment
+                      ? 'Uploading attachment'
+                      : 'Add photo or document',
+                  icon: Icon(
+                    _isUploadingAttachment
+                        ? Icons.upload_file_outlined
+                        : Icons.add_circle_outline,
                     color: Color(0xFF8C736B),
                   ),
-                  onPressed: _showAttachmentDrawer,
+                  onPressed: _isUploadingAttachment
+                      ? null
+                      : _showAttachmentDrawer,
                 ),
 
                 // Voice memo button
@@ -5118,19 +5298,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildDrawerItem(
-                      icon: Icons.image,
-                      label: 'Image',
+                      icon: Icons.photo_library_outlined,
+                      label: 'Photo',
                       color: const Color(0xFF7A432D),
                       onTap: () async {
                         Navigator.pop(context);
-                        final cid = await _ensureChatId();
-                        if (cid == null) return;
-                        // Send mock premium airport lounge/networking image
-                        await ChatService().sendImageMessage(
-                          chatId: cid,
-                          imageUrl:
-                              'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=60',
-                        );
+                        await _pickAndSendPhoto();
                       },
                     ),
                     _buildDrawerItem(
@@ -5139,16 +5312,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: const Color(0xFFE5A475),
                       onTap: () async {
                         Navigator.pop(context);
-                        final cid = await _ensureChatId();
-                        if (cid == null) return;
-                        // Send mock pdf boarding pass or guide
-                        await ChatService().sendFileMessage(
-                          chatId: cid,
-                          fileUrl:
-                              'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-                          fileName: 'Networking_BoardingPass_Guide.pdf',
-                          fileSize: 1048576,
-                        );
+                        await _pickAndSendDocument();
                       },
                     ),
                     _buildDrawerItem(
@@ -5195,6 +5359,227 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Retained for a future expanded attachment menu.
+  // ignore: unused_element
+  Widget _buildAttachmentMenuItem({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: Icon(icon, color: Colors.white, size: 25),
+              ),
+              const SizedBox(width: 16),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  void _showStickerPicker() {
+    const stickers = ['👍', '😂', '🎉', '❤️', '🔥', '👏', '✨', '🙌'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF171619),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 26),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Choose a sticker',
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: stickers.map((sticker) {
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () async {
+                        Navigator.pop(sheetContext);
+                        final cid = await _ensureChatId();
+                        if (cid == null) return;
+                        await ChatService().sendTextMessage(
+                          chatId: cid,
+                          text: sticker,
+                        );
+                        _scrollToBottom();
+                      },
+                      child: Container(
+                        width: 62,
+                        height: 62,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Text(sticker, style: const TextStyle(fontSize: 30)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ignore: unused_element
+  Future<void> _showQuickPollDialog() async {
+    final questionController = TextEditingController();
+    final firstOptionController = TextEditingController();
+    final secondOptionController = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFFAF7F5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Create a poll',
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF3E1F11),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPollInput(questionController, 'Ask a question'),
+              const SizedBox(height: 10),
+              _buildPollInput(firstOptionController, 'First option'),
+              const SizedBox(height: 10),
+              _buildPollInput(secondOptionController, 'Second option'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final question = questionController.text.trim();
+                final options = [
+                  firstOptionController.text.trim(),
+                  secondOptionController.text.trim(),
+                ].where((option) => option.isNotEmpty).toList();
+                if (question.isEmpty || options.length < 2) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Add a question and two options.'),
+                      backgroundColor: Color(0xFFC62828),
+                    ),
+                  );
+                  return;
+                }
+
+                final cid = await _ensureChatId();
+                if (cid == null) return;
+                try {
+                  await ChatService().sendPollMessage(
+                    chatId: cid,
+                    question: question,
+                    options: options,
+                    replyTo: _selectedReplyMsg,
+                    mentions: List<String>.from(_selectedMentionUids),
+                  );
+                  if (!dialogContext.mounted) return;
+                  setState(() {
+                    _selectedReplyMsg = null;
+                    _selectedMentionUids = [];
+                    _showMentionsList = false;
+                  });
+                  Navigator.pop(dialogContext);
+                  _scrollToBottom();
+                } catch (e) {
+                  _showAttachmentError('Could not create this poll.');
+                  debugPrint('Poll creation failed: $e');
+                }
+              },
+              child: const Text('Send poll'),
+            ),
+          ],
+        );
+      },
+    );
+
+    questionController.dispose();
+    firstOptionController.dispose();
+    secondOptionController.dispose();
+  }
+
+  // ignore: unused_element
+  Widget _buildPollInput(TextEditingController controller, String hint) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+      decoration: InputDecoration(
+        hintText: hint,
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+        ),
       ),
     );
   }
@@ -6503,6 +6888,93 @@ class _ChatScreenState extends State<ChatScreen> {
       _mentionsSuggestions = suggestions;
       _showMentionsList = suggestions.isNotEmpty;
     });
+  }
+}
+
+class _ChatImagePreview extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+
+  const _ChatImagePreview({required this.imageUrl, required this.heroTag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: Hero(
+                tag: heroTag,
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: Image.network(
+                    imageUrl,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const SizedBox(
+                        height: 48,
+                        width: 48,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.broken_image_outlined, color: Colors.white70, size: 44),
+                        SizedBox(height: 10),
+                        Text(
+                          'This image is unavailable.',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'Close image preview',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+            ),
+            const Positioned(
+              bottom: 20,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'Pinch to zoom',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 12,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

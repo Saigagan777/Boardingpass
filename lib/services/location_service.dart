@@ -76,11 +76,27 @@ class LocationService {
         );
       }
 
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 5),
+          ),
+        );
+      } catch (e) {
+        // Fallback to getLastKnownPosition if getCurrentPosition fails or times out
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          return lastKnown;
+        }
+        // If last known is also null, try with lower accuracy
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.low,
+            timeLimit: Duration(seconds: 5),
+          ),
+        );
+      }
     } catch (e) {
       throw Exception('Failed to get current position: $e');
     }

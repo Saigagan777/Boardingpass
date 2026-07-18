@@ -7,6 +7,7 @@ class Event {
   final String location;
   final String time;
   final String attendees;
+  final List<String> attendeeIds;
   final String category;
   final String price;
   final String? mapUrl;
@@ -24,6 +25,7 @@ class Event {
     required this.location,
     required this.time,
     required this.attendees,
+    this.attendeeIds = const [],
     this.category = 'Meetups',
     this.price = 'Free',
     this.mapUrl,

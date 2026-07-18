@@ -110,6 +110,7 @@ class AuthService {
           expertiseWithLevel: expertiseWithLevel,
           interestsWithPriority: interestsWithPriority,
           badges: badges,
+          hasCompletedFeatureTour: false,
         );
         await _firestore
             .collection('users')
@@ -165,6 +166,7 @@ class AuthService {
   Future<UserCredential?> signInWithLinkedIn(
     String code, {
     String? redirectUri,
+    String? codeVerifier,
   }) async {
     final String clientId = LinkedInOAuthConfig.clientId;
     final String clientSecret = linkedinClientSecret;
@@ -176,15 +178,21 @@ class AuthService {
       final String tokenUri = kIsWeb
           ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
           : 'https://www.linkedin.com/oauth/v2/accessToken';
+      final tokenRequestBody = <String, String>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': finalRedirectUri,
+        'client_id': clientId,
+        if (codeVerifier == null) 'client_secret': clientSecret,
+        'code_verifier': ?codeVerifier,
+      }.entries.map((entry) {
+        return '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}';
+      }).join('&');
       final tokenResponse = await http
           .post(
             Uri.parse(tokenUri),
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'grant_type=authorization_code'
-                '&code=${Uri.encodeComponent(code)}'
-                '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
-                '&client_id=${Uri.encodeComponent(clientId)}'
-                '&client_secret=${Uri.encodeComponent(clientSecret)}',
+            body: tokenRequestBody,
           )
           .timeout(const Duration(seconds: 10));
 
@@ -271,6 +279,7 @@ class AuthService {
             linkedinSynced: true,
             createdAt: DateTime.now(),
             lastSeen: DateTime.now(),
+            hasCompletedFeatureTour: false,
           );
           await docRef
               .set(profile.toFirestore())
@@ -368,6 +377,7 @@ class AuthService {
           email: email,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
+          hasCompletedFeatureTour: false,
         );
         await docRef.set(profile.toFirestore());
       }

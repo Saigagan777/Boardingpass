@@ -13,6 +13,7 @@ import '../services/chat_service.dart';
 import '../services/event_service.dart';
 import '../models/user_profile.dart';
 import '../utils/image_helper.dart';
+import 'google_location_dropdown.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -1695,6 +1696,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _roleController;
   late final TextEditingController _industryController;
   late final TextEditingController _experienceController;
+  late final TextEditingController _homeBaseController;
   late final TextEditingController _profileImageUrlController;
   late final TextEditingController _coverImageUrlController;
   late final TextEditingController _linkedinUrlController;
@@ -1719,8 +1721,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late List<Map<String, dynamic>> _localEducationTimeline;
   late List<String> _localSkills;
   late List<String> _localInterests;
-  final TextEditingController _customExpertiseController = TextEditingController();
-  final TextEditingController _customInterestController = TextEditingController();
   String _selectedOccupation = 'Software Engineer';
   final TextEditingController _customOccupationController = TextEditingController();
   final List<String> _occupations = [
@@ -1833,6 +1833,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _parseCurrentLocation(widget.profile.currentLocationName);
 
     _experienceController = TextEditingController(text: widget.profile.experience ?? '');
+    _homeBaseController = TextEditingController(text: widget.profile.homeBase ?? '');
     _profileImageUrlController = TextEditingController(text: widget.profile.profileImageUrl ?? '');
     _coverImageUrlController = TextEditingController(text: widget.profile.coverImageUrl ?? '');
     _linkedinUrlController = TextEditingController(text: widget.profile.linkedinProfileUrl ?? '');
@@ -1848,6 +1849,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _roleController.addListener(_onFieldChanged);
     _industryController.addListener(_onFieldChanged);
     _experienceController.addListener(_onFieldChanged);
+    _homeBaseController.addListener(_onFieldChanged);
     _profileImageUrlController.addListener(_onFieldChanged);
   }
 
@@ -1941,6 +1943,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _roleController.removeListener(_onFieldChanged);
     _industryController.removeListener(_onFieldChanged);
     _experienceController.removeListener(_onFieldChanged);
+    _homeBaseController.removeListener(_onFieldChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
 
     _nameController.dispose();
@@ -1950,6 +1953,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _roleController.dispose();
     _industryController.dispose();
     _experienceController.dispose();
+    _homeBaseController.dispose();
     _profileImageUrlController.dispose();
     _coverImageUrlController.dispose();
     _linkedinUrlController.dispose();
@@ -1966,8 +1970,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _newEduStartDateController.dispose();
     _newEduEndDateController.dispose();
 
-    _customExpertiseController.dispose();
-    _customInterestController.dispose();
     _customOccupationController.dispose();
 
     super.dispose();
@@ -2018,7 +2020,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         role: _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : _selectedOccupation,
         industry: finalIndustry,
         experience: _experienceController.text.trim(),
-        homeBase: null,
+        homeBase: _homeBaseController.text.trim().isNotEmpty
+            ? _homeBaseController.text.trim()
+            : null,
         currentLocationName: finalCurrentLocation,
         travelFrequency: _selectedTravelFrequency,
         profileImageUrl: _profileImageUrlController.text.trim(),
@@ -2196,6 +2200,16 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     const SizedBox(height: 20),
                     const Align(
                       alignment: Alignment.centerLeft,
+                      child: Text('Home Base Location', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B))),
+                    ),
+                    const SizedBox(height: 6),
+                    GoogleLocationDropdown(
+                      controller: _homeBaseController,
+                      onSelected: (_) => _onFieldChanged(),
+                    ),
+                    const SizedBox(height: 20),
+                    const Align(
+                      alignment: Alignment.centerLeft,
                       child: Text('Current Location', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B))),
                     ),
                     const SizedBox(height: 6),
@@ -2331,26 +2345,24 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     const SizedBox(height: 20),
                     _buildSectionHeader('Expertise'),
                     const SizedBox(height: 12),
-                    _buildMultiSelectChipGrid(
+                    _buildMultiSelectDropdown(
                       options: _expertiseOptions,
                       selectedList: _localSkills,
-                      customController: _customExpertiseController,
-                      customHint: 'Add custom expertise...',
                       onListChanged: _onFieldChanged,
                       isExpertise: true,
                       levelsMap: _localExpertiseLevels,
+                      placeholder: 'Select expertise area',
                     ),
                     const SizedBox(height: 24),
                     _buildSectionHeader('Interests'),
                     const SizedBox(height: 12),
-                    _buildMultiSelectChipGrid(
+                    _buildMultiSelectDropdown(
                       options: _interestOptions,
                       selectedList: _localInterests,
-                      customController: _customInterestController,
-                      customHint: 'Add custom interest...',
                       onListChanged: _onFieldChanged,
                       isExpertise: false,
                       prioritiesMap: _localInterestsPriorities,
+                      placeholder: 'Select interest area',
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -2363,84 +2375,82 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
-  Widget _buildMultiSelectChipGrid({
+  Widget _buildMultiSelectDropdown({
     required List<String> options,
     required List<String> selectedList,
-    required TextEditingController customController,
-    required String customHint,
     required VoidCallback onListChanged,
     bool isExpertise = false,
     Map<String, String>? levelsMap,
     Map<String, String>? prioritiesMap,
+    required String placeholder,
   }) {
+    final availableOptions = options
+        .where((option) => !selectedList.contains(option))
+        .toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: options.map((opt) {
-            final isSelected = selectedList.contains(opt);
-            return FilterChip(
-              label: Text(opt),
-              labelStyle: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.white : const Color(0xFF7A432D),
-              ),
-              selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  if (selected) {
-                    selectedList.add(opt);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap[opt] = 'Intermediate';
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap[opt] = 'Medium';
-                    }
-                  } else {
-                    selectedList.remove(opt);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap.remove(opt);
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap.remove(opt);
-                    }
-                  }
-                  onListChanged();
-                });
-              },
-              selectedColor: const Color(0xFF7A432D),
-              backgroundColor: Colors.white,
-              checkmarkColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? Colors.transparent : const Color(0xFFE8E2DD),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: null,
+              hint: Text(
+                placeholder,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 13,
+                  color: Color(0xFF8C736B),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-        if (selectedList.any((opt) => !options.contains(opt))) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'Custom Additions:',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF8C736B),
+              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+              dropdownColor: Colors.white,
+              items: availableOptions.map((option) {
+                return DropdownMenuItem<String>(
+                  value: option,
+                  child: Text(
+                    option,
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: availableOptions.isEmpty
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() {
+                        selectedList.add(value);
+                        if (isExpertise && levelsMap != null) {
+                          levelsMap[value] = 'Intermediate';
+                        } else if (!isExpertise && prioritiesMap != null) {
+                          prioritiesMap[value] = 'Medium';
+                        }
+                        onListChanged();
+                      });
+                    },
             ),
           ),
-          const SizedBox(height: 4),
+        ),
+        if (selectedList.isNotEmpty) ...[
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: selectedList.where((opt) => !options.contains(opt)).map((opt) {
+            children: selectedList.map((opt) {
               return Chip(
                 backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                label: Text(opt, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
+                label: Text(opt, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF7A432D), fontWeight: FontWeight.w600)),
                 deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
                 onDeleted: () {
                   setState(() {
@@ -2459,62 +2469,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             }).toList(),
           ),
         ],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: customController,
-                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: customHint,
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const Color(0xFF7A432D).withValues(alpha: 1.5) == Colors.white ? const BorderSide(color: Color(0xFF7A432D)) : const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                elevation: 0,
-              ),
-              onPressed: () {
-                final text = customController.text.trim();
-                if (text.isNotEmpty && !selectedList.contains(text)) {
-                  setState(() {
-                    selectedList.add(text);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap[text] = 'Intermediate';
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap[text] = 'Medium';
-                    }
-                    customController.clear();
-                    onListChanged();
-                  });
-                }
-              },
-              child: const Text('Add Custom', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 12)),
-            ),
-          ],
-        ),
-
       ],
     );
   }

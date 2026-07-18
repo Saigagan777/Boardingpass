@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
 import '../models/event.dart';
 import '../services/event_service.dart';
+import 'event_attendee_avatar_stack.dart';
 import 'map_webview.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -950,18 +951,45 @@ class _EventsScreenState extends State<EventsScreen> {
                               ),
                               onPressed: () async {
                                 final nav = Navigator.of(context);
-                                if (event.mapUrl != null &&
-                                    await canLaunchUrl(
-                                        Uri.parse(event.mapUrl!))) {
-                                  await launchUrl(Uri.parse(event.mapUrl!),
-                                      mode: LaunchMode.externalApplication);
-                                } else {
+                                final messenger = ScaffoldMessenger.of(context);
+                                if (event.isJoined) {
                                   nav.pop();
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('You are already registered for this event.'),
+                                      backgroundColor: Color(0xFF2E7D32),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                try {
+                                  final isNowJoined = await EventService()
+                                      .toggleJoinEvent(event.id);
+                                  if (!context.mounted) return;
+                                  if (isNowJoined) {
+                                    setState(() => event.isJoined = true);
+                                    nav.pop();
+                                    messenger.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('You are registered for this event!'),
+                                        backgroundColor: Color(0xFF2E7D32),
+                                      ),
+                                    );
+                                  }
+                                } catch (_) {
+                                  if (!context.mounted) return;
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Could not register for this event. Please try again.'),
+                                      backgroundColor: Color(0xFFC62828),
+                                    ),
+                                  );
                                 }
                               },
-                              child: const Text(
-                                'Book Ticket / Join',
-                                style: TextStyle(
+                              child: Text(
+                                event.isJoined ? 'Registered' : 'Book Ticket / Join',
+                                style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
@@ -1469,14 +1497,6 @@ class _EventsScreenState extends State<EventsScreen> {
     final attendeeText = event.attendees;
     final attendeeCount = RegExp(r'\d+').firstMatch(attendeeText)?.group(0) ?? '0';
 
-    // Placeholder avatar URLs for the overlap stack
-    final avatarUrls = [
-      'https://randomuser.me/api/portraits/men/32.jpg',
-      'https://randomuser.me/api/portraits/women/44.jpg',
-      'https://randomuser.me/api/portraits/men/55.jpg',
-      'https://randomuser.me/api/portraits/women/65.jpg',
-    ];
-
     // Derive a city label from the location string
     final locationParts = event.location.split(',');
     final cityLabel = locationParts.isNotEmpty
@@ -1654,60 +1674,15 @@ class _EventsScreenState extends State<EventsScreen> {
                     // Avatars (only if there are real attendees) + Interested pill
                     Row(
                       children: [
-                        // Only show avatars if attendeeCount > 0
-                        if ((int.tryParse(attendeeCount) ?? 0) > 0) ...[
-                          SizedBox(
-                            width: 22.0 * avatarUrls.length + 30,
-                            height: 32,
-                            child: Stack(
-                              children: [
-                                ...List.generate(avatarUrls.length, (i) {
-                                  return Positioned(
-                                    left: i * 22.0,
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 1.8),
-                                        image: DecorationImage(
-                                          image: NetworkImage(avatarUrls[i]),
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                                // +N overflow badge — only if count > 4
-                                if ((int.tryParse(attendeeCount) ?? 0) > 4)
-                                  Positioned(
-                                    left: avatarUrls.length * 22.0,
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: const Color(0xFF5C3A1E),
-                                        border: Border.all(color: Colors.white, width: 1.8),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          '+${(int.tryParse(attendeeCount) ?? 0) - 4}',
-                                          style: const TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
+                        // Show real profile photos: every attendee up to four,
+                        // otherwise only the four most recently interested.
+                        if (event.attendeeIds.isNotEmpty) ...[
+                          EventAttendeeAvatarStack(
+                            attendeeIds: event.attendeeIds,
                           ),
                           const SizedBox(width: 10),
                         ],
+                                // +N overflow badge — only if count > 4
                         // Interested count pill — always shown
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),

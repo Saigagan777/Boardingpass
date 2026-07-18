@@ -1,18 +1,21 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/linkedin_oauth_config.dart';
+import '../services/linkedin_mobile_auth.dart';
 import 'linkedin_webview.dart';
 import '../utils/image_helper.dart';
-import 'package:csc_picker_plus/csc_picker_plus.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../utils/app_logo.dart';
 import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
+import '../utils/google_search_helper.dart';
+import 'google_location_dropdown.dart';
 
 
 enum OnboardingView {
@@ -59,6 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _industryController = TextEditingController();
   final TextEditingController _experienceController = TextEditingController();
+  final TextEditingController _homeBaseController = TextEditingController();
   final TextEditingController _profileImageUrlController =
       TextEditingController();
   final TextEditingController _linkedinUrlController = TextEditingController();
@@ -89,11 +93,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   String? _selectedIndustry;
   String? _selectedTravelFrequency;
-
-  // Home Base dependent states
-  String _homeBaseCountry = '';
-  String _homeBaseState = '';
-  String _homeBaseCity = '';
 
   // Current Location dependent states
   String _currentLocationCountry = '';
@@ -152,8 +151,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   List<String> _selectedInterests = [];
   final Map<String, String> _expertiseLevels = {};
   final Map<String, String> _interestsPriorities = {};
-  final TextEditingController _customExpertiseController = TextEditingController();
-  final TextEditingController _customInterestController = TextEditingController();
 
   final List<Map<String, String>> _onboardingData = [
     {
@@ -245,6 +242,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _headlineController.text = profile.headline ?? '';
         _bioController.text = profile.bio ?? '';
         _experienceController.text = profile.experience ?? '';
+        _homeBaseController.text = profile.homeBase ?? '';
         _linkedinUrlController.text = profile.linkedinProfileUrl ?? '';
         _selectedExpertise = List<String>.from(profile.skills.isNotEmpty ? profile.skills : profile.expertise);
         _selectedInterests = List<String>.from(profile.interests.isNotEmpty ? profile.interests : profile.intents);
@@ -279,6 +277,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _companyController.addListener(_onFieldChanged);
     _headlineController.addListener(_onFieldChanged);
     _experienceController.addListener(_onFieldChanged);
+    _homeBaseController.addListener(_onFieldChanged);
     _bioController.addListener(_onFieldChanged);
     _industryController.addListener(_onFieldChanged);
 
@@ -298,6 +297,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _companyController.removeListener(_onFieldChanged);
     _headlineController.removeListener(_onFieldChanged);
     _experienceController.removeListener(_onFieldChanged);
+    _homeBaseController.removeListener(_onFieldChanged);
     _bioController.removeListener(_onFieldChanged);
     _industryController.removeListener(_onFieldChanged);
 
@@ -309,10 +309,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _companyController.dispose();
     _roleController.dispose();
     _bioController.dispose();
-    _customExpertiseController.dispose();
-    _customInterestController.dispose();
     _industryController.dispose();
     _experienceController.dispose();
+    _homeBaseController.dispose();
     _profileImageUrlController.dispose();
     _linkedinUrlController.dispose();
     _workRoleController.dispose();
@@ -329,6 +328,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _handleLinkedInSignIn() async {
+    if (!kIsWeb) {
+      setState(() => _isLoading = true);
+      try {
+        final result = await startLinkedInMobileOAuth();
+        if (result == null) return;
+
+        final credential = await AuthService().signInWithLinkedIn(
+          result.code,
+          redirectUri: result.redirectUri,
+          codeVerifier: result.codeVerifier,
+        );
+        final user = credential?.user ?? FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await AppStateManager().syncSignedInUser(user);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('LinkedIn login failed: $e'),
+              backgroundColor: const Color(0xFF7A432D),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+      return;
+    }
+
     final String redirectUri = LinkedInOAuthConfig.redirectUri;
     final String authUrl = LinkedInOAuthConfig.authorizationUrl(
       redirectUri: redirectUri,
@@ -544,12 +573,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ? _industryController.text.trim()
         : _selectedIndustry;
     final experience = _experienceController.text.trim();
-    final homeBaseSegments = [
-      if (_homeBaseCity.isNotEmpty) _homeBaseCity,
-      if (_homeBaseState.isNotEmpty) _homeBaseState,
-      if (_homeBaseCountry.isNotEmpty) _homeBaseCountry,
-    ];
-    final homeBase = homeBaseSegments.join(', ');
+    final homeBase = _homeBaseController.text.trim();
 
     final currentLocSegments = [
       if (_currentLocationCity.isNotEmpty) _currentLocationCity,
@@ -674,12 +698,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final industry = _selectedIndustry == 'Other'
         ? _industryController.text.trim()
         : _selectedIndustry;
-    final homeBaseSegments = [
-      if (_homeBaseCity.isNotEmpty) _homeBaseCity,
-      if (_homeBaseState.isNotEmpty) _homeBaseState,
-      if (_homeBaseCountry.isNotEmpty) _homeBaseCountry,
-    ];
-    final homeBase = homeBaseSegments.join(', ');
+    final homeBase = _homeBaseController.text.trim();
 
     final currentLocSegments = [
       if (_currentLocationCity.isNotEmpty) _currentLocationCity,
@@ -926,7 +945,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     // 13. Home Base
     total++;
-    if (_homeBaseCountry.isNotEmpty || _homeBaseCity.isNotEmpty) completed++;
+    if (_homeBaseController.text.trim().isNotEmpty) completed++;
 
     // 14. Current Location
     total++;
@@ -1661,8 +1680,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _buildMultiSelectDropdown(
             options: _expertiseOptions,
             selectedList: _selectedExpertise,
-            customController: _customExpertiseController,
-            customHint: 'Add custom expertise (e.g. AI Consultant)',
             onListChanged: _onFieldChanged,
             isExpertise: true,
             levelsMap: _expertiseLevels,
@@ -1741,8 +1758,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _buildMultiSelectDropdown(
             options: _interestOptions,
             selectedList: _selectedInterests,
-            customController: _customInterestController,
-            customHint: 'Add custom interest (e.g. Investing)',
             onListChanged: _onFieldChanged,
             isExpertise: false,
             prioritiesMap: _interestsPriorities,
@@ -1773,62 +1788,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 6),
-          CSCPickerPlus(
-            layout: Layout.vertical,
-            showStates: true,
-            showCities: true,
-            flagState: CountryFlag.DISABLE,
-            currentCountry: getCountryForPicker(_homeBaseCountry),
-            currentState: _homeBaseState,
-            currentCity: _homeBaseCity,
-            countryDropdownLabel: 'Select country',
-            stateDropdownLabel: 'Select state',
-            cityDropdownLabel: 'Select city',
-            dropdownDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-            ),
-            disabledDropdownDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: const Color(0xFFF8F9FA),
-              border: Border.all(color: const Color(0xFFE8E2DD), width: 1.5),
-            ),
-            selectedItemStyle: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF3E1F11),
-              fontWeight: FontWeight.w600,
-            ),
-            dropdownHeadingStyle: const TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
-            ),
-            dropdownItemStyle: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF3E1F11),
-            ),
-            searchBarRadius: 10.0,
-            onCountryChanged: (value) {
-              setState(() {
-                _homeBaseCountry = value.contains('   ')
-                    ? value.split('   ').last
-                    : value;
-              });
-            },
-            onStateChanged: (value) {
-              setState(() {
-                _homeBaseState = value ?? '';
-              });
-            },
-            onCityChanged: (value) {
-              setState(() {
-                _homeBaseCity = value ?? '';
-              });
-            },
+          GoogleLocationDropdown(
+            controller: _homeBaseController,
+            onSelected: (_) => _onFieldChanged(),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -2247,13 +2209,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       } catch (_) {
         // Geocoding can fail on some devices/regions — silently ignore
       }
+
+      String country = '';
+      String state = '';
+      String city = '';
+
       if (placemarks.isNotEmpty) {
         final pm = placemarks.first;
-        final country = pm.country ?? '';
-        final state = pm.administrativeArea ?? '';
-        final city = (pm.locality?.isNotEmpty == true)
+        country = pm.country ?? '';
+        state = pm.administrativeArea ?? '';
+        city = (pm.locality?.isNotEmpty == true)
             ? pm.locality!
             : (pm.subAdministrativeArea ?? '');
+      } else {
+        // Fallback to Google Geocoding API if system geocoding fails
+        try {
+          final googleResult = await reverseGeocodeAddress(position.latitude, position.longitude);
+          if (googleResult != null) {
+            country = googleResult['country'] ?? '';
+            state = googleResult['state'] ?? '';
+            city = googleResult['city'] ?? '';
+          }
+        } catch (_) {
+          // Ignore
+        }
+      }
+
+      if (country.isNotEmpty || state.isNotEmpty || city.isNotEmpty) {
         setState(() {
           _currentLocationCountry = country;
           _currentLocationState = state;
@@ -2362,8 +2344,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _buildMultiSelectDropdown({
     required List<String> options,
     required List<String> selectedList,
-    required TextEditingController customController,
-    required String customHint,
     required VoidCallback onListChanged,
     bool isExpertise = false,
     Map<String, String>? levelsMap,
@@ -2460,61 +2440,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             }).toList(),
           ),
         ],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: customController,
-                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: customHint,
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                elevation: 0,
-              ),
-              onPressed: () {
-                final text = customController.text.trim();
-                if (text.isNotEmpty && !selectedList.contains(text)) {
-                  setState(() {
-                    selectedList.add(text);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap[text] = 'Intermediate';
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap[text] = 'Medium';
-                    }
-                    customController.clear();
-                    onListChanged();
-                  });
-                }
-              },
-              child: const Text('Add Custom', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, fontSize: 12)),
-            ),
-          ],
-        ),
       ],
     );
   }

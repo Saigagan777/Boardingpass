@@ -71,6 +71,6 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app requires access to the photo library to pick cover and profile images.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app requires access to the camera to take cover and profile images.</string>
+	<string>This app requires access to the camera to take and share photos in chat.</string>
 </dict>
 </plist>

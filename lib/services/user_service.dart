@@ -119,6 +119,7 @@ class UserService {
     List<String>? badges,
     int? completedMentoringSessions,
     int? successfulCollaborations,
+    bool? hasCompletedFeatureTour,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -165,6 +166,9 @@ class UserService {
       if (badges != null) updates['badges'] = badges;
       if (completedMentoringSessions != null) updates['completedMentoringSessions'] = completedMentoringSessions;
       if (successfulCollaborations != null) updates['successfulCollaborations'] = successfulCollaborations;
+      if (hasCompletedFeatureTour != null) {
+        updates['hasCompletedFeatureTour'] = hasCompletedFeatureTour;
+      }
 
       await _usersRef
           .doc(userId)
