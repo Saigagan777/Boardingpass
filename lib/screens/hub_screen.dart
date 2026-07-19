@@ -1161,6 +1161,13 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
               ),
               child: GestureDetector(
                 onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Check-In feature is coming soon!'),
+                      backgroundColor: Color(0xFF7A432D),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
                   _state.currentScreen = AppScreen.checkin;
                 },
                 child: Container(
