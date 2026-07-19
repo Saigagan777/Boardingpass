@@ -132,6 +132,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Marketing',
     'Sales',
     'Public Speaking',
+    'Other',
   ];
 
   final List<String> _interestOptions = [
@@ -145,6 +146,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Entrepreneurship',
     'Design',
     'Content Creation',
+    'Other',
   ];
 
   List<String> _selectedExpertise = [];
@@ -2350,97 +2352,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     Map<String, String>? prioritiesMap,
     required String placeholder,
   }) {
-    final availableOptions = options.where((opt) => !selectedList.contains(opt)).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE8E2DD)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: null,
-              hint: Text(
-                placeholder,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 13,
-                  color: Color(0xFF8C736B),
-                ),
-              ),
-              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-              dropdownColor: Colors.white,
-              items: availableOptions.map((String opt) {
-                return DropdownMenuItem<String>(
-                  value: opt,
-                  child: Text(
-                    opt,
-                    style: const TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 13,
-                      color: Color(0xFF3E1F11),
-                    ),
-                  ),
-                );
-              }).toList(),
-              onChanged: (String? val) {
-                if (val != null) {
-                  setState(() {
-                    selectedList.add(val);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap[val] = 'Intermediate';
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap[val] = 'Medium';
-                    }
-                    onListChanged();
-                  });
-                }
-              },
-            ),
-          ),
-        ),
-        if (selectedList.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: selectedList.map((opt) {
-              return Chip(
-                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                label: Text(
-                  opt,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    color: Color(0xFF7A432D),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
-                onDeleted: () {
-                  setState(() {
-                    selectedList.remove(opt);
-                    if (isExpertise && levelsMap != null) {
-                      levelsMap.remove(opt);
-                    } else if (!isExpertise && prioritiesMap != null) {
-                      prioritiesMap.remove(opt);
-                    }
-                    onListChanged();
-                  });
-                },
-                side: BorderSide.none,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              );
-            }).toList(),
-          ),
-        ],
-      ],
+    return _MultiSelectDropdownWidget(
+      options: options,
+      selectedList: selectedList,
+      onListChanged: onListChanged,
+      isExpertise: isExpertise,
+      levelsMap: levelsMap,
+      prioritiesMap: prioritiesMap,
+      placeholder: placeholder,
     );
   }
 
@@ -3307,3 +3226,222 @@ String getCountryForPicker(String? countryName) {
   };
   return countryToEmoji[countryName] ?? countryName;
 }
+
+class _MultiSelectDropdownWidget extends StatefulWidget {
+  final List<String> options;
+  final List<String> selectedList;
+  final VoidCallback onListChanged;
+  final bool isExpertise;
+  final Map<String, String>? levelsMap;
+  final Map<String, String>? prioritiesMap;
+  final String placeholder;
+
+  const _MultiSelectDropdownWidget({
+    required this.options,
+    required this.selectedList,
+    required this.onListChanged,
+    this.isExpertise = false,
+    this.levelsMap,
+    this.prioritiesMap,
+    required this.placeholder,
+  });
+
+  @override
+  State<_MultiSelectDropdownWidget> createState() => _MultiSelectDropdownWidgetState();
+}
+
+class _MultiSelectDropdownWidgetState extends State<_MultiSelectDropdownWidget> {
+  bool _showCustomInput = false;
+  final TextEditingController _customController = TextEditingController();
+
+  @override
+  void dispose() {
+    _customController.dispose();
+    super.dispose();
+  }
+
+  void _addCustomItem(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isNotEmpty && !widget.selectedList.contains(trimmed)) {
+      setState(() {
+        widget.selectedList.add(trimmed);
+        if (widget.isExpertise && widget.levelsMap != null) {
+          widget.levelsMap![trimmed] = 'Intermediate';
+        } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+          widget.prioritiesMap![trimmed] = 'Medium';
+        }
+        _showCustomInput = false;
+        _customController.clear();
+      });
+      widget.onListChanged();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableOptions = widget.options
+        .where((opt) => opt == 'Other' || opt == 'Others' || !widget.selectedList.contains(opt))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: null,
+              hint: Text(
+                widget.placeholder,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 13,
+                  color: Color(0xFF8C736B),
+                ),
+              ),
+              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+              dropdownColor: Colors.white,
+              items: availableOptions.map((String opt) {
+                final isOther = (opt == 'Other' || opt == 'Others');
+                return DropdownMenuItem<String>(
+                  value: opt,
+                  child: Text(
+                    opt,
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: isOther ? FontWeight.bold : FontWeight.normal,
+                      color: isOther ? const Color(0xFF7A432D) : const Color(0xFF3E1F11),
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? val) {
+                if (val != null) {
+                  if (val == 'Other' || val == 'Others') {
+                    setState(() {
+                      _showCustomInput = true;
+                    });
+                  } else {
+                    setState(() {
+                      widget.selectedList.add(val);
+                      if (widget.isExpertise && widget.levelsMap != null) {
+                        widget.levelsMap![val] = 'Intermediate';
+                      } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+                        widget.prioritiesMap![val] = 'Medium';
+                      }
+                    });
+                    widget.onListChanged();
+                  }
+                }
+              },
+            ),
+          ),
+        ),
+        if (_showCustomInput) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _customController,
+                  autofocus: true,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: widget.isExpertise ? 'Enter custom expertise...' : 'Enter custom interest...',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    filled: true,
+                    fillColor: Colors.white,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                    ),
+                  ),
+                  onSubmitted: _addCustomItem,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7A432D),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                onPressed: () => _addCustomItem(_customController.text),
+                child: const Text(
+                  'Add',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Color(0xFF8C736B), size: 20),
+                onPressed: () {
+                  setState(() {
+                    _showCustomInput = false;
+                    _customController.clear();
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
+        if (widget.selectedList.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.selectedList.map((opt) {
+              return Chip(
+                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                label: Text(
+                  opt,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 12,
+                    color: Color(0xFF7A432D),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
+                onDeleted: () {
+                  setState(() {
+                    widget.selectedList.remove(opt);
+                    if (widget.isExpertise && widget.levelsMap != null) {
+                      widget.levelsMap!.remove(opt);
+                    } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+                      widget.prioritiesMap!.remove(opt);
+                    }
+                  });
+                  widget.onListChanged();
+                },
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+

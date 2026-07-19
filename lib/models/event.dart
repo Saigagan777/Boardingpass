@@ -14,7 +14,13 @@ class Event {
   final double? latitude;
   final double? longitude;
   final String? imageUrl;
+  /// Firebase uid of the event host / organiser.
+  final String? organiserId;
   bool isJoined;
+  /// True when the current user has a ticket registration for this event.
+  bool isRegistered;
+  /// Registration document id when [isRegistered] is true.
+  String? registrationId;
 
   Event({
     required this.id,
@@ -32,6 +38,12 @@ class Event {
     this.latitude,
     this.longitude,
     this.imageUrl,
+    this.organiserId,
     this.isJoined = false,
+    this.isRegistered = false,
+    this.registrationId,
   });
+
+  bool isHostedBy(String? uid) =>
+      uid != null && organiserId != null && organiserId == uid;
 }

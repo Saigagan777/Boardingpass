@@ -434,6 +434,7 @@ class AppStateManager extends ChangeNotifier {
             latitude: (data['latitude'] as num?)?.toDouble(),
             longitude: (data['longitude'] as num?)?.toDouble(),
             imageUrl: data['imageUrl'],
+            organiserId: data['organiserId']?.toString(),
             isJoined: attendeesList.contains(user.uid),
           ),
         );

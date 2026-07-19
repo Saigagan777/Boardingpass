@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../utils/google_search_helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -9,7 +10,13 @@ import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
 import '../models/event.dart';
 import '../services/event_service.dart';
+import '../services/event_registration_service.dart';
 import 'event_attendee_avatar_stack.dart';
+import 'event_pass_screen.dart';
+import 'event_qr_scanner_screen.dart';
+import 'event_registration_form_screen.dart';
+import 'event_registrants_screen.dart';
+import 'event_wallet_screen.dart';
 import 'map_webview.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -49,9 +56,41 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  int _activeSubTab = 0; // 0 for Upcoming, 1 for My Events
+  int _activeSubTab = 0; // 0 Explore, 1 Joined, 2 Hosting
   String _selectedCategory = 'All';
   final Set<String> _bookmarkedEvents = {};
+
+  String? get _currentUid => FirebaseAuth.instance.currentUser?.uid;
+
+  Future<void> _openRegistrationOrPass(Event event) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final existing =
+          await EventRegistrationService().getMyRegistrationForEvent(event.id);
+      if (!mounted) return;
+      if (existing != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EventPassScreen(registration: existing),
+          ),
+        );
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EventRegistrationFormScreen(event: event),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not open registration: $e'),
+          backgroundColor: const Color(0xFFC62828),
+        ),
+      );
+    }
+  }
 
   final List<String> _categories = [
     'All',
@@ -898,10 +937,112 @@ class _EventsScreenState extends State<EventsScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Interested + Book / Join CTAs
+                    // Host tools (only for event organiser)
+                    if (event.isHostedBy(_currentUid)) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3E1F11).withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE8E2DD)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'HOST CONTROLS',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.1,
+                                color: Color(0xFF8C736B),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFF7A432D)),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      minimumSize: const Size(0, 44),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.of(this.context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              EventRegistrantsScreen(event: event),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.people_outline,
+                                      size: 18,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    label: const Text(
+                                      'Registrants',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF7A432D),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF7A432D),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      minimumSize: const Size(0, 44),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.of(this.context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              EventQrScannerScreen(event: event),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.qr_code_scanner,
+                                      size: 18,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      'Scan QR',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Interested + Register / View Pass CTAs
                     Row(
                       children: [
-                        // Interested toggle button
                         Expanded(
                           flex: 1,
                           child: SizedBox(
@@ -938,7 +1079,7 @@ class _EventsScreenState extends State<EventsScreen> {
                                 event.isJoined ? 'Interested' : 'Interested?',
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                   color: event.isJoined
                                       ? const Color(0xFF2E7D32)
@@ -949,12 +1090,11 @@ class _EventsScreenState extends State<EventsScreen> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        // Book / Join CTA
                         Expanded(
                           flex: 2,
                           child: SizedBox(
                             height: 48,
-                            child: ElevatedButton(
+                            child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF7A432D),
                                 shape: RoundedRectangleBorder(
@@ -962,48 +1102,19 @@ class _EventsScreenState extends State<EventsScreen> {
                                 ),
                               ),
                               onPressed: () async {
-                                final nav = Navigator.of(context);
-                                final messenger = ScaffoldMessenger.of(context);
-                                if (event.isJoined) {
-                                  nav.pop();
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('You are already registered for this event.'),
-                                      backgroundColor: Color(0xFF2E7D32),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                try {
-                                  final isNowJoined = await EventService()
-                                      .toggleJoinEvent(event.id);
-                                  if (!context.mounted) return;
-                                  if (isNowJoined) {
-                                    setState(() => event.isJoined = true);
-                                    nav.pop();
-                                    messenger.showSnackBar(
-                                      const SnackBar(
-                                        content: Text('You are registered for this event!'),
-                                        backgroundColor: Color(0xFF2E7D32),
-                                      ),
-                                    );
-                                  }
-                                } catch (_) {
-                                  if (!context.mounted) return;
-                                  messenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Could not register for this event. Please try again.'),
-                                      backgroundColor: Color(0xFFC62828),
-                                    ),
-                                  );
-                                }
+                                Navigator.pop(context);
+                                await _openRegistrationOrPass(event);
                               },
-                              child: Text(
-                                event.isJoined ? 'Registered' : 'Book Ticket / Join',
-                                style: const TextStyle(
+                              icon: const Icon(
+                                Icons.confirmation_number_outlined,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              label: const Text(
+                                'Register / View Pass',
+                                style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                 ),
@@ -1034,12 +1145,22 @@ class _EventsScreenState extends State<EventsScreen> {
     }).toList();
 
     final myEvents = _state.events.where((e) {
-      if (!e.isJoined) return false;
+      if (!e.isJoined && !e.isRegistered) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList();
 
-    final currentList = _activeSubTab == 0 ? upcomingEvents : myEvents;
+    final hostingEvents = _state.events.where((e) {
+      if (!e.isHostedBy(_currentUid)) return false;
+      if (_selectedCategory == 'All') return true;
+      return e.category.toLowerCase() == _selectedCategory.toLowerCase();
+    }).toList();
+
+    final currentList = _activeSubTab == 0
+        ? upcomingEvents
+        : _activeSubTab == 1
+            ? myEvents
+            : hostingEvents;
 
     // Split list into Featured (first 3) and standard grid
     final featuredList = currentList.take(3).toList();
@@ -1067,6 +1188,16 @@ class _EventsScreenState extends State<EventsScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Pass wallet',
+            icon: const Icon(Icons.account_balance_wallet_outlined,
+                color: Color(0xFF3E1F11)),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EventWalletScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.add, color: Color(0xFF3E1F11)),
             onPressed: _handleCreateEvent,
           ),
@@ -1074,7 +1205,7 @@ class _EventsScreenState extends State<EventsScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // Sub-Tab Switcher — matches reference image
+          // Sub-Tab Switcher — Explore / Joined / Hosting
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: 10),
@@ -1100,15 +1231,15 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             Icon(
                               Icons.explore_rounded,
-                              size: 16,
+                              size: 15,
                               color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             Text(
-                              'Explore Events',
+                              'Explore',
                               style: TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 13,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
                               ),
@@ -1118,8 +1249,8 @@ class _EventsScreenState extends State<EventsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  // Joined By Me — outlined pill
+                  const SizedBox(width: 8),
+                  // Joined By Me
                   Expanded(
                     child: GestureDetector(
                       onTap: () => setState(() => _activeSubTab = 1),
@@ -1139,17 +1270,56 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             Icon(
                               Icons.person_outline_rounded,
-                              size: 16,
+                              size: 15,
                               color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 4),
                             Text(
-                              'Joined By Me',
+                              'Joined',
                               style: TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 13,
+                                fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Hosting
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeSubTab = 2),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _activeSubTab == 2 ? const Color(0xFF3E1F11) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _activeSubTab == 2 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.qr_code_scanner_rounded,
+                              size: 15,
+                              color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Hosting',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
                               ),
                             ),
                           ],
@@ -1848,11 +2018,17 @@ class _EventsScreenState extends State<EventsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Register Now button
+                    // Register Now / Host tools button
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: GestureDetector(
-                        onTap: () => _showEventDetailsBottomSheet(event),
+                        onTap: () {
+                          if (event.isHostedBy(_currentUid)) {
+                            _showEventDetailsBottomSheet(event);
+                          } else {
+                            _openRegistrationOrPass(event);
+                          }
+                        },
                         child: Container(
                           height: 52,
                           decoration: BoxDecoration(
@@ -1862,9 +2038,11 @@ class _EventsScreenState extends State<EventsScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text(
-                                'REGISTER NOW',
-                                style: TextStyle(
+                              Text(
+                                event.isHostedBy(_currentUid)
+                                    ? 'MANAGE EVENT'
+                                    : 'REGISTER NOW',
+                                style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
@@ -1880,7 +2058,13 @@ class _EventsScreenState extends State<EventsScreen> {
                                   color: Colors.white.withValues(alpha: 0.2),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                                child: Icon(
+                                  event.isHostedBy(_currentUid)
+                                      ? Icons.qr_code_scanner_rounded
+                                      : Icons.arrow_forward_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
                               ),
                             ],
                           ),
