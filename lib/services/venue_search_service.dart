@@ -1,6 +1,4 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import '../utils/google_search_helper.dart';
 
 class VenueSearchResult {
   final String name;
@@ -19,16 +17,16 @@ class VenueSearchResult {
       'https://www.openstreetmap.org/?mlat=$latitude&mlon=$longitude#map=16/$latitude/$longitude';
 
   factory VenueSearchResult.fromJson(Map<String, dynamic> json) {
-    final displayName = json['display_name']?.toString() ?? '';
-    final parts = displayName.split(',').map((part) => part.trim()).toList();
-    final parsedLatitude = double.tryParse(json['lat']?.toString() ?? '');
-    final parsedLongitude = double.tryParse(json['lon']?.toString() ?? '');
+    final name = json['name']?.toString() ?? '';
+    final address = json['formatted_address']?.toString() ?? '';
+    final geometry = json['geometry'] as Map<String, dynamic>?;
+    final location = geometry?['location'] as Map<String, dynamic>?;
+    final parsedLatitude = double.tryParse(location?['lat']?.toString() ?? '');
+    final parsedLongitude = double.tryParse(location?['lng']?.toString() ?? '');
 
     return VenueSearchResult(
-      name: (json['name']?.toString().isNotEmpty == true)
-          ? json['name'].toString()
-          : (parts.isNotEmpty ? parts.first : displayName),
-      address: displayName,
+      name: name.isNotEmpty ? name : address,
+      address: address,
       latitude: parsedLatitude ?? 0,
       longitude: parsedLongitude ?? 0,
     );
@@ -37,39 +35,12 @@ class VenueSearchResult {
 
 class VenueSearchService {
   Future<List<VenueSearchResult>> searchVenues(String query) async {
-    final trimmedQuery = query.trim();
-    if (trimmedQuery.length < 3) return [];
-
-    final uri = Uri.https(
-      'nominatim.openstreetmap.org',
-      '/search',
-      {
-        'q': trimmedQuery,
-        'format': 'jsonv2',
-        'addressdetails': '1',
-        'limit': '8',
-      },
-    );
-
-    final response = await http.get(
-      uri,
-      headers: const {
-        'Accept': 'application/json',
-        'User-Agent': 'BoardingPause/1.0 contact@boardingpause.app',
-      },
-    ).timeout(const Duration(seconds: 8));
-
-    if (response.statusCode != 200) {
-      throw Exception('Venue search failed (${response.statusCode})');
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) return [];
-
-    return decoded
-        .whereType<Map<String, dynamic>>()
-        .map(VenueSearchResult.fromJson)
-        .where((result) => result.latitude != 0 && result.longitude != 0)
-        .toList();
+    final venues = await searchGooglePlaces(query);
+    return venues.map((v) => VenueSearchResult(
+      name: v.name,
+      address: v.formattedAddress,
+      latitude: v.latitude,
+      longitude: v.longitude,
+    )).toList();
   }
 }

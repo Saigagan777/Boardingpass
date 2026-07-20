@@ -26,6 +26,7 @@ class SponsorService {
         'cta': cta,
         'url': url ?? '',
         'icon': icon ?? 'star',
+        'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
       return docRef.id;
@@ -37,6 +38,19 @@ class SponsorService {
   /// Streams the list of all sponsors ordered by creation date (descending).
   Stream<QuerySnapshot<Map<String, dynamic>>> streamSponsors() {
     return _sponsorsRef.orderBy('createdAt', descending: true).snapshots();
+  }
+
+  /// Consumer clients ignore paused advertisements. This stays unfiltered so
+  /// older records without an `isActive` field remain visible.
+  Stream<QuerySnapshot<Map<String, dynamic>>> streamActiveSponsors() {
+    return _sponsorsRef.orderBy('createdAt', descending: true).snapshots();
+  }
+
+  Future<void> setSponsorActive(String sponsorId, bool isActive) {
+    return _sponsorsRef.doc(sponsorId).update({
+      'isActive': isActive,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   /// Deletes a sponsor document by its ID.

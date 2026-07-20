@@ -41,6 +41,7 @@ class MeetingService {
     String? meetingCity,
     String? meetingPurpose,
     String? meetingType,
+    String? meetingLink,
     Map<String, dynamic>? selectedVenueSnapshot,
     String? selectedVenueId,
     String? selectedVenueProvider,
@@ -75,9 +76,10 @@ class MeetingService {
         'suggestedAgenda': agenda,
         'cancellationReasons': {},
         'chatId': chatId,
-        'meetingCity': meetingCity ?? 'Vijayawada',
+        'meetingCity': meetingCity ?? '',
         'meetingPurpose': meetingPurpose ?? MeetingPurpose.custom.name,
         'meetingType': meetingType ?? 'in_person',
+        'meetingLink': meetingLink ?? '',
         'selectedVenueSnapshot': selectedVenueSnapshot,
         'selectedVenueId': selectedVenueId,
         'selectedVenueProvider': selectedVenueProvider,
@@ -532,6 +534,7 @@ class MeetingService {
     required String meetingId,
     required DateTime proposedTime,
     String? note,
+    int? reminderMinutes,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -562,6 +565,7 @@ class MeetingService {
           'proposedBy': uid,
           'proposedTime': Timestamp.fromDate(proposedTime),
           'note': note ?? '',
+          'reminderMinutes': reminderMinutes,
           'status': 'active', // active | accepted | declined | superseded
           'responses': <String, String>{}, // participantId -> 'accepted'|'declined'
           'createdAt': Timestamp.now(),
@@ -676,6 +680,7 @@ class MeetingService {
             'participantsStatus': statusMap,
             'status': 'RESCHEDULE_APPROVED',
             'rescheduleHistory': rescheduleHistory,
+            'reminderMinutes': proposal['reminderMinutes'] ?? data['reminderMinutes'],
             'updatedAt': FieldValue.serverTimestamp(),
           });
         } else {

@@ -17,60 +17,12 @@ class AppLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primary = color ?? const Color(0xFF3E1F11);
-    final secondary = iconColor ?? const Color(0xFFB06F4D);
 
-    Widget logoIcon = SizedBox(
+    final logoIcon = Image.asset(
+      'assets/images/app_logo.png',
       width: size,
       height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Outer connection loop
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: secondary.withValues(alpha: 0.35),
-                width: size * 0.08,
-              ),
-            ),
-          ),
-          // Inner network ring
-          Container(
-            margin: EdgeInsets.all(size * 0.15),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: secondary,
-                width: size * 0.08,
-              ),
-            ),
-          ),
-          // The twin pause bars representing taking a break/pause
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: size * 0.09,
-                height: size * 0.35,
-                decoration: BoxDecoration(
-                  color: primary,
-                  borderRadius: BorderRadius.circular(size * 0.04),
-                ),
-              ),
-              SizedBox(width: size * 0.08),
-              Container(
-                width: size * 0.09,
-                height: size * 0.35,
-                decoration: BoxDecoration(
-                  color: primary,
-                  borderRadius: BorderRadius.circular(size * 0.04),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+      fit: BoxFit.contain,
     );
 
     if (!showText) {
@@ -85,7 +37,7 @@ class AppLogo extends StatelessWidget {
         SizedBox(width: size * 0.3),
         Flexible(
           child: Text(
-            'Boarding Pause',
+            'NexMeet',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

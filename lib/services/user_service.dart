@@ -114,6 +114,12 @@ class UserService {
     List<Map<String, dynamic>>? careerTimeline,
     List<Map<String, dynamic>>? educationTimeline,
     Map<String, dynamic>? notificationSettings,
+    List<Map<String, dynamic>>? expertiseWithLevel,
+    List<Map<String, dynamic>>? interestsWithPriority,
+    List<String>? badges,
+    int? completedMentoringSessions,
+    int? successfulCollaborations,
+    bool? hasCompletedFeatureTour,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -155,8 +161,19 @@ class UserService {
       if (careerTimeline != null) updates['careerTimeline'] = careerTimeline;
       if (educationTimeline != null) updates['educationTimeline'] = educationTimeline;
       if (notificationSettings != null) updates['notificationSettings'] = notificationSettings;
+      if (expertiseWithLevel != null) updates['expertiseWithLevel'] = expertiseWithLevel;
+      if (interestsWithPriority != null) updates['interestsWithPriority'] = interestsWithPriority;
+      if (badges != null) updates['badges'] = badges;
+      if (completedMentoringSessions != null) updates['completedMentoringSessions'] = completedMentoringSessions;
+      if (successfulCollaborations != null) updates['successfulCollaborations'] = successfulCollaborations;
+      if (hasCompletedFeatureTour != null) {
+        updates['hasCompletedFeatureTour'] = hasCompletedFeatureTour;
+      }
 
-      await _usersRef.doc(userId).update(updates);
+      await _usersRef
+          .doc(userId)
+          .set(updates, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 10));
     } catch (e) {
       throw Exception('Failed to update user profile: $e');
     }

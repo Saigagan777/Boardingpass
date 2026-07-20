@@ -20,8 +20,11 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Dev-mode admin email – bypasses custom-claims check.
-  static const String _devAdminEmail = 'gagan123@gmail.com';
+  /// Dev-mode admin emails – bypasses custom-claims check.
+  static const List<String> _devAdminEmails = [
+    'gagan123@gmail.com',
+    'gagan90@gmail.com',
+  ];
 
   // ---------------------------------------------------------------------------
   // Auth state
@@ -41,14 +44,11 @@ class AuthService {
   // ---------------------------------------------------------------------------
 
   /// Creates a new account with [email] and [password], then writes an initial
-  /// Firestore profile for the user.
+  /// Firestore profile with professional details. If the account was created
+  /// in the first onboarding step, reuses that signed-in user.
   ///
-  /// Returns the created [UserCredential].
-  /// Creates a new account with [email] and [password], then writes an initial
-  /// Firestore profile for the user with professional details.
-  ///
-  /// Returns the created [UserCredential].
-  Future<UserCredential> signUpWithEmail({
+  /// Returns the created or existing [User].
+  Future<User> signUpWithEmail({
     required String email,
     required String password,
     required String name,
@@ -62,6 +62,8 @@ class AuthService {
     String? currentLocationName,
     String? travelFrequency,
     String? profileImageUrl,
+    String? phone,
+    String? phoneCountryCode,
     List<String> expertise = const [],
     List<String> intents = const [],
     List<String> skills = const [],
@@ -69,22 +71,36 @@ class AuthService {
     List<Map<String, dynamic>> careerTimeline = const [],
     List<Map<String, dynamic>> educationTimeline = const [],
     String? linkedinProfileUrl,
+    List<Map<String, dynamic>> expertiseWithLevel = const [],
+    List<Map<String, dynamic>> interestsWithPriority = const [],
+    List<String> badges = const [],
   }) async {
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final signedInUser = _auth.currentUser;
+      final isSameAccount = signedInUser?.email?.toLowerCase() ==
+          email.toLowerCase();
+      final User user;
+
+      if (isSameAccount) {
+        user = signedInUser!;
+      } else {
+        final credential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        user = credential.user!;
+      }
 
       // Update display name on the Firebase Auth record
-      await credential.user?.updateDisplayName(name);
+      await user.updateDisplayName(name);
 
       // Create a Firestore profile document for the new user
-      if (credential.user != null) {
-        final profile = UserProfile(
-          uid: credential.user!.uid,
+      final profile = UserProfile(
+          uid: user.uid,
           name: name,
           email: email,
+          phone: phone,
+          phoneCountryCode: phoneCountryCode,
           headline: headline,
           company: company,
           role: role,
@@ -104,15 +120,18 @@ class AuthService {
           linkedinProfileUrl: linkedinProfileUrl,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
+          expertiseWithLevel: expertiseWithLevel,
+          interestsWithPriority: interestsWithPriority,
+          badges: badges,
+          hasCompletedFeatureTour: false,
         );
-        await _firestore
-            .collection('users')
-            .doc(credential.user!.uid)
-            .set(profile.toFirestore())
-            .timeout(const Duration(seconds: 8));
-      }
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(profile.toFirestore())
+          .timeout(const Duration(seconds: 8));
 
-      return credential;
+      return user;
     } on FirebaseAuthException {
       rethrow;
     } catch (e) {
@@ -135,6 +154,7 @@ class AuthService {
 
       // Touch the user's lastSeen timestamp
       if (credential.user != null) {
+        await _ensureAccessAllowed(credential.user!);
         await _firestore
             .collection('users')
             .doc(credential.user!.uid)
@@ -150,6 +170,20 @@ class AuthService {
     }
   }
 
+  /// Enforces a moderation restriction in the client session. A Firebase
+  /// Admin SDK/Cloud Function is still required to disable the Auth account
+  /// itself server-side; this prevents access to the app immediately.
+  Future<void> _ensureAccessAllowed(User user) async {
+    final profile = await _firestore.collection('users').doc(user.uid).get();
+    if (profile.data()?['isLoginRestricted'] == true) {
+      await _auth.signOut();
+      throw FirebaseAuthException(
+        code: 'account-restricted',
+        message: 'This account has been restricted by the safety team.',
+      );
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // LinkedIn OIDC login
   // ---------------------------------------------------------------------------
@@ -159,6 +193,7 @@ class AuthService {
   Future<UserCredential?> signInWithLinkedIn(
     String code, {
     String? redirectUri,
+    String? codeVerifier,
   }) async {
     final String clientId = LinkedInOAuthConfig.clientId;
     final String clientSecret = linkedinClientSecret;
@@ -170,15 +205,21 @@ class AuthService {
       final String tokenUri = kIsWeb
           ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
           : 'https://www.linkedin.com/oauth/v2/accessToken';
+      final tokenRequestBody = <String, String>{
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': finalRedirectUri,
+        'client_id': clientId,
+        if (codeVerifier == null) 'client_secret': clientSecret,
+        'code_verifier': ?codeVerifier,
+      }.entries.map((entry) {
+        return '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}';
+      }).join('&');
       final tokenResponse = await http
           .post(
             Uri.parse(tokenUri),
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'grant_type=authorization_code'
-                '&code=${Uri.encodeComponent(code)}'
-                '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
-                '&client_id=${Uri.encodeComponent(clientId)}'
-                '&client_secret=${Uri.encodeComponent(clientSecret)}',
+            body: tokenRequestBody,
           )
           .timeout(const Duration(seconds: 10));
 
@@ -251,6 +292,7 @@ class AuthService {
 
       // 4. Save/Update Profile details in Firestore
       if (credential.user != null) {
+        await _ensureAccessAllowed(credential.user!);
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
         final snapshot = await docRef.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 5));
 
@@ -265,6 +307,7 @@ class AuthService {
             linkedinSynced: true,
             createdAt: DateTime.now(),
             lastSeen: DateTime.now(),
+            hasCompletedFeatureTour: false,
           );
           await docRef
               .set(profile.toFirestore())
@@ -329,14 +372,14 @@ class AuthService {
       }
 
       // Dev-mode fallback: match by email (case-insensitive)
-      if (user.email?.toLowerCase() == _devAdminEmail.toLowerCase()) {
+      if (user.email != null && _devAdminEmails.contains(user.email!.toLowerCase())) {
         return true;
       }
 
       return false;
     } catch (e) {
       // If claims fetch fails, fall back to email check only
-      return user.email?.toLowerCase() == _devAdminEmail.toLowerCase();
+      return user.email != null && _devAdminEmails.contains(user.email!.toLowerCase());
     }
   }
 
@@ -362,6 +405,7 @@ class AuthService {
           email: email,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
+          hasCompletedFeatureTour: false,
         );
         await docRef.set(profile.toFirestore());
       }
@@ -377,6 +421,14 @@ class AuthService {
   Future<void> ensureUserProfile() async {
     final user = _auth.currentUser;
     if (user == null) return;
+
+    // Do not auto-create a profile with a synthetic LinkedIn email.
+    // The LinkedIn authentication flow handles creating the profile with the user's real email.
+    if (user.email != null &&
+        user.email!.startsWith('linkedin_') &&
+        user.email!.endsWith('@boardingpass.com')) {
+      return;
+    }
 
     await _createUserProfile(
       uid: user.uid,

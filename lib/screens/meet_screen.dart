@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../state_manager.dart';
@@ -41,13 +42,15 @@ class _MeetScreenState extends State<MeetScreen> {
   UserProfile? _currentUserProfile;
   final Set<String> _expandedMeetingIds = {};
 
+  final TextEditingController _onlineLinkController = TextEditingController();
+
   String _meetingDate = '';
   String _meetingTime = '';
-  String _selectedLocation = 'Plaza Premium Lounge';
+  String _selectedLocation = '';
   int _selectedReminderMinutes = 15;
 
   // New discovery & reschedule poll variables
-  String _meetingCity = 'Vijayawada';
+  String _meetingCity = '';
   MeetingPurpose _meetingPurpose = MeetingPurpose.coffeeChat;
   String _meetingType = 'in_person'; // 'in_person' or 'online'
   Venue? _selectedVenue;
@@ -58,7 +61,9 @@ class _MeetScreenState extends State<MeetScreen> {
     super.initState();
     _activeTab = _state.meetingInitialTab;
     // Reset initial tab in state manager so future navigations default to 0
-    _state.meetingInitialTab = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _state.meetingInitialTab = 0;
+    });
     final now = DateTime.now();
     _meetingDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     _meetingTime = "${(now.hour + 1).toString().padLeft(2, '0')}:00";
@@ -80,6 +85,15 @@ class _MeetScreenState extends State<MeetScreen> {
 
       // Fetch current user profile
       _currentUserProfile = await UserService().getUserProfile(uid);
+      if (_currentUserProfile != null) {
+        final loc = (_currentUserProfile!.currentLocationName ?? _currentUserProfile!.homeBase ?? '').trim();
+        if (loc.isNotEmpty) {
+          final city = loc.split(',')[0].trim();
+          if (city.isNotEmpty) {
+            _meetingCity = city;
+          }
+        }
+      }
 
       // Query chats where current user is a participant
       final chatsSnapshot = await FirebaseFirestore.instance
@@ -98,9 +112,14 @@ class _MeetScreenState extends State<MeetScreen> {
           fetchedGroups.add({'id': doc.id, ...chatData});
           continue;
         }
+        if (chatData['isUnmatched'] == true) {
+          continue;
+        }
         final participants = List<String>.from(chatData['participants'] ?? []);
         final otherUid = participants.firstWhere((p) => p != uid, orElse: () => '');
         if (otherUid.isNotEmpty && !seenUids.contains(otherUid)) {
+          final isConn = await ChatService().hasConnection(uid, otherUid);
+          if (!isConn) continue;
           seenUids.add(otherUid);
           final profile = await UserService().getUserProfile(otherUid);
           if (profile != null) {
@@ -417,9 +436,10 @@ class _MeetScreenState extends State<MeetScreen> {
         );
       }
 
+      final onlineLink = _onlineLinkController.text.trim();
       // Determine final location text
       final finalLocation = _meetingType == 'online'
-          ? 'Online Meeting (Virtual)'
+          ? (onlineLink.isNotEmpty ? onlineLink : 'Online Meeting (Virtual)')
           : (_selectedVenue != null ? _selectedVenue!.name : _selectedLocation);
 
       // Create Firestore meeting document
@@ -432,6 +452,7 @@ class _MeetScreenState extends State<MeetScreen> {
         meetingCity: _meetingCity,
         meetingPurpose: _meetingPurpose.name,
         meetingType: _meetingType,
+        meetingLink: onlineLink,
         selectedVenueSnapshot: _selectedVenue?.toMap(),
         selectedVenueId: _selectedVenue?.id,
         selectedVenueProvider: _selectedVenue?.provider,
@@ -728,6 +749,32 @@ class _MeetScreenState extends State<MeetScreen> {
     return results.whereType<UserProfile>().toList();
   }
 
+  Future<void> _openDirections(String location, Map<String, dynamic>? venueSnapshot) async {
+    double? lat;
+    double? lng;
+    if (venueSnapshot != null) {
+      lat = double.tryParse(venueSnapshot['latitude'].toString());
+      lng = double.tryParse(venueSnapshot['longitude'].toString());
+    }
+
+    String url;
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng';
+    } else {
+      url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(location)}';
+    }
+
+    final uri = Uri.parse(url);
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('Could not launch map URL: $url - Error: $e');
+    }
+  }
+
   Widget _buildMeetingCard(String meetingId, Map<String, dynamic> data) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     final requesterId = data['requesterId'] as String;
@@ -906,6 +953,38 @@ class _MeetScreenState extends State<MeetScreen> {
                           ),
                         ),
                       ),
+                      Builder(builder: (context) {
+                        final isVirtual = location.toLowerCase().contains('virtual') ||
+                            location.toLowerCase().contains('online') ||
+                            location == 'Not specified';
+                        if (isVirtual) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: InkWell(
+                            onTap: () => _openDirections(location, data['selectedVenueSnapshot']),
+                            borderRadius: BorderRadius.circular(4),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.directions_outlined, size: 14, color: Color(0xFF7A432D)),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Directions',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     ],
                   ),
                   if (reminderMinutes != null && reminderMinutes > 0) ...[
@@ -1086,7 +1165,36 @@ class _MeetScreenState extends State<MeetScreen> {
                                               ),
                                               onPressed: () async {
                                                 try {
-                                                  await MeetingService().acceptProposal(meetingId: meetingId, proposalId: pId);
+                                                   if (pTime != null && currentUid != null) {
+                                                     final myConflict = await MeetingService().hasMeetingConflict(currentUid, pTime);
+                                                     if (myConflict) {
+                                                       if (context.mounted) {
+                                                         ScaffoldMessenger.of(context).showSnackBar(
+                                                           const SnackBar(
+                                                             content: Text('Cannot accept. You already have a confirmed meeting around this time.'),
+                                                             backgroundColor: Color(0xFFC62828),
+                                                           ),
+                                                         );
+                                                       }
+                                                       return;
+                                                     }
+
+                                                     if (pBy != null) {
+                                                       final otherConflict = await MeetingService().hasMeetingConflict(pBy, pTime);
+                                                       if (otherConflict) {
+                                                         if (context.mounted) {
+                                                           ScaffoldMessenger.of(context).showSnackBar(
+                                                             const SnackBar(
+                                                               content: Text('Cannot accept. The other participant already has a confirmed meeting around this time.'),
+                                                               backgroundColor: Color(0xFFC62828),
+                                                             ),
+                                                           );
+                                                         }
+                                                         return;
+                                                       }
+                                                     }
+                                                   }
+                                                   await MeetingService().acceptProposal(meetingId: meetingId, proposalId: pId);
                                                   if (context.mounted) {
                                                     ScaffoldMessenger.of(context).showSnackBar(
                                                       SnackBar(
@@ -1386,7 +1494,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                       context: context,
                                       builder: (ctx) => CreatePollDialog(
                                         meetingId: meetingId,
-                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        currentCity: data['meetingCity'] as String? ?? '',
                                         onPollCreated: () {
                                           setState(() {});
                                         },
@@ -1424,7 +1532,7 @@ class _MeetScreenState extends State<MeetScreen> {
                                       context: context,
                                       builder: (ctx) => CreatePollDialog(
                                         meetingId: meetingId,
-                                        currentCity: data['meetingCity'] as String? ?? 'Vijayawada',
+                                        currentCity: data['meetingCity'] as String? ?? '',
                                         onPollCreated: () {
                                           setState(() {});
                                         },
@@ -1524,7 +1632,7 @@ class _MeetScreenState extends State<MeetScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF3E1F11)),
           onPressed: widget.onBack ?? () {
-            _state.currentScreen = AppScreen.chat;
+            _state.currentScreen = AppScreen.hub;
           },
         ),
         title: const Text(
@@ -2133,7 +2241,47 @@ class _MeetScreenState extends State<MeetScreen> {
         const SizedBox(height: 24),
 
         // Location & Search Selector
-        if (_meetingType == 'in_person') ...[
+        if (_meetingType == 'online') ...[
+          const Text(
+            'ONLINE MEETING LINK',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _onlineLinkController,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 13,
+              color: Color(0xFF3E1F11),
+            ),
+            decoration: InputDecoration(
+              hintText: 'Paste meeting link (Google Meet, Zoom, Teams)...',
+              hintStyle: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: Color(0xFF8C736B),
+              ),
+              prefixIcon: const Icon(Icons.link, size: 18, color: Color(0xFF7A432D)),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+              ),
+            ),
+          ),
+        ] else if (_meetingType == 'in_person') ...[
           const Text(
             'MEETING LOCATION',
             style: TextStyle(

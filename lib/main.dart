@@ -19,6 +19,7 @@ import 'screens/discover_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/meet_screen.dart';
 import 'screens/admin_panel.dart';
+import 'screens/feature_tour_screen.dart';
 import 'utils/web_helper.dart';
 import 'services/notification_service.dart';
 
@@ -54,13 +55,15 @@ void main() async {
   }
 
   // Initialize notifications (non-blocking)
-  try {
-    await NotificationService().initialize();
-    await NotificationService().requestPermission();
-    await NotificationService().getAndStoreFcmToken();
-  } catch (e) {
-    debugPrint('Notification init error: $e');
-  }
+  unawaited(Future(() async {
+    try {
+      await NotificationService().initialize();
+      await NotificationService().requestPermission();
+      await NotificationService().getAndStoreFcmToken();
+    } catch (e) {
+      debugPrint('Notification init error: $e');
+    }
+  }));
 
   appState.init();
   runApp(const MainApp());
@@ -123,17 +126,24 @@ class MainApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Boarding Pause',
+      title: 'NexMeet',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
+        // --- 60-30-10 Color System ---
+        // 60% Dominant Color: Cream/off-white background for canvas and surface
         scaffoldBackgroundColor: const Color(0xFFFAF7F5),
+        // 10% Accent Color: Vibrant terracotta for primary CTAs, links, and indicators
         primaryColor: const Color(0xFF7A432D),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF7A432D),
+          // 10% Accent
           primary: const Color(0xFF7A432D),
-          secondary: const Color(0xFFB06F4D),
+          // 30% Secondary: Espresso for structural components, borders, and typography
+          secondary: const Color(0xFF3E1F11),
+          // 60% Dominant
           surface: const Color(0xFFFAF7F5),
+          onSurface: const Color(0xFF3E1F11),
         ),
         fontFamily: 'PlusJakartaSans',
         textTheme: const TextTheme(
@@ -226,6 +236,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   String? _latestUnreadNotificationId;
   bool _showNotificationBanner = false;
   String? _currentUid;
+  bool _isCompletingFeatureTour = false;
 
   @override
   void initState() {
@@ -324,6 +335,24 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         );
   }
 
+  Future<void> _completeFeatureTour() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _isCompletingFeatureTour) return;
+
+    setState(() => _isCompletingFeatureTour = true);
+    try {
+      await UserService().updateUserProfile(
+        userId: uid,
+        hasCompletedFeatureTour: true,
+      );
+    } catch (e) {
+      debugPrint('Unable to save feature tour completion: $e');
+      rethrow;
+    } finally {
+      if (mounted) setState(() => _isCompletingFeatureTour = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Determine if banner should show
@@ -338,7 +367,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       body: Stack(
         children: [
           // Main content
-          (_state.isAuthCallbackInProgress || _state.isProfileLoading)
+          (!_state.isInitialized || _state.isAuthCallbackInProgress)
               ? const AuthCallbackScreen()
               : (!_state.isLoggedIn
                     ? const OnboardingScreen()
@@ -461,13 +490,23 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 ),
               ),
             ),
+          if (_state.isLoggedIn &&
+              _state.isProfileComplete &&
+              _state.currentUserProfile?.hasCompletedFeatureTour == false &&
+              !_isCompletingFeatureTour)
+            Positioned.fill(
+              child: FeatureTourScreen(onComplete: _completeFeatureTour),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildMobileAppShell() {
-    return _buildAppNavigation();
+    return RadialMorphSwitcher(
+      currentScreen: _state.currentScreen,
+      child: _buildAppNavigation(),
+    );
   }
 
   // Standard standard app navigation flow with active screen selector
@@ -506,7 +545,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         activeWidget = MeetScreen(
           name: _state.activeChatContact,
           onBack: () {
-            _state.currentScreen = AppScreen.chat;
+            _state.currentScreen = AppScreen.hub;
           },
           onDone: () {
             _state.currentScreen = AppScreen.hub;
@@ -515,7 +554,121 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         break;
     }
 
-    return activeWidget;
+    return KeyedSubtree(
+      key: ValueKey(_state.currentScreen),
+      child: activeWidget,
+    );
+  }
+}
+
+class RadialMorphSwitcher extends StatelessWidget {
+  final AppScreen currentScreen;
+  final Widget child;
+
+  const RadialMorphSwitcher({
+    super.key,
+    required this.currentScreen,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateManager();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 650),
+      switchInCurve: Curves.easeInOutCubic,
+      switchOutCurve: Curves.easeInOutCubic,
+      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+        final List<Widget> children = [];
+        if (currentScreen == AppScreen.hub) {
+          if (currentChild != null) children.add(currentChild);
+          children.addAll(previousChildren);
+        } else {
+          children.addAll(previousChildren);
+          if (currentChild != null) children.add(currentChild);
+        }
+        return Stack(
+          clipBehavior: Clip.none,
+          children: children,
+        );
+      },
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final ValueKey<AppScreen>? valueKey = child.key as ValueKey<AppScreen>?;
+        final screen = valueKey?.value;
+
+        if (screen == AppScreen.hub) {
+          return FadeTransition(
+            opacity: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
+            child: child,
+          );
+        } else {
+          return AnimatedBuilder(
+            animation: animation,
+            builder: (context, childWidget) {
+              final center = state.lastTappedSegmentCenter ?? MediaQuery.of(context).size.center(Offset.zero);
+              return ClipPath(
+                clipper: RadialCircleClipper(
+                  fraction: animation.value,
+                  center: center,
+                ),
+                child: childWidget,
+              );
+            },
+            child: child,
+          );
+        }
+      },
+      child: child,
+    );
+  }
+}
+
+class RadialCircleClipper extends CustomClipper<Path> {
+  final double fraction;
+  final Offset center;
+
+  RadialCircleClipper({
+    required this.fraction,
+    required this.center,
+  });
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    if (fraction <= 0.0) {
+      return path;
+    }
+    if (fraction >= 1.0) {
+      path.addRect(Offset.zero & size);
+      return path;
+    }
+
+    final double maxRadius = _calcMaxRadius(size, center);
+    final double radius = fraction * maxRadius;
+    path.addOval(Rect.fromCircle(center: center, radius: radius));
+    return path;
+  }
+
+  double _calcMaxRadius(Size size, Offset center) {
+    final corners = [
+      Offset.zero,
+      Offset(size.width, 0),
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+    ];
+    double maxDist = 0.0;
+    for (final corner in corners) {
+      final dist = (center - corner).distance;
+      if (dist > maxDist) {
+        maxDist = dist;
+      }
+    }
+    return maxDist;
+  }
+
+  @override
+  bool shouldReclip(covariant RadialCircleClipper oldClipper) {
+    return oldClipper.fraction != fraction || oldClipper.center != center;
   }
 }
 

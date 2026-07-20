@@ -102,7 +102,7 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
       setState(() => _directSuggestions = []);
       return;
     }
-    final results = await VenueRepositoryImpl().searchVenues(query, city: widget.currentCity);
+    final results = await VenueRepositoryImpl().searchVenues(query);
     setState(() => _directSuggestions = results);
   }
 
@@ -335,25 +335,29 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
             Container(
               margin: const EdgeInsets.only(top: 8),
               constraints: const BoxConstraints(maxHeight: 150),
-              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFFE8E2DD)), borderRadius: BorderRadius.circular(12)),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _directSuggestions.length,
-                itemBuilder: (context, index) {
-                  final v = _directSuggestions[index];
-                  return ListTile(
-                    dense: true,
-                    title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12.5, fontWeight: FontWeight.bold)),
-                    subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11)),
-                    onTap: () {
-                      setState(() {
-                        _directVenue = v;
-                        _directVenueSearchController.text = v.name;
-                        _directSuggestions = [];
-                      });
-                    },
-                  );
-                },
+              decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE8E2DD)), borderRadius: BorderRadius.circular(12)),
+              clipBehavior: Clip.antiAlias,
+              child: Material(
+                color: Colors.white,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _directSuggestions.length,
+                  itemBuilder: (context, index) {
+                    final v = _directSuggestions[index];
+                    return ListTile(
+                      dense: true,
+                      title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12.5, fontWeight: FontWeight.bold)),
+                      subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11)),
+                      onTap: () {
+                        setState(() {
+                          _directVenue = v;
+                          _directVenueSearchController.text = v.name;
+                          _directSuggestions = [];
+                        });
+                      },
+                    );
+                  },
+                ),
               ),
             ),
 
@@ -509,7 +513,7 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
                           setState(() => slot.suggestions = []);
                           return;
                         }
-                        final results = await VenueRepositoryImpl().searchVenues(query, city: widget.currentCity);
+                        final results = await VenueRepositoryImpl().searchVenues(query);
                         setState(() => slot.suggestions = results);
                       },
                       decoration: InputDecoration(
@@ -527,25 +531,29 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
                       Container(
                         constraints: const BoxConstraints(maxHeight: 120),
                         margin: const EdgeInsets.only(top: 4),
-                        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFFE8E2DD)), borderRadius: BorderRadius.circular(8)),
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: slot.suggestions.length,
-                          itemBuilder: (context, idx) {
-                            final v = slot.suggestions[idx];
-                            return ListTile(
-                              dense: true,
-                              title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11.5, fontWeight: FontWeight.bold)),
-                              subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10)),
-                              onTap: () {
-                                setState(() {
-                                  slot.venue = v;
-                                  slot.searchController.text = v.name;
-                                  slot.suggestions = [];
-                                });
-                              },
-                            );
-                          },
+                        decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE8E2DD)), borderRadius: BorderRadius.circular(8)),
+                        clipBehavior: Clip.antiAlias,
+                        child: Material(
+                          color: Colors.white,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: slot.suggestions.length,
+                            itemBuilder: (context, idx) {
+                              final v = slot.suggestions[idx];
+                              return ListTile(
+                                dense: true,
+                                title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10)),
+                                onTap: () {
+                                  setState(() {
+                                    slot.venue = v;
+                                    slot.searchController.text = v.name;
+                                    slot.suggestions = [];
+                                  });
+                                },
+                              );
+                            },
+                          ),
                         ),
                       ),
                   ],

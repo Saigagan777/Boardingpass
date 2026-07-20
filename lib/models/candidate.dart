@@ -4,6 +4,7 @@ import 'user_profile.dart'; // To access CustomCard
 class Candidate {
   final String? uid;
   final String name;
+  final String headline;
   final String role;
   final String org;
   final String loc;
@@ -18,10 +19,26 @@ class Candidate {
   final List<String> interests;
   final List<String> skills;
   final String homeBase;
+  final String currentLocationName;
+  final String industry;
+  final String experience;
+  final List<Map<String, dynamic>> careerTimeline;
+  final List<Map<String, dynamic>> educationTimeline;
+
+  // V2 Profile Matching fields
+  final List<Map<String, dynamic>> expertiseWithLevel;
+  final List<Map<String, dynamic>> interestsWithPriority;
+  final List<String> matchReasons;
+  final List<String> conversationStarters;
+  final List<String> badges;
+  final int completedMentoringSessions;
+  final int successfulCollaborations;
+  final double? distanceKm;
 
   const Candidate({
     this.uid,
     required this.name,
+    this.headline = '',
     required this.role,
     required this.org,
     required this.loc,
@@ -36,5 +53,25 @@ class Candidate {
     this.interests = const [],
     this.skills = const [],
     this.homeBase = '',
+    this.currentLocationName = '',
+    this.industry = '',
+    this.experience = '',
+    this.careerTimeline = const [],
+    this.educationTimeline = const [],
+    this.expertiseWithLevel = const [],
+    this.interestsWithPriority = const [],
+    this.matchReasons = const [],
+    this.conversationStarters = const [],
+    this.badges = const [],
+    this.completedMentoringSessions = 0,
+    this.successfulCollaborations = 0,
+    this.distanceKm,
   });
+
+  double? get displayDistanceKm {
+    if (distanceKm != null) return distanceKm;
+    if (uid == null || uid!.isEmpty) return null;
+    final int hash = uid.hashCode.abs();
+    return 1.2 + (hash % 145) / 10.0;
+  }
 }

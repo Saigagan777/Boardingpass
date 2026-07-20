@@ -63,6 +63,8 @@ class UserProfile {
   final bool isAdmin;
   final DateTime createdAt;
   final DateTime lastSeen;
+  final String? phone;
+  final String? phoneCountryCode;
 
   // New LinkedIn and Notification Fields
   final String? coverImageUrl;
@@ -77,12 +79,20 @@ class UserProfile {
   final List<Map<String, dynamic>> educationTimeline;
   final Map<String, dynamic> notificationSettings;
 
+  // V2 Profile Matching fields
+  final List<Map<String, dynamic>> expertiseWithLevel;
+  final List<Map<String, dynamic>> interestsWithPriority;
+  final List<String> badges;
+  final int completedMentoringSessions;
+  final int successfulCollaborations;
+
   // Sync tracking fields
   final bool linkedinSynced;
   final DateTime? linkedinSyncedAt;
   final bool resumeParsed;
   final DateTime? resumeParsedAt;
   final bool directPasswordSet;
+  final bool hasCompletedFeatureTour;
 
   // Match score
   final int? matchScore;
@@ -118,6 +128,8 @@ class UserProfile {
     this.isAdmin = false,
     required this.createdAt,
     required this.lastSeen,
+    this.phone,
+    this.phoneCountryCode,
     this.coverImageUrl,
     this.linkedinProfileUrl,
     this.connectionCount = 0,
@@ -134,7 +146,13 @@ class UserProfile {
     this.resumeParsed = false,
     this.resumeParsedAt,
     this.directPasswordSet = false,
+    this.hasCompletedFeatureTour = true,
     this.matchScore,
+    this.expertiseWithLevel = const [],
+    this.interestsWithPriority = const [],
+    this.badges = const [],
+    this.completedMentoringSessions = 0,
+    this.successfulCollaborations = 0,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -173,6 +191,8 @@ class UserProfile {
       isAdmin: data['isAdmin'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      phone: data['phone'],
+      phoneCountryCode: data['phoneCountryCode'],
       coverImageUrl: data['coverImageUrl'],
       linkedinProfileUrl: data['linkedinProfileUrl'],
       connectionCount: data['connectionCount'] ?? 0,
@@ -195,7 +215,20 @@ class UserProfile {
       resumeParsed: data['resumeParsed'] ?? false,
       resumeParsedAt: (data['resumeParsedAt'] as Timestamp?)?.toDate(),
       directPasswordSet: data['directPasswordSet'] ?? false,
+      // Existing accounts should not be interrupted by the new-user tour.
+      hasCompletedFeatureTour: data['hasCompletedFeatureTour'] ?? true,
       matchScore: data['matchScore'] as int?,
+      expertiseWithLevel: (data['expertiseWithLevel'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [],
+      interestsWithPriority: (data['interestsWithPriority'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [],
+      badges: List<String>.from(data['badges'] ?? []),
+      completedMentoringSessions: data['completedMentoringSessions'] ?? 0,
+      successfulCollaborations: data['successfulCollaborations'] ?? 0,
     );
   }
 
@@ -230,6 +263,8 @@ class UserProfile {
       'isAdmin': isAdmin,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastSeen': Timestamp.fromDate(lastSeen),
+      'phone': phone,
+      'phoneCountryCode': phoneCountryCode,
       'coverImageUrl': coverImageUrl,
       'linkedinProfileUrl': linkedinProfileUrl,
       'connectionCount': connectionCount,
@@ -246,7 +281,13 @@ class UserProfile {
       'resumeParsed': resumeParsed,
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
       'directPasswordSet': directPasswordSet,
+      'hasCompletedFeatureTour': hasCompletedFeatureTour,
       'matchScore': matchScore,
+      'expertiseWithLevel': expertiseWithLevel,
+      'interestsWithPriority': interestsWithPriority,
+      'badges': badges,
+      'completedMentoringSessions': completedMentoringSessions,
+      'successfulCollaborations': successfulCollaborations,
     };
   }
 
@@ -295,7 +336,13 @@ class UserProfile {
     bool? resumeParsed,
     DateTime? resumeParsedAt,
     bool? directPasswordSet,
+    bool? hasCompletedFeatureTour,
     int? matchScore,
+    List<Map<String, dynamic>>? expertiseWithLevel,
+    List<Map<String, dynamic>>? interestsWithPriority,
+    List<String>? badges,
+    int? completedMentoringSessions,
+    int? successfulCollaborations,
   }) {
     return UserProfile(
       uid: uid,
@@ -344,7 +391,14 @@ class UserProfile {
       resumeParsed: resumeParsed ?? this.resumeParsed,
       resumeParsedAt: resumeParsedAt ?? this.resumeParsedAt,
       directPasswordSet: directPasswordSet ?? this.directPasswordSet,
+      hasCompletedFeatureTour:
+          hasCompletedFeatureTour ?? this.hasCompletedFeatureTour,
       matchScore: matchScore ?? this.matchScore,
+      expertiseWithLevel: expertiseWithLevel ?? this.expertiseWithLevel,
+      interestsWithPriority: interestsWithPriority ?? this.interestsWithPriority,
+      badges: badges ?? this.badges,
+      completedMentoringSessions: completedMentoringSessions ?? this.completedMentoringSessions,
+      successfulCollaborations: successfulCollaborations ?? this.successfulCollaborations,
     );
   }
 }

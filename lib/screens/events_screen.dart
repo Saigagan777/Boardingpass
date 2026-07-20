@@ -2,13 +2,21 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../utils/google_search_helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
 import '../models/event.dart';
 import '../services/event_service.dart';
+import '../services/event_registration_service.dart';
+import 'event_attendee_avatar_stack.dart';
+import 'event_pass_screen.dart';
+import 'event_qr_scanner_screen.dart';
+import 'event_registration_form_screen.dart';
+import 'event_registrants_screen.dart';
+import 'event_wallet_screen.dart';
 import 'map_webview.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -22,18 +30,6 @@ class EventsScreen extends StatefulWidget {
 class _EventsScreenState extends State<EventsScreen> {
   final AppStateManager _state = AppStateManager();
 
-  ImageProvider _getEventImageProvider(String url) {
-    if (url.startsWith('data:image') && url.contains('base64,')) {
-      try {
-        final base64Str = url.split('base64,').last;
-        final bytes = base64Decode(base64Str);
-        return MemoryImage(bytes);
-      } catch (e) {
-        // Fallback
-      }
-    }
-    return CachedNetworkImageProvider(url);
-  }
 
   Widget _buildEventImageWidget(String url, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
     if (url.startsWith('data:image') && url.contains('base64,')) {
@@ -60,9 +56,41 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  int _activeSubTab = 0; // 0 for Upcoming, 1 for My Events
+  int _activeSubTab = 0; // 0 Explore, 1 Joined, 2 Hosting
   String _selectedCategory = 'All';
   final Set<String> _bookmarkedEvents = {};
+
+  String? get _currentUid => FirebaseAuth.instance.currentUser?.uid;
+
+  Future<void> _openRegistrationOrPass(Event event) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final existing =
+          await EventRegistrationService().getMyRegistrationForEvent(event.id);
+      if (!mounted) return;
+      if (existing != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EventPassScreen(registration: existing),
+          ),
+        );
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EventRegistrationFormScreen(event: event),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not open registration: $e'),
+          backgroundColor: const Color(0xFFC62828),
+        ),
+      );
+    }
+  }
 
   final List<String> _categories = [
     'All',
@@ -94,23 +122,7 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _searchVenues(String query) async {
-    try {
-      final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5');
-      final response = await http.get(url, headers: {'User-Agent': 'BoardingPassApp/1.0'});
-      if (response.statusCode == 200) {
-        final list = jsonDecode(response.body) as List;
-        return list.map((item) {
-          return {
-            'display_name': item['display_name'] as String,
-            'lat': double.parse(item['lat'] as String),
-            'lon': double.parse(item['lon'] as String),
-          };
-        }).toList();
-      }
-    } catch (e) {
-      debugPrint('Geocoding search error: $e');
-    }
-    return [];
+    return searchGoogleGeocoding(query);
   }
 
   Map<String, double>? _extractCoordinatesFromUrl(String url) {
@@ -506,36 +518,41 @@ class _EventsScreenState extends State<EventsScreen> {
                           decoration: BoxDecoration(
                             border: Border.all(color: const Color(0xFFE8E2DD)),
                             borderRadius: BorderRadius.circular(10),
-                            color: Colors.white,
                           ),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            itemCount: searchResults.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE8E2DD)),
-                            itemBuilder: (context, index) {
-                              final item = searchResults[index];
-                              return ListTile(
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                                title: Text(
-                                  item['display_name'],
-                                  style: const TextStyle(fontSize: 12, fontFamily: 'PlusJakartaSans', color: Color(0xFF3E1F11)),
-                                ),
-                                onTap: () {
-                                  setDialogState(() {
-                                    isSelectingVenue = true;
-                                    locController.text = item['display_name'];
-                                    latitude = item['lat'];
-                                    longitude = item['lon'];
-                                    mapsController.text = 'https://www.google.com/maps/search/?api=1&query=${item['lat']},${item['lon']}';
-                                    geocodeStatus = '✓ Location selected!';
-                                    searchResults = [];
-                                  });
-                                  isSelectingVenue = false;
-                                },
-                              );
-                            },
+                          clipBehavior: Clip.antiAlias,
+                          child: Material(
+                            color: Colors.white,
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: searchResults.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE8E2DD)),
+                              itemBuilder: (context, index) {
+                                final item = searchResults[index];
+                                return ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                  title: Text(
+                                    item['display_name'],
+                                    style: const TextStyle(fontSize: 12, fontFamily: 'PlusJakartaSans', color: Color(0xFF3E1F11)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onTap: () {
+                                    setDialogState(() {
+                                      isSelectingVenue = true;
+                                      locController.text = item['display_name'];
+                                      latitude = item['lat'];
+                                      longitude = item['lon'];
+                                      mapsController.text = 'https://www.google.com/maps/search/?api=1&query=${item['lat']},${item['lon']}';
+                                      geocodeStatus = '✓ Location selected!';
+                                      searchResults = [];
+                                    });
+                                    isSelectingVenue = false;
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ],
@@ -607,7 +624,7 @@ class _EventsScreenState extends State<EventsScreen> {
                               day: finalDay,
                               title: titleController.text.trim(),
                               location: locController.text.isEmpty ? 'General Lounge' : locController.text.trim(),
-                              time: "${timeVal.isEmpty ? '6:00 PM' : timeVal} • Today",
+                              time: timeVal.isEmpty ? '6:00 PM' : timeVal,
                               attendees: '1 attending',
                               category: selectedCat,
                               price: priceController.text.trim().isEmpty ? 'Free' : priceController.text.trim(),
@@ -793,11 +810,11 @@ class _EventsScreenState extends State<EventsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${event.day} ${event.month}',
+                              '${event.dayOfWeek}, ${event.day} ${_getMonthFull(event.month)} 2026',
                               style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
                             ),
                             Text(
-                              event.time,
+                              event.formattedTimeString,
                               style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
                             ),
                           ],
@@ -859,8 +876,14 @@ class _EventsScreenState extends State<EventsScreen> {
                                     final double lat = event.latitude!;
                                     final double lon = event.longitude!;
                                     final url = event.mapUrl ?? 'https://www.google.com/maps/search/?api=1&query=$lat,$lon';
-                                    if (await canLaunchUrl(Uri.parse(url))) {
-                                      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                    final uri = Uri.parse(url);
+                                    try {
+                                      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      if (!launched) {
+                                        await launchUrl(uri, mode: LaunchMode.platformDefault);
+                                      }
+                                    } catch (e) {
+                                      debugPrint('Could not launch map URL: $url - Error: $e');
                                     }
                                   },
                                   child: Container(
@@ -899,8 +922,14 @@ class _EventsScreenState extends State<EventsScreen> {
                         icon: const Icon(Icons.map, color: Color(0xFF7A432D), size: 16),
                         label: const Text('Open Location on Google Maps', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF7A432D), fontWeight: FontWeight.bold)),
                         onPressed: () async {
-                          if (await canLaunchUrl(Uri.parse(event.mapUrl!))) {
-                            await launchUrl(Uri.parse(event.mapUrl!), mode: LaunchMode.externalApplication);
+                          final uri = Uri.parse(event.mapUrl!);
+                          try {
+                            final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            if (!launched) {
+                              await launchUrl(uri, mode: LaunchMode.platformDefault);
+                            }
+                          } catch (e) {
+                            debugPrint('Could not launch map URL: ${event.mapUrl!} - Error: $e');
                           }
                         },
                       ),
@@ -908,29 +937,192 @@ class _EventsScreenState extends State<EventsScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Book / Join CTA Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: event.isJoined ? const Color(0xFFE8E2DD) : const Color(0xFF7A432D),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    // Host tools (only for event organiser)
+                    if (event.isHostedBy(_currentUid)) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3E1F11).withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE8E2DD)),
                         ),
-                        onPressed: () {
-                          _state.toggleJoinEvent(event.id);
-                          Navigator.pop(context);
-                        },
-                        child: Text(
-                          event.isJoined ? '✓ Joined' : 'Book Ticket / Join',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: event.isJoined ? const Color(0xFF3E1F11) : Colors.white,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'HOST CONTROLS',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.1,
+                                color: Color(0xFF8C736B),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFF7A432D)),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      minimumSize: const Size(0, 44),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.of(this.context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              EventRegistrantsScreen(event: event),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.people_outline,
+                                      size: 18,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                    label: const Text(
+                                      'Registrants',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF7A432D),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF7A432D),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      minimumSize: const Size(0, 44),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      Navigator.of(this.context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              EventQrScannerScreen(event: event),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.qr_code_scanner,
+                                      size: 18,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      'Scan QR',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Interested + Register / View Pass CTAs
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 1,
+                          child: SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: event.isJoined
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFF7A432D),
+                                  width: 1.5,
+                                ),
+                                backgroundColor: event.isJoined
+                                    ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
+                                    : Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () {
+                                _state.toggleJoinEvent(event.id);
+                                Navigator.pop(context);
+                              },
+                              icon: Icon(
+                                event.isJoined
+                                    ? Icons.star_rounded
+                                    : Icons.star_border_rounded,
+                                size: 18,
+                                color: event.isJoined
+                                    ? const Color(0xFF2E7D32)
+                                    : const Color(0xFF7A432D),
+                              ),
+                              label: Text(
+                                event.isJoined ? 'Interested' : 'Interested?',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: event.isJoined
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFF7A432D),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF7A432D),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                await _openRegistrationOrPass(event);
+                              },
+                              icon: const Icon(
+                                Icons.confirmation_number_outlined,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                              label: const Text(
+                                'Register / View Pass',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     )
                   ],
                 ),
@@ -950,15 +1142,30 @@ class _EventsScreenState extends State<EventsScreen> {
     final upcomingEvents = _state.events.where((e) {
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
-    }).toList();
+    }).toList()
+      ..sort((a, b) {
+        if (a.createdByAdmin && !b.createdByAdmin) return -1;
+        if (!a.createdByAdmin && b.createdByAdmin) return 1;
+        return 0;
+      });
 
     final myEvents = _state.events.where((e) {
-      if (!e.isJoined) return false;
+      if (!e.isJoined && !e.isRegistered) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList();
 
-    final currentList = _activeSubTab == 0 ? upcomingEvents : myEvents;
+    final hostingEvents = _state.events.where((e) {
+      if (!e.isHostedBy(_currentUid)) return false;
+      if (_selectedCategory == 'All') return true;
+      return e.category.toLowerCase() == _selectedCategory.toLowerCase();
+    }).toList();
+
+    final currentList = _activeSubTab == 0
+        ? upcomingEvents
+        : _activeSubTab == 1
+            ? myEvents
+            : hostingEvents;
 
     // Split list into Featured (first 3) and standard grid
     final featuredList = currentList.take(3).toList();
@@ -986,6 +1193,16 @@ class _EventsScreenState extends State<EventsScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Pass wallet',
+            icon: const Icon(Icons.account_balance_wallet_outlined,
+                color: Color(0xFF3E1F11)),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EventWalletScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.add, color: Color(0xFF3E1F11)),
             onPressed: _handleCreateEvent,
           ),
@@ -993,79 +1210,260 @@ class _EventsScreenState extends State<EventsScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // Sub-Tab Switcher
+          // Sub-Tab Switcher — Explore / Joined / Hosting
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: 10),
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDE5DE),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFDDD0C8), width: 1),
-                ),
-                child: Row(
-                  children: [
-                    _buildSubTabButton(0, 'Explore Events'),
-                    _buildSubTabButton(1, 'Joined By Me'),
-                  ],
-                ),
+              child: Row(
+                children: [
+                  // Explore Events — dark filled pill
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeSubTab = 0),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _activeSubTab == 0 ? const Color(0xFF3E1F11) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _activeSubTab == 0 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.explore_rounded,
+                              size: 15,
+                              color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Explore',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Joined By Me
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeSubTab = 1),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _activeSubTab == 1 ? const Color(0xFF3E1F11) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _activeSubTab == 1 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.person_outline_rounded,
+                              size: 15,
+                              color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Joined',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Hosting
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeSubTab = 2),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _activeSubTab == 2 ? const Color(0xFF3E1F11) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _activeSubTab == 2 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.qr_code_scanner_rounded,
+                              size: 15,
+                              color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Hosting',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
 
-          // Category Chips Bar
+          // Category Chips Bar — fixed row, 3 main + More button, no scrolling
           SliverToBoxAdapter(
-            child: Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                itemCount: _categories.length,
-                itemBuilder: (context, index) {
-                  final cat = _categories[index];
-                  final isSelected = _selectedCategory == cat;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      child: ChoiceChip(
-                        label: Text(
-                          cat,
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            color: isSelected ? Colors.white : const Color(0xFF5C473E),
-                            letterSpacing: isSelected ? 0.3 : 0,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: 4),
+              child: Row(
+                children: [
+                  // 3 main categories
+                  ..._categories.take(3).map((cat) {
+                    final isSelected = _selectedCategory == cat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedCategory = cat),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF7A432D) : Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFD6C9C0),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: Text(
+                            cat,
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                            ),
                           ),
                         ),
-                        selected: isSelected,
-                        selectedColor: const Color(0xFF7A432D),
+                      ),
+                    );
+                  }),
+                  // More ▾ button — shows remaining categories in a bottom sheet
+                  GestureDetector(
+                    onTap: () {
+                      showModalBottomSheet(
+                        context: context,
                         backgroundColor: Colors.white,
-                        elevation: isSelected ? 3 : 0,
-                        shadowColor: const Color(0xFF7A432D).withValues(alpha: 0.3),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(22),
-                          side: BorderSide(
-                            color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE0D4CB),
-                            width: 1.2,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                        ),
+                        builder: (_) => Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'More Categories',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: _categories.skip(3).map((cat) {
+                                  final isSel = _selectedCategory == cat;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setState(() => _selectedCategory = cat);
+                                      Navigator.pop(context);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: isSel ? const Color(0xFF7A432D) : Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: isSel ? const Color(0xFF7A432D) : const Color(0xFFD6C9C0),
+                                          width: 1.2,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        cat,
+                                        style: TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: isSel ? Colors.white : const Color(0xFF5C473E),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                           ),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() {
-                              _selectedCategory = cat;
-                            });
-                          }
-                        },
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFD6C9C0), width: 1.2),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Text(
+                            'More',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF5C473E),
+                            ),
+                          ),
+                          SizedBox(width: 3),
+                          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF5C473E)),
+                        ],
                       ),
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
           ),
@@ -1074,22 +1472,44 @@ class _EventsScreenState extends State<EventsScreen> {
           if (featuredList.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.only(left: screenWidth * 0.05, top: 12, bottom: 8),
-                child: const Text(
-                  'FEATURED EVENTS',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                    color: Color(0xFF8C736B),
-                  ),
+                padding: EdgeInsets.only(left: screenWidth * 0.05, right: screenWidth * 0.05, top: 16, bottom: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'FEATURED EVENTS',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                    GestureDetector(
+                      child: Row(
+                        children: const [
+                          Text(
+                            'View All',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF7A432D),
+                            ),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF7A432D)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             SliverToBoxAdapter(
               child: SizedBox(
-                height: 180,
+                height: 520,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
@@ -1103,38 +1523,123 @@ class _EventsScreenState extends State<EventsScreen> {
             ),
           ],
 
-          // Grid Section Header
+          // Grid Section Header with View All
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.only(left: screenWidth * 0.05, top: 20, bottom: 8),
-              child: Text(
-                _selectedCategory == 'All' ? 'ALL EVENTS' : '$_selectedCategory EVENTS'.toUpperCase(),
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                  color: Color(0xFF8C736B),
-                ),
+              padding: EdgeInsets.only(left: screenWidth * 0.05, right: screenWidth * 0.05, top: 20, bottom: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _selectedCategory == 'All' ? 'ALL EVENTS' : '${_selectedCategory.toUpperCase()} EVENTS',
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                  GestureDetector(
+                    child: Row(
+                      children: const [
+                        Text(
+                          'View All',
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                        SizedBox(width: 2),
+                        Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF7A432D)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
 
           // Events 2-Column Grid or Empty placeholder
           currentList.isEmpty
-              ? SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
-                        Icon(Icons.event_busy_outlined, color: Color(0xFF8C736B), size: 40),
-                        SizedBox(height: 8),
-                        Text(
-                          'No matching events found.',
-                          style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
-                        ),
-                      ],
+              ? SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05, vertical: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE8E2DD), width: 1),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5EFE9),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.calendar_today_outlined,
+                              color: Color(0xFF8C736B),
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'No events yet',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3E1F11),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Be the first to create an event!',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              color: Color(0xFF8C736B),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 18),
+                          GestureDetector(
+                            onTap: _handleCreateEvent,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFF7A432D), width: 1.5),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add, size: 16, color: Color(0xFF7A432D)),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Create Event',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 )
@@ -1170,104 +1675,134 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  Widget _buildSubTabButton(int index, String title) {
-    final isActive = _activeSubTab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _activeSubTab = index;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: isActive ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(11),
-            boxShadow: isActive
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF7A432D).withValues(alpha: 0.12),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    )
-                  ]
-                : [],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            title,
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 13,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-              color: isActive ? const Color(0xFF7A432D) : const Color(0xFF8C736B),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildFeaturedEventCard(Event event) {
     final isBookmarked = _bookmarkedEvents.contains(event.id);
+    final cardWidth = MediaQuery.of(context).size.width * 0.88;
+
+    // Parse attendee count for display
+    final attendeeText = event.attendees;
+    final attendeeCount = RegExp(r'\d+').firstMatch(attendeeText)?.group(0) ?? '0';
+
+    // Derive a city label from the location string
+    final locationParts = event.location.split(',');
+    final cityLabel = locationParts.isNotEmpty
+        ? locationParts.last.trim().toUpperCase()
+        : 'YOUR CITY';
+
     return GestureDetector(
       onTap: () => _showEventDetailsBottomSheet(event),
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.82,
-        margin: const EdgeInsets.only(right: 12),
+        width: cardWidth,
+        margin: const EdgeInsets.only(right: 16, bottom: 4),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          image: DecorationImage(
-            image: _getEventImageProvider(
-              (event.imageUrl != null && event.imageUrl!.isNotEmpty)
-                  ? event.imageUrl!
-                  : _getCategoryImageUrl(event.category),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
-            fit: BoxFit.cover,
-          ),
+          ],
         ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-            ),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
             children: [
-              // Top Bar of Card
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${event.day} ${event.month.toUpperCase()}',
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              // ── Full-bleed background image ──
+              Positioned.fill(
+                child: _buildEventImageWidget(
+                  (event.imageUrl != null && event.imageUrl!.isNotEmpty)
+                      ? event.imageUrl!
+                      : _getCategoryImageUrl(event.category),
+                  fit: BoxFit.cover,
+                ),
+              ),
+
+              // ── Top gradient for badges readability ──
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 120,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.45),
+                        Colors.transparent,
+                      ],
                     ),
                   ),
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.black38,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                        size: 16,
-                        color: Colors.white,
+                ),
+              ),
+
+              // ── Bottom gradient for text readability ──
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 340,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.92),
+                        Colors.black.withValues(alpha: 0.5),
+                        Colors.transparent,
+                      ],
+                      stops: const [0, 0.55, 1],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── TOP: Free Entry badge + Bookmark ──
+              Positioned(
+                top: 16,
+                left: 16,
+                right: 16,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Free Entry / Expired pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      onPressed: () {
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            event.isExpired ? Icons.timer_off_outlined : Icons.confirmation_number_rounded,
+                            size: 13,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            event.isExpired
+                                ? 'EXPIRED'
+                                : (event.price == 'Free' ? 'FREE ENTRY' : event.price.toUpperCase()),
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Bookmark button
+                    GestureDetector(
+                      onTap: () {
                         setState(() {
                           if (isBookmarked) {
                             _bookmarkedEvents.remove(event.id);
@@ -1276,61 +1811,310 @@ class _EventsScreenState extends State<EventsScreen> {
                           }
                         });
                       },
-                    ),
-                  )
-                ],
-              ),
-
-              // Bottom Details of Card
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: const Color(0xFFE5A475), borderRadius: BorderRadius.circular(4)),
-                    child: Text(
-                      event.category.toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    event.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'PlayfairDisplay',
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on_outlined, size: 12, color: Colors.white70),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          event.location,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24, width: 1),
+                        ),
+                        child: Icon(
+                          isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                          color: Colors.white,
+                          size: 20,
                         ),
                       ),
-                      Text(
-                        event.price == 'Free' ? 'FREE' : event.price,
-                        style: const TextStyle(color: Color(0xFF81C784), fontSize: 12, fontWeight: FontWeight.bold),
-                      )
-                    ],
-                  )
-                ],
-              )
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── MIDDLE-BOTTOM: City + Title + Interested row ──
+              Positioned(
+                bottom: 180,
+                left: 20,
+                right: 20,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // City label in copper
+                    Text(
+                      cityLabel,
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFE5A475),
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Large event title
+                    Text(
+                      event.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Avatars (only if there are real attendees) + Interested pill
+                    Row(
+                      children: [
+                        // Show real profile photos: every attendee up to four,
+                        // otherwise only the four most recently interested.
+                        if (event.attendeeIds.isNotEmpty) ...[
+                          EventAttendeeAvatarStack(
+                            attendeeIds: event.attendeeIds,
+                          ),
+                          const SizedBox(width: 10),
+                        ],
+                                // +N overflow badge — only if count > 4
+                        // Interested count pill — always shown
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.42),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white24, width: 1),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.people_outline_rounded, size: 14, color: Colors.white70),
+                              const SizedBox(width: 5),
+                              Text(
+                                '$attendeeCount Interested',
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Tagline
+                    const Text(
+                      'Connect. Collaborate. Grow.',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        color: Colors.white70,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── BOTTOM: Dark info card + Register button ──
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Dark info card
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1412).withValues(alpha: 0.88),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          // Date row
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF7A432D).withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.calendar_month_rounded, color: Color(0xFFE5A475), size: 20),
+                                ),
+                                const SizedBox(width: 14),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${event.dayOfWeek}, ${event.day} ${_getMonthFull(event.month)} 2026',
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      event.formattedTimeString,
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 11,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Divider
+                          Divider(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+                          // Location row
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF7A432D).withValues(alpha: 0.25),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.location_on_rounded, color: Color(0xFFE5A475), size: 20),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        event.location.split(',').first.trim(),
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        event.location,
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 11,
+                                          color: Colors.white54,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Register Now / Host tools / Expired button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (event.isHostedBy(_currentUid)) {
+                            _showEventDetailsBottomSheet(event);
+                          } else if (event.isExpired && !event.isRegistered) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('This event has ended on ${event.day} ${_getMonthFull(event.month)} 2026.'),
+                                backgroundColor: const Color(0xFF616161),
+                              ),
+                            );
+                          } else {
+                            _openRegistrationOrPass(event);
+                          }
+                        },
+                        child: Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: event.isHostedBy(_currentUid)
+                                ? const Color(0xFF7A432D)
+                                : (event.isExpired && !event.isRegistered
+                                    ? const Color(0xFF616161)
+                                    : const Color(0xFF7A432D)),
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                event.isHostedBy(_currentUid)
+                                    ? 'MANAGE EVENT'
+                                    : (event.isExpired
+                                        ? (event.isRegistered ? 'VIEW YOUR PASS' : 'EVENT EXPIRED')
+                                        : 'REGISTER NOW'),
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  event.isHostedBy(_currentUid)
+                                      ? Icons.qr_code_scanner_rounded
+                                      : (event.isExpired && !event.isRegistered
+                                          ? Icons.timer_off_outlined
+                                          : Icons.arrow_forward_rounded),
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String _getMonthFull(String abbr) {
+    const monthMap = {
+      'JAN': 'January', 'FEB': 'February', 'MAR': 'March', 'APR': 'April',
+      'MAY': 'May', 'JUN': 'June', 'JUL': 'July', 'AUG': 'August',
+      'SEP': 'September', 'OCT': 'October', 'NOV': 'November', 'DEC': 'December',
+    };
+    return monthMap[abbr.toUpperCase()] ?? abbr;
   }
 
   Widget _buildGridEventCard(Event event) {
@@ -1417,9 +2201,18 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             const Icon(Icons.calendar_today, size: 10, color: Color(0xFF8C736B)),
                             const SizedBox(width: 4),
-                            Text(
-                              '${event.day} ${event.month}',
-                              style: const TextStyle(fontSize: 10, color: Color(0xFF8C736B), fontFamily: 'PlusJakartaSans'),
+                            Expanded(
+                              child: Text(
+                                '${event.dayOfWeek}, ${event.day} ${event.month}${event.isExpired ? " • Expired" : ""}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF8C736B),
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontWeight: event.isExpired ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -1438,29 +2231,42 @@ class _EventsScreenState extends State<EventsScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.people_outline, size: 10, color: Color(0xFF8C736B)),
+                            const SizedBox(width: 4),
+                            Text(
+                              event.attendees,
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF8C736B), fontFamily: 'PlusJakartaSans'),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              event.price == 'Free' ? 'FREE' : event.price,
-                              style: const TextStyle(
+                              event.isExpired ? 'EXPIRED' : (event.price == 'Free' ? 'FREE' : event.price),
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF2E7D32),
+                                color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
                                 fontFamily: 'PlusJakartaSans',
                               ),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
-                                color: event.isJoined ? const Color(0xFFE8E2DD) : const Color(0xFF7A432D),
+                                color: event.isExpired
+                                    ? const Color(0xFFB0A29C)
+                                    : (event.isJoined ? const Color(0xFFE8E2DD) : const Color(0xFF7A432D)),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                event.isJoined ? 'Joined' : 'Join',
+                                event.isExpired ? 'Ended' : (event.isJoined ? 'Joined' : 'Join'),
                                 style: TextStyle(
-                                  color: event.isJoined ? const Color(0xFF3E1F11) : Colors.white,
+                                  color: event.isJoined && !event.isExpired ? const Color(0xFF3E1F11) : Colors.white,
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'PlusJakartaSans',

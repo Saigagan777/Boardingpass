@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 import 'services/auth_service.dart';
 import 'services/user_service.dart';
 import 'services/event_service.dart';
@@ -13,6 +14,7 @@ import 'models/event.dart';
 import 'models/message.dart';
 import 'models/user_profile.dart'; // Added import for CustomCard
 import 'utils/match_calculator.dart';
+import 'utils/google_search_helper.dart';
 
 enum AppScreen { hub, profile, checkin, events, discover, chat, meeting }
 
@@ -66,10 +68,14 @@ class AppStateManager extends ChangeNotifier {
   AppScreen _currentScreen = AppScreen.hub;
   bool _isAdminView = false;
   String? _activeChatContact;
+  Offset? _lastTappedSegmentCenter;
+  List<String>? _activityOrder;
 
   AppScreen get currentScreen => _currentScreen;
   bool get isAdminView => _isAdminView;
   String? get activeChatContact => _activeChatContact;
+  Offset? get lastTappedSegmentCenter => _lastTappedSegmentCenter;
+  List<String>? get activityOrder => _activityOrder;
 
   set currentScreen(AppScreen screen) {
     _currentScreen = screen;
@@ -86,6 +92,14 @@ class AppStateManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  set lastTappedSegmentCenter(Offset? val) {
+    _lastTappedSegmentCenter = val;
+  }
+
+  set activityOrder(List<String>? val) {
+    _activityOrder = val;
+  }
+
   int _meetingInitialTab = 0;
   int get meetingInitialTab => _meetingInitialTab;
   set meetingInitialTab(int val) {
@@ -94,12 +108,14 @@ class AppStateManager extends ChangeNotifier {
   }
 
   // Authentication State
+  bool _isInitialized = false;
   bool _isLoggedIn = false;
   bool _isAuthCallbackInProgress = false;
   bool isRegistering = false;
   Map<String, String>? _profileData;
   UserProfile? _currentUserProfile;
 
+  bool get isInitialized => _isInitialized;
   bool get isLoggedIn => _isLoggedIn;
   bool get isAuthCallbackInProgress => _isAuthCallbackInProgress;
   Map<String, String>? get profileData => _profileData;
@@ -292,8 +308,9 @@ class AppStateManager extends ChangeNotifier {
         await syncSignedInUser(user);
       } else if (!_isAuthCallbackInProgress) {
         _clearSignedOutState();
+        _isInitialized = true;
+        notifyListeners();
       }
-      notifyListeners();
     });
   }
 
@@ -325,38 +342,68 @@ class AppStateManager extends ChangeNotifier {
       );
       _isAdminView = isAdminUser;
     } catch (e) {
-      _isAdminView = user.email?.toLowerCase() == 'gagan123@gmail.com'; // Dev fallback
+      _isAdminView =
+          user.email?.toLowerCase() == 'gagan123@gmail.com' ||
+          user.email?.toLowerCase() == 'gagan90@gmail.com'; // Dev fallback
     }
 
     _profileSubscription = UserService().streamCurrentUserProfile().listen((
       profile,
     ) async {
       if (profile != null) {
+        final oldLoc = _currentUserProfile?.location;
+        final oldCity = _currentUserProfile?.currentLocationName;
+
         _currentUserProfile = profile;
         _profileData = {
           'sub': user.uid,
           'name': profile.name.isNotEmpty
               ? profile.name
               : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),
-          'email': user.email ?? '',
+          // Display the real email stored in Firestore instead of the synthetic Firebase Auth email
+          'email':
+              (profile.email.isNotEmpty &&
+                  !profile.email.startsWith('linkedin_'))
+              ? profile.email
+              : (user.email ?? ''),
           'location': profile.currentLocationName ?? profile.homeBase ?? '',
           'picture': profile.profileImageUrl ?? user.photoURL ?? '',
         };
+        _isInitialized = true;
         notifyListeners();
-      } else {
-        try {
-          await AuthService().ensureUserProfile();
-        } catch (e) {
-          debugPrint('Failed to auto-create user profile on login: $e');
+
+        // Reload candidates to calculate correct distances if location gets initialized or changes
+        if (oldLoc != profile.location || oldCity != profile.currentLocationName) {
+          loadCandidates();
         }
+      } else {
+        // Avoid auto-creating a profile for synthetic LinkedIn users.
+        // The LinkedIn login flow explicitly creates it with the real email.
+        final isSynthetic =
+            user.email != null &&
+            user.email!.startsWith('linkedin_') &&
+            user.email!.endsWith('@boardingpass.com');
+        if (!isSynthetic) {
+          try {
+            await AuthService().ensureUserProfile();
+          } catch (e) {
+            debugPrint('Failed to auto-create user profile on login: $e');
+          }
+        }
+        _isInitialized = true;
+        notifyListeners();
       }
     });
 
     // Fallback initially if profile stream is slow
+    final isSynthetic =
+        user.email != null &&
+        user.email!.startsWith('linkedin_') &&
+        user.email!.endsWith('@boardingpass.com');
     _profileData = {
       'sub': user.uid,
       'name': user.displayName ?? user.email?.split('@')[0] ?? 'User',
-      'email': user.email ?? '',
+      'email': isSynthetic ? '' : (user.email ?? ''),
       'location': '',
       'picture': user.photoURL ?? '',
     };
@@ -379,17 +426,26 @@ class AppStateManager extends ChangeNotifier {
             title: data['title'] ?? '',
             location: data['location'] ?? '',
             time: data['time'] ?? '',
-            attendees: '${attendeesList.length} attending',
+            attendees: '${attendeesList.length} interested',
+            attendeeIds: attendeesList,
             category: data['category'] ?? 'Meetups',
             price: data['price'] ?? 'Free',
             mapUrl: data['mapUrl'],
             latitude: (data['latitude'] as num?)?.toDouble(),
             longitude: (data['longitude'] as num?)?.toDouble(),
             imageUrl: data['imageUrl'],
+            organiserId: data['organiserId']?.toString(),
             isJoined: attendeesList.contains(user.uid),
+            createdByAdmin: data['createdByAdmin'] == true,
           ),
         );
       }
+      // Display Admin Created events FIRST
+      _events.sort((a, b) {
+        if (a.createdByAdmin && !b.createdByAdmin) return -1;
+        if (!a.createdByAdmin && b.createdByAdmin) return 1;
+        return 0;
+      });
       notifyListeners();
     });
 
@@ -437,6 +493,7 @@ class AppStateManager extends ChangeNotifier {
 
   void _clearSignedOutState() {
     _cancelSubscriptions();
+    _isInitialized = false;
     _isLoggedIn = false;
     _isAuthCallbackInProgress = false;
     _profileData = null;
@@ -450,7 +507,11 @@ class AppStateManager extends ChangeNotifier {
   Future<void> loadCandidates() async {
     try {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
-      if (currentUid == null) return;
+      debugPrint('[DEBUG loadCandidates] called. currentUid: $currentUid');
+      if (currentUid == null) {
+        debugPrint('[DEBUG loadCandidates] currentUid is null. Returning.');
+        return;
+      }
 
       // 1. Fetch current user's swipes to partition them
       final swipesSnapshot = await FirebaseFirestore.instance
@@ -552,12 +613,14 @@ class AppStateManager extends ChangeNotifier {
         ...connSnap2.docs.map((doc) => doc.data()['userA'] as String),
       };
 
+      debugPrint('[DEBUG loadCandidates] swipes=${swipesSnapshot.docs.length}, conn=${connectedUids.length}, outgoing=${outgoingReqs.docs.length}, incoming=${incomingReqs.docs.length}');
+
       // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
-          .where('isDiscoverable', isEqualTo: true)
           .limit(100)
           .get();
+      debugPrint('[DEBUG loadCandidates] users collection fetched count: ${querySnapshot.docs.length}');
 
       // 2.5 Fetch current user details to calculate dynamic match scores
       final currentUserDoc = await FirebaseFirestore.instance
@@ -565,74 +628,215 @@ class AppStateManager extends ChangeNotifier {
           .doc(currentUid)
           .get();
       final currentUserData = currentUserDoc.data() ?? {};
-      final currentUserSkills = List<String>.from(currentUserData['skills'] ?? []);
-      final currentUserInterests = List<String>.from(currentUserData['interests'] ?? []);
-      final currentUserExpertise = List<String>.from(currentUserData['expertise'] ?? []);
-      final currentUserIntents = List<String>.from(currentUserData['intents'] ?? []);
+      final currentUserSkills = List<String>.from(
+        currentUserData['skills'] ?? [],
+      );
+      final currentUserInterests = List<String>.from(
+        currentUserData['interests'] ?? [],
+      );
+      final currentUserExpertise = List<String>.from(
+        currentUserData['expertise'] ?? [],
+      );
+      final currentUserIntents = List<String>.from(
+        currentUserData['intents'] ?? [],
+      );
+      final currentExpertiseMapList =
+          (currentUserData['expertiseWithLevel'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [];
+      final currentInterestsMapList =
+          (currentUserData['interestsWithPriority'] as List?)
+              ?.map((item) => Map<String, dynamic>.from(item))
+              .toList() ??
+          [];
+      final currentRole = currentUserData['role'] ?? '';
 
-      final allProfiles = querySnapshot.docs
-          .where((doc) =>
-              doc.id != currentUid &&
+      final List<Candidate> allProfiles = [];
+      final docsToProcess = querySnapshot.docs.where(
+        (doc) {
+          final data = doc.data();
+          final isDiscoverable = data['isDiscoverable'] ?? true;
+          final pass = doc.id != currentUid &&
+              isDiscoverable &&
               !permanentlyExcludedUids.contains(doc.id) &&
               !pendingReqUids.contains(doc.id) &&
-              !connectedUids.contains(doc.id))
-          .map((doc) {
-            final data = doc.data();
-            final expertise = List<String>.from(data['expertise'] ?? []);
-            final intents = List<String>.from(data['intents'] ?? []);
-            final interests = List<String>.from(data['interests'] ?? []);
-            final skills = List<String>.from(data['skills'] ?? []);
-            final customCardsData = data['customCards'] as List? ?? [];
-            final customCards = customCardsData
-                .map(
-                  (item) => CustomCard.fromMap(Map<String, dynamic>.from(item)),
-                )
-                .toList();
+              !connectedUids.contains(doc.id);
+          debugPrint('[DEBUG loadCandidates] User doc: ${doc.id}, name: ${data['name']}, isDiscoverable: $isDiscoverable, pass: $pass');
+          return pass;
+        },
+      ).toList();
+      debugPrint('[DEBUG loadCandidates] docsToProcess count: ${docsToProcess.length}');
 
-            final computedScore = calculateMatchScore(
-              currentUid: currentUid,
-              targetUid: doc.id,
-              currentSkills: currentUserSkills,
-              currentInterests: currentUserInterests,
-              currentExpertise: currentUserExpertise,
-              currentIntents: currentUserIntents,
-              targetSkills: skills,
-              targetInterests: interests,
-              targetExpertise: expertise,
-              targetIntents: intents,
-            );
+      // Resolve current user's location once before the loop to avoid redundant geocoding queries
+      GeoPoint? currentUserGeo = _currentUserProfile?.location;
+      if (currentUserGeo == null) {
+        final String userCity = (_currentUserProfile?.currentLocationName ?? _currentUserProfile?.homeBase ?? '').toString();
+        if (userCity.isNotEmpty) {
+          currentUserGeo = _getOfflineCoordinatesForCity(userCity);
+          if (currentUserGeo == null) {
+            try {
+              final geocodeResults = await searchGoogleGeocoding(userCity).timeout(const Duration(seconds: 2));
+              if (geocodeResults.isNotEmpty) {
+                currentUserGeo = GeoPoint(
+                  geocodeResults.first['lat'] as double,
+                  geocodeResults.first['lon'] as double,
+                );
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(currentUid)
+                    .update({'location': currentUserGeo}).catchError((_) => null);
+              }
+            } catch (_) {}
+          }
+        }
+      }
 
-            return Candidate(
-              uid: doc.id,
-              name: data['name'] ?? '',
-              role: data['role'] ?? '',
-              org: data['company'] ?? '',
-              loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
-              match: computedScore,
-              intent: intents.isNotEmpty ? intents.join(', ') : '',
-              tags: expertise,
-              interests: interests,
-              skills: skills,
-              homeBase: data['homeBase'] ?? '',
-              bio: data['bio'] ?? '',
-              initials: (data['name'] as String?)?.isNotEmpty == true
-                  ? data['name']
-                        .trim()
-                        .split(' ')
-                        .map((e) => e[0])
-                        .take(2)
-                        .join()
-                        .toUpperCase()
-                  : 'P',
-              profileImageUrl: data['profileImageUrl'],
-              primaryColor: const Color(0xFFE5A475),
-              customCards: customCards,
+      for (final doc in docsToProcess) {
+        final data = doc.data();
+        final expertise = List<String>.from(data['expertise'] ?? []);
+        final intents = List<String>.from(data['intents'] ?? []);
+        final interests = List<String>.from(data['interests'] ?? []);
+        final skills = List<String>.from(data['skills'] ?? []);
+        final customCardsData = data['customCards'] as List? ?? [];
+        final customCards = customCardsData
+            .map(
+              (item) => CustomCard.fromMap(Map<String, dynamic>.from(item)),
+            )
+            .toList();
+        final careerTimeline =
+            (data['careerTimeline'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ??
+            [];
+        final educationTimeline =
+            (data['educationTimeline'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ??
+            [];
+
+        final targetExpertiseMapList =
+            (data['expertiseWithLevel'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ??
+            [];
+        final targetInterestsMapList =
+            (data['interestsWithPriority'] as List?)
+                ?.map((item) => Map<String, dynamic>.from(item))
+                .toList() ??
+            [];
+        final targetBadges = List<String>.from(data['badges'] ?? []);
+
+        int sumEndorsements = 0;
+        for (final exp in targetExpertiseMapList) {
+          sumEndorsements += (exp['endorsements'] ?? 0) as int;
+        }
+        final targetSessions = data['completedMentoringSessions'] ?? 0;
+        final targetCollaborations = data['successfulCollaborations'] ?? 0;
+
+        final detailedMatch = calculateDetailedMatch(
+          currentUid: currentUid,
+          targetUid: doc.id,
+          currentRole: currentRole,
+          targetRole: data['role'] ?? '',
+          currentExpertise: currentExpertiseMapList,
+          currentInterests: currentInterestsMapList,
+          targetExpertise: targetExpertiseMapList,
+          targetInterests: targetInterestsMapList,
+          currentSkills: [...currentUserSkills, ...currentUserExpertise],
+          currentInterestsList: [
+            ...currentUserInterests,
+            ...currentUserIntents,
+          ],
+          targetSkills: [...skills, ...expertise],
+          targetInterestsList: [...interests, ...intents],
+          targetBadges: targetBadges,
+          targetEndorsements: sumEndorsements,
+          targetSessions: targetSessions,
+        );
+
+        double? distanceKm;
+        GeoPoint? candidateGeo = data['location'] as GeoPoint?;
+        if (candidateGeo == null) {
+          final String candCity = (data['currentLocationName'] ?? data['homeBase'] ?? '').toString();
+          if (candCity.isNotEmpty) {
+            candidateGeo = _getOfflineCoordinatesForCity(candCity);
+            if (candidateGeo == null) {
+              try {
+                final geocodeResults = await searchGoogleGeocoding(candCity).timeout(const Duration(milliseconds: 500));
+                if (geocodeResults.isNotEmpty) {
+                  candidateGeo = GeoPoint(
+                    geocodeResults.first['lat'] as double,
+                    geocodeResults.first['lon'] as double,
+                  );
+                  FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(doc.id)
+                      .update({'location': candidateGeo}).catchError((_) => null);
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        if (candidateGeo != null && currentUserGeo != null) {
+          try {
+            final double distanceMeters = Geolocator.distanceBetween(
+              currentUserGeo.latitude,
+              currentUserGeo.longitude,
+              candidateGeo.latitude,
+              candidateGeo.longitude,
             );
-          })
-          .toList();
+            distanceKm = distanceMeters / 1000;
+          } catch (_) {
+            // Fail silently
+          }
+        }
+
+        allProfiles.add(Candidate(
+          uid: doc.id,
+          name: data['name'] ?? '',
+          headline: data['headline'] ?? '',
+          role: data['role'] ?? '',
+          org: data['company'] ?? '',
+          loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
+          match: detailedMatch.score,
+          intent: intents.isNotEmpty ? intents.join(', ') : '',
+          tags: expertise,
+          interests: interests,
+          skills: skills,
+          homeBase: data['homeBase'] ?? '',
+          currentLocationName: data['currentLocationName'] ?? '',
+          industry: data['industry'] ?? '',
+          experience: data['experience'] ?? '',
+          careerTimeline: careerTimeline,
+          educationTimeline: educationTimeline,
+          bio: data['bio'] ?? '',
+          initials: (data['name'] as String?)?.isNotEmpty == true
+              ? data['name']
+                    .trim()
+                    .split(' ')
+                    .map((e) => e[0])
+                    .take(2)
+                    .join()
+                    .toUpperCase()
+              : 'P',
+          profileImageUrl: data['profileImageUrl'],
+          primaryColor: const Color(0xFFE5A475),
+          customCards: customCards,
+          expertiseWithLevel: targetExpertiseMapList,
+          interestsWithPriority: targetInterestsMapList,
+          matchReasons: detailedMatch.reasons,
+          conversationStarters: detailedMatch.conversationStarters,
+          badges: targetBadges,
+          completedMentoringSessions: targetSessions,
+          successfulCollaborations: targetCollaborations,
+          distanceKm: distanceKm,
+        ));
+      }
 
       _candidates.clear();
-      
+
       // Partition into non-disliked and disliked/rejected candidates
       final nonDisliked = <Candidate>[];
       final disliked = <Candidate>[];
@@ -645,19 +849,45 @@ class AppStateManager extends ChangeNotifier {
         }
       }
 
+      // Sort non-disliked candidates by match score descending so high matches are shown first
+      nonDisliked.sort((a, b) => b.match.compareTo(a.match));
+
       // Sort disliked candidates chronologically by swipe time (older dislikes first, newer dislikes last)
       disliked.sort((a, b) {
-        final timeA = dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final timeB = dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeA =
+            dislikeTimes[a.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final timeB =
+            dislikeTimes[b.uid] ?? DateTime.fromMillisecondsSinceEpoch(0);
         return timeA.compareTo(timeB);
       });
 
       _candidates.addAll([...nonDisliked, ...disliked]);
       _activeCandidateIndex = 0;
+      debugPrint('[DEBUG loadCandidates] finished. Final _candidates length: ${_candidates.length}');
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
     }
+  }
+
+  GeoPoint? _getOfflineCoordinatesForCity(String city) {
+    if (city.isEmpty) return null;
+    final Map<String, GeoPoint> cityCoords = {
+      'vijayawada': const GeoPoint(16.5063, 80.6480),
+      'hyderabad': const GeoPoint(17.3850, 78.4867),
+      'bangalore': const GeoPoint(12.9716, 77.5946),
+      'bengaluru': const GeoPoint(12.9716, 77.5946),
+      'hanuman junction': const GeoPoint(16.6433, 80.8427),
+      'delhi': const GeoPoint(28.6139, 77.2090),
+      'mumbai': const GeoPoint(19.0760, 72.8777),
+    };
+    final lower = city.toLowerCase();
+    for (final entry in cityCoords.entries) {
+      if (lower.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+    return null;
   }
 
   /// Instantly moves a candidate to the back of the local list in memory
