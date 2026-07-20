@@ -228,7 +228,7 @@ class MainNavigationShell extends StatefulWidget {
   State<MainNavigationShell> createState() => _MainNavigationShellState();
 }
 
-class _MainNavigationShellState extends State<MainNavigationShell> {
+class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsBindingObserver {
   final AppStateManager _state = AppStateManager();
   // Session-level set of dismissed notification IDs (not marked as read in Firestore)
   final Set<String> _dismissedNotificationIds = {};
@@ -240,14 +240,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   bool _isCompletingFeatureTour = false;
 
   bool _isLocationServiceEnabled = true;
-  StreamSubscription<ServiceStatus>? _locationServiceSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _state.addListener(_onStateChanged);
     _checkLocationService();
-    _listenToLocationService();
     
     // Set initial uid and subscribe to notifications if logged in
     final initialUid =
@@ -260,13 +259,21 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _state.removeListener(_onStateChanged);
     _notificationSub?.cancel();
-    _locationServiceSub?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationService();
+    }
+  }
+
   Future<void> _checkLocationService() async {
+    if (kIsWeb) return;
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
       if (mounted && _isLocationServiceEnabled != enabled) {
@@ -274,17 +281,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           _isLocationServiceEnabled = enabled;
         });
       }
-    } catch (_) {}
-  }
-
-  void _listenToLocationService() {
-    _locationServiceSub = Geolocator.getServiceStatusStream().listen((status) {
-      if (mounted) {
-        setState(() {
-          _isLocationServiceEnabled = (status == ServiceStatus.enabled);
-        });
-      }
-    });
+    } catch (e) {
+      debugPrint('Error checking location service: $e');
+    }
   }
 
   void _onStateChanged() {
