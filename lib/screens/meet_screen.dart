@@ -1335,7 +1335,9 @@ class _MeetScreenState extends State<MeetScreen> {
                                     fit: BoxFit.cover,
                                     fallback: Center(
                                       child: Text(
-                                        profile.name.substring(0, 1).toUpperCase(),
+                                        profile.name.trim().isNotEmpty
+                                            ? profile.name.trim().substring(0, 1).toUpperCase()
+                                            : 'U',
                                         style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                                       ),
                                     ),
@@ -1898,7 +1900,9 @@ class _MeetScreenState extends State<MeetScreen> {
                       color: const Color(0xFFE5A475),
                       alignment: Alignment.center,
                       child: Text(
-                        conn.name.substring(0, 1).toUpperCase(),
+                        conn.name.trim().isNotEmpty
+                            ? conn.name.trim().substring(0, 1).toUpperCase()
+                            : 'U',
                         style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -2061,7 +2065,9 @@ class _MeetScreenState extends State<MeetScreen> {
                             fit: BoxFit.cover,
                             fallback: Center(
                               child: Text(
-                                conn.name.substring(0, 1).toUpperCase(),
+                                conn.name.trim().isNotEmpty
+                                    ? conn.name.trim().substring(0, 1).toUpperCase()
+                                    : 'U',
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                               ),
                             ),

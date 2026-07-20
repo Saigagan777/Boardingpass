@@ -310,7 +310,7 @@ class PollWidget extends StatelessWidget {
         itemBuilder: (context, index) {
           final uid = voterUids[index];
           return FutureBuilder<String>(
-            future: UserService().getUserProfile(uid).then((p) => p?.name.substring(0, 1).toUpperCase() ?? '?'),
+            future: UserService().getUserProfile(uid).then((p) => (p?.name.trim().isNotEmpty == true) ? p!.name.trim().substring(0, 1).toUpperCase() : '?'),
             builder: (context, snapshot) {
               final initial = snapshot.data ?? '';
               return Container(
