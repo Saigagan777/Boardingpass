@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'firebase_options.dart';
 import 'state_manager.dart';
 import 'services/auth_service.dart';
@@ -238,10 +239,15 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   String? _currentUid;
   bool _isCompletingFeatureTour = false;
 
+  bool _isLocationServiceEnabled = true;
+  StreamSubscription<ServiceStatus>? _locationServiceSub;
+
   @override
   void initState() {
     super.initState();
     _state.addListener(_onStateChanged);
+    _checkLocationService();
+    _listenToLocationService();
     
     // Set initial uid and subscribe to notifications if logged in
     final initialUid =
@@ -256,7 +262,29 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   void dispose() {
     _state.removeListener(_onStateChanged);
     _notificationSub?.cancel();
+    _locationServiceSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkLocationService() async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (mounted && _isLocationServiceEnabled != enabled) {
+        setState(() {
+          _isLocationServiceEnabled = enabled;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _listenToLocationService() {
+    _locationServiceSub = Geolocator.getServiceStatusStream().listen((status) {
+      if (mounted) {
+        setState(() {
+          _isLocationServiceEnabled = (status == ServiceStatus.enabled);
+        });
+      }
+    });
   }
 
   void _onStateChanged() {
@@ -428,10 +456,18 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(
-                          Icons.notifications_active,
-                          color: Color(0xFFE5A475),
-                          size: 22,
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7A432D),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_active_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -443,7 +479,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                                 _latestUnreadNotification?['title'] ??
                                     'New Notification',
                                 style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
+                                  fontFamily: 'PlayfairDisplay',
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
@@ -451,38 +487,35 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if ((_latestUnreadNotification?['body'] ?? '')
-                                  .toString()
-                                  .isNotEmpty)
-                                Text(
-                                  _latestUnreadNotification!['body'],
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 11,
-                                    color: Color(0xFFE8E2DD),
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                              const SizedBox(height: 2),
+                              Text(
+                                _latestUnreadNotification?['body'] ?? '',
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFFE8E2DD),
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        // Close button — dismisses locally, does NOT mark as read
-                        GestureDetector(
-                          onTap: () {
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white70,
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            if (_latestUnreadNotificationId != null) {
+                              _dismissedNotificationIds
+                                  .add(_latestUnreadNotificationId!);
+                            }
                             setState(() {
-                              _dismissedNotificationIds.add(
-                                _latestUnreadNotificationId!,
-                              );
                               _showNotificationBanner = false;
                             });
                           },
-                          child: const Icon(
-                            Icons.close,
-                            color: Color(0xFF8C736B),
-                            size: 18,
-                          ),
                         ),
                       ],
                     ),

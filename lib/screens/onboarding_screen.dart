@@ -225,9 +225,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    _currentView = widget.completionMode
+    final profile = AppStateManager().currentUserProfile;
+    final user = FirebaseAuth.instance.currentUser;
+    final hasName = (profile?.name.isNotEmpty == true && profile?.name != 'User') || (user?.displayName?.isNotEmpty == true);
+    final hasImage = (profile?.profileImageUrl?.isNotEmpty == true) || (user?.photoURL?.isNotEmpty == true);
+
+    _currentView = (widget.completionMode && hasName && hasImage)
         ? OnboardingView.signUpStep2
-        : OnboardingView.slides;
+        : (widget.completionMode ? OnboardingView.signUpStep1 : OnboardingView.slides);
 
     if (widget.completionMode) {
       final profile = AppStateManager().currentUserProfile;
@@ -1468,21 +1473,23 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
                 // Create the Firebase account before collecting profile details.
                 setState(() => _isLoading = true);
-                final currentUser = FirebaseAuth.instance.currentUser;
+                User? user = FirebaseAuth.instance.currentUser;
                 try {
-                  if (currentUser == null || currentUser.email != email) {
+                  if (user == null || user.email != email) {
                     try {
-                      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
                         email: email,
                         password: password,
                       );
+                      user = cred.user;
                     } on FirebaseAuthException catch (e) {
                       if (e.code == 'email-already-in-use') {
                         try {
-                          await FirebaseAuth.instance.signInWithEmailAndPassword(
+                          final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
                             email: email,
                             password: password,
                           );
+                          user = cred.user;
                         } on FirebaseAuthException {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1498,6 +1505,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         rethrow;
                       }
                     }
+                  }
+
+                  if (user != null) {
+                    if (name.isNotEmpty) {
+                      try {
+                        await user.updateDisplayName(name);
+                      } catch (e) {
+                        debugPrint('Auth displayName update skipped: $e');
+                      }
+                    }
+                    final imgUrl = _profileImageUrlController.text.trim();
+                    if (imgUrl.isNotEmpty && imgUrl.length < 2000 && !imgUrl.startsWith('data:')) {
+                      try {
+                        await user.updatePhotoURL(imgUrl);
+                      } catch (e) {
+                        debugPrint('Auth photoURL update skipped: $e');
+                      }
+                    }
+
+                    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                      'uid': user.uid,
+                      'name': name,
+                      'email': email,
+                      'phone': phone,
+                      if (imgUrl.isNotEmpty) 'profileImageUrl': imgUrl,
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true));
                   }
                 } catch (e) {
                   if (!mounted) return;

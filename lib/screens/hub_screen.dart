@@ -659,7 +659,15 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isDiscoverable = _state.currentUserProfile?.isDiscoverable ?? true;
 
-    final String fullName = _state.profileData?['name'] ?? 'User';
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final profileName = _state.currentUserProfile?.name;
+    final String fullName = (profileName != null && profileName.trim().isNotEmpty)
+        ? profileName
+        : ((_state.profileData?['name']?.isNotEmpty == true && _state.profileData!['name'] != 'User')
+            ? _state.profileData!['name']!
+            : (currentUser?.displayName?.isNotEmpty == true
+                ? currentUser!.displayName!
+                : (currentUser?.email?.isNotEmpty == true ? currentUser!.email!.split('@')[0] : 'User')));
     final String userName = fullName.trim().split(' ').first;
 
     final activeCheckinId = _state.currentUserProfile?.currentCheckin;
@@ -676,6 +684,10 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
     String locationText = 'Not checked in';
     if (activeCheckin != null) {
       locationText = '${activeCheckin.location} · ${activeCheckin.name}';
+    } else if (_state.currentUserProfile?.currentLocationName?.isNotEmpty == true) {
+      locationText = _state.currentUserProfile!.currentLocationName!;
+    } else if (_state.currentUserProfile?.homeBase?.isNotEmpty == true) {
+      locationText = _state.currentUserProfile!.homeBase!;
     } else if (_state.profileData?['location']?.isNotEmpty == true) {
       locationText = _state.profileData!['location']!;
     }
@@ -833,7 +845,9 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                               ),
                               child: ClipOval(
                                 child: buildProfileImage(
-                                  _state.profileData?['picture'] ?? '',
+                                  _state.currentUserProfile?.profileImageUrl?.isNotEmpty == true
+                                      ? _state.currentUserProfile!.profileImageUrl!
+                                      : (_state.profileData?['picture'] ?? (currentUser?.photoURL ?? '')),
                                   width: 46,
                                   height: 46,
                                   fit: BoxFit.cover,

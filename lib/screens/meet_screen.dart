@@ -2450,131 +2450,182 @@ class _MeetScreenState extends State<MeetScreen> {
   }
 
   Widget _buildMeetingsTab() {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: MeetingService().streamUserMeetings(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: CircularProgressIndicator(color: Color(0xFF7A432D)),
-            ),
-          );
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.symmetric(vertical: 60),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.event_note, size: 60, color: Color(0xFF8C736B)),
-                SizedBox(height: 16),
-                Text(
-                  'No meetings requested or scheduled yet.',
-                  style: TextStyle(
-                    fontFamily: 'PlayfairDisplay',
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3E1F11),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-        final now = DateTime.now();
-
-        final pendingList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-        final confirmedList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-        final historyList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-
-        for (final doc in docs) {
-          final data = doc.data();
-          final rawStatus = data['status'] as String? ?? 'pending';
-          final statusStr = rawStatus.toUpperCase();
-          final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
-          final rawMyStatus = statusMap[currentUid] as String? ?? 'pending';
-          final myStatus = rawMyStatus.toUpperCase();
-          
-          final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
-          final scheduledAt = scheduledTimestamp?.toDate();
-          final isPast = scheduledAt != null && scheduledAt.isBefore(now);
-
-          if (statusStr == 'CANCELLED' ||
-              statusStr == 'COMPLETED' ||
-              statusStr == 'EXPIRED' ||
-              statusStr == 'NOSHOW' ||
-              statusStr == 'REJECTED' ||
-              statusStr == 'RESCHEDULE_REJECTED' ||
-              isPast ||
-              myStatus == 'CANCELLED' ||
-              myStatus == 'REJECTED' ||
-              myStatus == 'DECLINED') {
-            historyList.add(doc);
-          } else if (statusStr == 'PENDING' && myStatus == 'PENDING') {
-            pendingList.add(doc);
-          } else {
-            confirmedList.add(doc);
+      stream: FirebaseFirestore.instance
+          .collection('chats')
+          .where('participants', arrayContains: currentUid)
+          .snapshots(),
+      builder: (context, chatsSnapshot) {
+        final unmatchedUids = <String>{};
+        if (chatsSnapshot.hasData) {
+          for (final cDoc in chatsSnapshot.data!.docs) {
+            final cData = cDoc.data();
+            if (cData['isUnmatched'] == true) {
+              final parts = List<String>.from(cData['participants'] ?? []);
+              for (final p in parts) {
+                if (p != currentUid) unmatchedUids.add(p);
+              }
+            }
           }
         }
 
-        // Sort each list by scheduledAt
-        int compareMeetings(QueryDocumentSnapshot<Map<String, dynamic>> a, QueryDocumentSnapshot<Map<String, dynamic>> b) {
-          final aTime = (a.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bTime = (b.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return aTime.compareTo(bTime);
-        }
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: MeetingService().streamUserMeetings(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: CircularProgressIndicator(color: Color(0xFF7A432D)),
+                ),
+              );
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            final docs = snapshot.data?.docs ?? [];
+            if (docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 60),
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.event_note, size: 60, color: Color(0xFF8C736B)),
+                    SizedBox(height: 16),
+                    Text(
+                      'No meetings requested or scheduled yet.',
+                      style: TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
 
-        pendingList.sort(compareMeetings);
-        confirmedList.sort(compareMeetings);
-        // History sorted by most recent first
-        historyList.sort((a, b) {
-          final aTime = (a.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bTime = (b.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return bTime.compareTo(aTime);
-        });
+            final now = DateTime.now();
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (pendingList.isNotEmpty) ...[
-              _buildSectionHeader('Pending Invitations (${pendingList.length})', Icons.mail_outline),
-              const SizedBox(height: 8),
-              ...pendingList.map((doc) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildMeetingCard(doc.id, doc.data()),
-                  )),
-              const SizedBox(height: 20),
-            ],
-            if (confirmedList.isNotEmpty) ...[
-              _buildSectionHeader('Confirmed Meetings (${confirmedList.length})', Icons.check_circle_outline),
-              const SizedBox(height: 8),
-              ...confirmedList.map((doc) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildMeetingCard(doc.id, doc.data()),
-                  )),
-              const SizedBox(height: 20),
-            ],
-            if (historyList.isNotEmpty) ...[
-              _buildSectionHeader('Past & Cancelled (${historyList.length})', Icons.history),
-              const SizedBox(height: 8),
-              ...historyList.map((doc) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildMeetingCard(doc.id, doc.data()),
-                  )),
-            ],
-            if (pendingList.isEmpty && confirmedList.isEmpty && historyList.isEmpty)
-              const Center(
-                child: Text('No meetings found.', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B))),
-              ),
-          ],
+            final pendingList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+            final confirmedList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+            final historyList = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+            for (final doc in docs) {
+              final data = doc.data();
+              final participants = List<String>.from(data['participants'] ?? []);
+              final otherParts = participants.where((p) => p != currentUid).toList();
+
+              // Completely filter out meetings with unmatched users
+              if (otherParts.any((op) => unmatchedUids.contains(op))) {
+                continue;
+              }
+
+              final rawStatus = data['status'] as String? ?? 'pending';
+              final statusStr = rawStatus.toUpperCase();
+              final statusMap = Map<String, dynamic>.from(data['participantsStatus'] ?? {});
+              final rawMyStatus = statusMap[currentUid] as String? ?? 'pending';
+              final myStatus = rawMyStatus.toUpperCase();
+              
+              final scheduledTimestamp = data['scheduledAt'] as Timestamp?;
+              final scheduledAt = scheduledTimestamp?.toDate();
+              final isPast = scheduledAt != null && scheduledAt.isBefore(now);
+
+              if (statusStr == 'CANCELLED' ||
+                  statusStr == 'COMPLETED' ||
+                  statusStr == 'EXPIRED' ||
+                  statusStr == 'NOSHOW' ||
+                  statusStr == 'REJECTED' ||
+                  statusStr == 'RESCHEDULE_REJECTED' ||
+                  isPast ||
+                  myStatus == 'CANCELLED' ||
+                  myStatus == 'REJECTED' ||
+                  myStatus == 'DECLINED') {
+                historyList.add(doc);
+              } else if (statusStr == 'PENDING' && myStatus == 'PENDING') {
+                pendingList.add(doc);
+              } else {
+                confirmedList.add(doc);
+              }
+            }
+
+            // Sort each list by scheduledAt
+            int compareMeetings(QueryDocumentSnapshot<Map<String, dynamic>> a, QueryDocumentSnapshot<Map<String, dynamic>> b) {
+              final aTime = (a.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+              final bTime = (b.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+              return aTime.compareTo(bTime);
+            }
+
+            pendingList.sort(compareMeetings);
+            confirmedList.sort(compareMeetings);
+            // History sorted by most recent first
+            historyList.sort((a, b) {
+              final aTime = (a.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+              final bTime = (b.data()['scheduledAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+              return bTime.compareTo(aTime);
+            });
+
+            if (pendingList.isEmpty && confirmedList.isEmpty && historyList.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 60),
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.event_note, size: 60, color: Color(0xFF8C736B)),
+                    SizedBox(height: 16),
+                    Text(
+                      'No meetings requested or scheduled yet.',
+                      style: TextStyle(
+                        fontFamily: 'PlayfairDisplay',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (pendingList.isNotEmpty) ...[
+                  _buildSectionHeader('Pending Invitations (${pendingList.length})', Icons.mail_outline),
+                  const SizedBox(height: 8),
+                  ...pendingList.map((doc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildMeetingCard(doc.id, doc.data()),
+                      )),
+                  const SizedBox(height: 20),
+                ],
+                if (confirmedList.isNotEmpty) ...[
+                  _buildSectionHeader('Confirmed Meetings (${confirmedList.length})', Icons.check_circle_outline),
+                  const SizedBox(height: 8),
+                  ...confirmedList.map((doc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildMeetingCard(doc.id, doc.data()),
+                      )),
+                  const SizedBox(height: 20),
+                ],
+                if (historyList.isNotEmpty) ...[
+                  _buildSectionHeader('Past & Cancelled (${historyList.length})', Icons.history),
+                  const SizedBox(height: 8),
+                  ...historyList.map((doc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildMeetingCard(doc.id, doc.data()),
+                      )),
+                ],
+              ],
+            );
+          },
         );
       },
     );

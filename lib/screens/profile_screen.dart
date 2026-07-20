@@ -100,7 +100,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
         }
 
-        final String name = profile.name.isNotEmpty ? profile.name : 'User';
+        final currentUser = FirebaseAuth.instance.currentUser;
+        final String name = (profile.name.isNotEmpty && profile.name != 'User')
+            ? profile.name
+            : ((_state.profileData?['name']?.isNotEmpty == true && _state.profileData!['name'] != 'User')
+                ? _state.profileData!['name']!
+                : (currentUser?.displayName?.isNotEmpty == true
+                    ? currentUser!.displayName!
+                    : (currentUser?.email?.isNotEmpty == true ? currentUser!.email!.split('@')[0] : 'User')));
         final String headline = (profile.headline != null && profile.headline!.isNotEmpty)
             ? profile.headline!
             : '';
@@ -141,48 +148,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 20),
                         _buildProfileTabSwitcher(),
                         const SizedBox(height: 20),
-                        if (_activeProfileTab == 0) ...[
-                          if (bio.isNotEmpty && bio != 'No bio added yet. Tap Edit to introduce yourself!') ...[
-                            _buildSectionLabel('About Me', Icons.person_outline_rounded),
-                            const SizedBox(height: 10),
-                            _buildAboutCard(bio),
-                            const SizedBox(height: 20),
+                        IndexedStack(
+                          index: _activeProfileTab,
+                          children: [
+                            // Tab 0: Professional
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (bio.isNotEmpty && bio != 'No bio added yet. Tap Edit to introduce yourself!') ...[
+                                  _buildSectionLabel('About Me', Icons.person_outline_rounded),
+                                  const SizedBox(height: 10),
+                                  _buildAboutCard(bio),
+                                  const SizedBox(height: 20),
+                                ],
+                                _buildSectionLabel('Work Experience', Icons.business_center_outlined),
+                                const SizedBox(height: 10),
+                                _buildTimelineSection(
+                                  items: profile.careerTimeline,
+                                  type: 'career',
+                                  emptyText: 'No work experience added yet.',
+                                ),
+                                const SizedBox(height: 20),
+                                _buildSectionLabel('Education', Icons.school_outlined),
+                                const SizedBox(height: 10),
+                                _buildTimelineSection(
+                                  items: profile.educationTimeline,
+                                  type: 'education',
+                                  emptyText: 'No education details added yet.',
+                                ),
+                                const SizedBox(height: 20),
+                                _buildSectionLabel('Expertise', Icons.verified_outlined),
+                                const SizedBox(height: 10),
+                                _buildSkillsCard(skills, profile),
+                                const SizedBox(height: 30),
+                              ],
+                            ),
+                            // Tab 1: Interests
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
+                                const SizedBox(height: 10),
+                                _buildTravelCard(currentLocation, travelFrequency),
+                                const SizedBox(height: 20),
+                                _buildSectionLabel('Interests & Looking For', Icons.explore_outlined),
+                                const SizedBox(height: 10),
+                                _buildInterestsCard(interests, profile),
+                                const SizedBox(height: 30),
+                              ],
+                            ),
+                            // Tab 2: Settings
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildSectionLabel('Account & Settings', Icons.settings_outlined),
+                                const SizedBox(height: 10),
+                                _buildSettingsMenu(context, profile),
+                                const SizedBox(height: 30),
+                              ],
+                            ),
                           ],
-                          _buildSectionLabel('Work Experience', Icons.business_center_outlined),
-                          const SizedBox(height: 10),
-                          _buildTimelineSection(
-                            items: profile.careerTimeline,
-                            type: 'career',
-                            emptyText: 'No work experience added yet.',
-                          ),
-                          const SizedBox(height: 20),
-                          _buildSectionLabel('Education', Icons.school_outlined),
-                          const SizedBox(height: 10),
-                          _buildTimelineSection(
-                            items: profile.educationTimeline,
-                            type: 'education',
-                            emptyText: 'No education details added yet.',
-                          ),
-                          const SizedBox(height: 20),
-                          _buildSectionLabel('Expertise', Icons.verified_outlined),
-                          const SizedBox(height: 10),
-                          _buildSkillsCard(skills, profile),
-                          const SizedBox(height: 30),
-                        ] else if (_activeProfileTab == 1) ...[
-                          _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
-                          const SizedBox(height: 10),
-                          _buildTravelCard(currentLocation, travelFrequency),
-                          const SizedBox(height: 20),
-                          _buildSectionLabel('Interests & Looking For', Icons.explore_outlined),
-                          const SizedBox(height: 10),
-                          _buildInterestsCard(interests, profile),
-                          const SizedBox(height: 30),
-                        ] else ...[
-                          _buildSectionLabel('Account & Settings', Icons.settings_outlined),
-                          const SizedBox(height: 10),
-                          _buildSettingsMenu(context, profile),
-                          const SizedBox(height: 30),
-                        ],
+                        ),
                       ],
                     ),
                   ),
@@ -193,12 +219,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildHeader(UserProfile profile, double completeness, BuildContext context) {
-    final pictureUrl = profile.profileImageUrl ?? '';
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final pictureUrl = (profile.profileImageUrl != null && profile.profileImageUrl!.isNotEmpty)
+        ? profile.profileImageUrl!
+        : ((_state.profileData?['picture']?.isNotEmpty == true)
+            ? _state.profileData!['picture']!
+            : (currentUser?.photoURL ?? ''));
     final coverUrl = (profile.coverImageUrl != null && profile.coverImageUrl!.isNotEmpty)
         ? profile.coverImageUrl!
         : '';
-    final initials = profile.name.isNotEmpty
-        ? profile.name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
+    final displayName = (profile.name.isNotEmpty && profile.name != 'User')
+        ? profile.name
+        : (currentUser?.displayName ?? (_state.profileData?['name'] ?? ''));
+    final initials = displayName.isNotEmpty && displayName != 'User'
+        ? displayName.trim().split(' ').where((e) => e.isNotEmpty).map((e) => e[0]).take(2).join().toUpperCase()
         : 'U';
 
     return Stack(
@@ -750,70 +784,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildProfileTabSwitcher() {
     final tabs = [
-      ('Professional', Icons.business_center_outlined),
+      ('Professional', Icons.work_outline),
       ('Interests', Icons.explore_outlined),
       ('Settings', Icons.settings_outlined),
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
-        height: 46,
+        height: 50,
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8E2DD).withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(14),
+          color: const Color(0xFFFAF6F3),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFF0EAE5), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        child: Row(
-          children: List.generate(tabs.length, (index) {
-            final isSelected = _activeProfileTab == index;
-            final item = tabs[index];
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _activeProfileTab = index;
-                  });
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF7A432D) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF7A432D).withValues(alpha: 0.2),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : [],
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tabWidth = constraints.maxWidth / 3;
+
+            return Stack(
+              children: [
+                // Fixed Dividers between unselected tabs
+                Positioned.fill(
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        item.$2,
-                        size: 14,
-                        color: isSelected ? Colors.white : const Color(0xFF8C736B),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        item.$1,
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          color: isSelected ? Colors.white : const Color(0xFF5C473E),
-                        ),
-                      ),
+                      const Expanded(child: SizedBox.shrink()),
+                      if (_activeProfileTab != 0 && _activeProfileTab != 1)
+                        Container(width: 1, height: 16, color: const Color(0xFFE5DDD7)),
+                      const Expanded(child: SizedBox.shrink()),
+                      if (_activeProfileTab != 1 && _activeProfileTab != 2)
+                        Container(width: 1, height: 16, color: const Color(0xFFE5DDD7)),
+                      const Expanded(child: SizedBox.shrink()),
                     ],
                   ),
                 ),
-              ),
+                // Animated Selected Pill Indicator
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  left: _activeProfileTab * tabWidth,
+                  top: 0,
+                  bottom: 0,
+                  width: tabWidth,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF753B23),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF753B23).withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Tab Text & Icons Row
+                Row(
+                  children: List.generate(tabs.length, (index) {
+                    final isSelected = _activeProfileTab == index;
+                    final item = tabs[index];
+
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_activeProfileTab != index) {
+                            setState(() {
+                              _activeProfileTab = index;
+                            });
+                          }
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                item.$2,
+                                size: 17,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF4A342B),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                item.$1,
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF3E1F11),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
             );
-          }),
+          },
         ),
       ),
     );

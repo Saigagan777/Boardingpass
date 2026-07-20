@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import '../models/user_profile.dart';
 import 'linkedin_oauth_config.dart';
 import 'linkedin_secret.dart';
@@ -92,7 +92,19 @@ class AuthService {
       }
 
       // Update display name on the Firebase Auth record
-      await user.updateDisplayName(name);
+      try {
+        await user.updateDisplayName(name);
+      } catch (e) {
+        debugPrint('Auth updateDisplayName skipped: $e');
+      }
+
+      if (profileImageUrl != null && profileImageUrl.isNotEmpty && profileImageUrl.length < 2000 && !profileImageUrl.startsWith('data:')) {
+        try {
+          await user.updatePhotoURL(profileImageUrl);
+        } catch (e) {
+          debugPrint('Auth updatePhotoURL skipped: $e');
+        }
+      }
 
       // Create a Firestore profile document for the new user
       final profile = UserProfile(
