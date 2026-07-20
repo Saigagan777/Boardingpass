@@ -44,14 +44,11 @@ class AuthService {
   // ---------------------------------------------------------------------------
 
   /// Creates a new account with [email] and [password], then writes an initial
-  /// Firestore profile for the user.
+  /// Firestore profile with professional details. If the account was created
+  /// in the first onboarding step, reuses that signed-in user.
   ///
-  /// Returns the created [UserCredential].
-  /// Creates a new account with [email] and [password], then writes an initial
-  /// Firestore profile for the user with professional details.
-  ///
-  /// Returns the created [UserCredential].
-  Future<UserCredential> signUpWithEmail({
+  /// Returns the created or existing [User].
+  Future<User> signUpWithEmail({
     required String email,
     required String password,
     required String name,
@@ -65,6 +62,8 @@ class AuthService {
     String? currentLocationName,
     String? travelFrequency,
     String? profileImageUrl,
+    String? phone,
+    String? phoneCountryCode,
     List<String> expertise = const [],
     List<String> intents = const [],
     List<String> skills = const [],
@@ -77,20 +76,31 @@ class AuthService {
     List<String> badges = const [],
   }) async {
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final signedInUser = _auth.currentUser;
+      final isSameAccount = signedInUser?.email?.toLowerCase() ==
+          email.toLowerCase();
+      final User user;
+
+      if (isSameAccount) {
+        user = signedInUser!;
+      } else {
+        final credential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        user = credential.user!;
+      }
 
       // Update display name on the Firebase Auth record
-      await credential.user?.updateDisplayName(name);
+      await user.updateDisplayName(name);
 
       // Create a Firestore profile document for the new user
-      if (credential.user != null) {
-        final profile = UserProfile(
-          uid: credential.user!.uid,
+      final profile = UserProfile(
+          uid: user.uid,
           name: name,
           email: email,
+          phone: phone,
+          phoneCountryCode: phoneCountryCode,
           headline: headline,
           company: company,
           role: role,
@@ -115,14 +125,13 @@ class AuthService {
           badges: badges,
           hasCompletedFeatureTour: false,
         );
-        await _firestore
-            .collection('users')
-            .doc(credential.user!.uid)
-            .set(profile.toFirestore())
-            .timeout(const Duration(seconds: 8));
-      }
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(profile.toFirestore())
+          .timeout(const Duration(seconds: 8));
 
-      return credential;
+      return user;
     } on FirebaseAuthException {
       rethrow;
     } catch (e) {

@@ -63,6 +63,8 @@ class UserProfile {
   final bool isAdmin;
   final DateTime createdAt;
   final DateTime lastSeen;
+  final String? phone;
+  final String? phoneCountryCode;
 
   // New LinkedIn and Notification Fields
   final String? coverImageUrl;
@@ -126,6 +128,8 @@ class UserProfile {
     this.isAdmin = false,
     required this.createdAt,
     required this.lastSeen,
+    this.phone,
+    this.phoneCountryCode,
     this.coverImageUrl,
     this.linkedinProfileUrl,
     this.connectionCount = 0,
@@ -187,6 +191,8 @@ class UserProfile {
       isAdmin: data['isAdmin'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      phone: data['phone'],
+      phoneCountryCode: data['phoneCountryCode'],
       coverImageUrl: data['coverImageUrl'],
       linkedinProfileUrl: data['linkedinProfileUrl'],
       connectionCount: data['connectionCount'] ?? 0,
@@ -257,6 +263,8 @@ class UserProfile {
       'isAdmin': isAdmin,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastSeen': Timestamp.fromDate(lastSeen),
+      'phone': phone,
+      'phoneCountryCode': phoneCountryCode,
       'coverImageUrl': coverImageUrl,
       'linkedinProfileUrl': linkedinProfileUrl,
       'connectionCount': connectionCount,

@@ -5,6 +5,7 @@ import '../models/event.dart';
 import '../models/event_registration.dart';
 import '../services/event_registration_service.dart';
 import '../state_manager.dart';
+import '../widgets/country_phone_input.dart';
 import 'event_pass_screen.dart';
 
 /// Collects basic attendee details, then issues a ticket pass with QR.
@@ -29,6 +30,7 @@ class _EventRegistrationFormScreenState
   final _notesCtrl = TextEditingController();
 
   bool _submitting = false;
+  CountryCode _selectedCountry = defaultCountries.first;
 
   @override
   void initState() {
@@ -87,10 +89,10 @@ class _EventRegistrationFormScreenState
       final EventRegistration reg =
           await EventRegistrationService().registerForEvent(
         event: widget.event,
-        fullName: _nameCtrl.text,
-        email: _emailCtrl.text,
-        phone: _phoneCtrl.text,
-        company: _companyCtrl.text,
+        fullName: _nameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        phone: '${_selectedCountry.dialCode} ${_phoneCtrl.text.trim()}',
+        company: _companyCtrl.text.trim(),
         role: _roleCtrl.text,
         notes: _notesCtrl.text,
       );
@@ -220,19 +222,21 @@ class _EventRegistrationFormScreenState
                   keyboardType: TextInputType.emailAddress,
                   decoration: _fieldDecoration('Email *'),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Email is required';
-                    if (!v.contains('@')) return 'Enter a valid email';
+                    final val = v?.trim() ?? '';
+                    if (val.isEmpty) return 'Email is required';
+                    if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(val)) {
+                      return 'Please enter a valid email address';
+                    }
                     return null;
                   },
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
+                CountryPhoneInput(
                   controller: _phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: _fieldDecoration('Phone *', hint: '+91 ...'),
-                  validator: (v) => (v == null || v.trim().length < 6)
-                      ? 'Phone is required'
-                      : null,
+                  label: 'Phone',
+                  isRequired: true,
+                  initialCountry: _selectedCountry,
+                  onCountryChanged: (c) => setState(() => _selectedCountry = c),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(

@@ -25,6 +25,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final AppStateManager _state = AppStateManager();
   final bool _isLoading = false;
+  int _activeProfileTab = 0;
 
   void _showEditProfileModal(BuildContext context, UserProfile profile) {
     showModalBottomSheet(
@@ -135,44 +136,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _buildHeader(profile, completeness, context),
                         const SizedBox(height: 16),
                         _buildInfoSection(name, headline, email, workingLocation, profile, context),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
                         _buildStatsRow(profile, context),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Work Experience', Icons.business_center_outlined),
-                        const SizedBox(height: 12),
-                        _buildTimelineSection(
-                          items: profile.careerTimeline,
-                          type: 'career',
-                          emptyText: 'No work experience added yet.',
-                        ),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Education', Icons.school_outlined),
-                        const SizedBox(height: 12),
-                        _buildTimelineSection(
-                          items: profile.educationTimeline,
-                          type: 'education',
-                          emptyText: 'No education details added yet.',
-                        ),
-
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('About Me', Icons.person_outline_rounded),
-                        const SizedBox(height: 12),
-                        _buildAboutCard(bio),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Expertise (What I can share)', Icons.verified_outlined),
-                        const SizedBox(height: 12),
-                        _buildSkillsCard(skills, profile),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Interests (What I\'m looking for)', Icons.explore_outlined),
-                        const SizedBox(height: 12),
-                        _buildInterestsCard(interests, profile),
-                        const SizedBox(height: 24),
-                        _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
-                        const SizedBox(height: 12),
-                        _buildTravelCard(currentLocation, travelFrequency),
-                        const SizedBox(height: 24),
-                        _buildSettingsMenu(context, profile),
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 20),
+                        _buildProfileTabSwitcher(),
+                        const SizedBox(height: 20),
+                        if (_activeProfileTab == 0) ...[
+                          if (bio.isNotEmpty && bio != 'No bio added yet. Tap Edit to introduce yourself!') ...[
+                            _buildSectionLabel('About Me', Icons.person_outline_rounded),
+                            const SizedBox(height: 10),
+                            _buildAboutCard(bio),
+                            const SizedBox(height: 20),
+                          ],
+                          _buildSectionLabel('Work Experience', Icons.business_center_outlined),
+                          const SizedBox(height: 10),
+                          _buildTimelineSection(
+                            items: profile.careerTimeline,
+                            type: 'career',
+                            emptyText: 'No work experience added yet.',
+                          ),
+                          const SizedBox(height: 20),
+                          _buildSectionLabel('Education', Icons.school_outlined),
+                          const SizedBox(height: 10),
+                          _buildTimelineSection(
+                            items: profile.educationTimeline,
+                            type: 'education',
+                            emptyText: 'No education details added yet.',
+                          ),
+                          const SizedBox(height: 20),
+                          _buildSectionLabel('Expertise', Icons.verified_outlined),
+                          const SizedBox(height: 10),
+                          _buildSkillsCard(skills, profile),
+                          const SizedBox(height: 30),
+                        ] else if (_activeProfileTab == 1) ...[
+                          _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
+                          const SizedBox(height: 10),
+                          _buildTravelCard(currentLocation, travelFrequency),
+                          const SizedBox(height: 20),
+                          _buildSectionLabel('Interests & Looking For', Icons.explore_outlined),
+                          const SizedBox(height: 10),
+                          _buildInterestsCard(interests, profile),
+                          const SizedBox(height: 30),
+                        ] else ...[
+                          _buildSectionLabel('Account & Settings', Icons.settings_outlined),
+                          const SizedBox(height: 10),
+                          _buildSettingsMenu(context, profile),
+                          const SizedBox(height: 30),
+                        ],
                       ],
                     ),
                   ),
@@ -632,59 +642,178 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatsRow(UserProfile profile, BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: [
-            StreamBuilder<QuerySnapshot>(
-              stream: ChatService().streamUserChats(),
-              builder: (context, chatSnapshot) {
-                final count = chatSnapshot.hasData
-                    ? chatSnapshot.data!.docs.length
-                    : profile.connectionsCount;
-                return _buildStatCard(
-                  Icons.people_outline_rounded,
-                  'Connections',
-                  '$count',
-                  'People in your network',
-                );
-              },
-            ),
-            const SizedBox(width: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('events')
-                  .where('attendees', arrayContains: profile.uid)
-                  .snapshots(),
-              builder: (context, joinedSnapshot) {
-                final count = joinedSnapshot.hasData
-                    ? joinedSnapshot.data!.docs.length
-                    : profile.eventsJoinedCount;
-                return _buildStatCard(
-                  Icons.calendar_today_outlined,
-                  'Joined',
-                  '$count',
-                  "Events you've attended",
-                );
-              },
-            ),
-            const SizedBox(width: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: EventService().streamEventsByUser(profile.uid),
-              builder: (context, hostedSnapshot) {
-                final count = hostedSnapshot.hasData
-                    ? hostedSnapshot.data!.docs.length
-                    : profile.eventsHostedCount;
-                return _buildStatCard(
-                  Icons.star_border_rounded,
-                  'Hosted',
-                  '$count',
-                  "Events you've organized",
-                );
-              },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFEADDD6), width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: ChatService().streamUserChats(),
+                builder: (context, chatSnapshot) {
+                  final count = chatSnapshot.hasData
+                      ? chatSnapshot.data!.docs.length
+                      : profile.connectionsCount;
+                  return _buildStatItem(
+                    Icons.people_outline_rounded,
+                    '$count',
+                    'Connections',
+                  );
+                },
+              ),
+            ),
+            Container(height: 32, width: 1, color: const Color(0xFFE8E2DD)),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('events')
+                    .where('attendees', arrayContains: profile.uid)
+                    .snapshots(),
+                builder: (context, joinedSnapshot) {
+                  final count = joinedSnapshot.hasData
+                      ? joinedSnapshot.data!.docs.length
+                      : profile.eventsJoinedCount;
+                  return _buildStatItem(
+                    Icons.calendar_today_outlined,
+                    '$count',
+                    'Joined',
+                  );
+                },
+              ),
+            ),
+            Container(height: 32, width: 1, color: const Color(0xFFE8E2DD)),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: EventService().streamEventsByUser(profile.uid),
+                builder: (context, hostedSnapshot) {
+                  final count = hostedSnapshot.hasData
+                      ? hostedSnapshot.data!.docs.length
+                      : profile.eventsHostedCount;
+                  return _buildStatItem(
+                    Icons.star_border_rounded,
+                    '$count',
+                    'Hosted',
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 15, color: const Color(0xFF7A432D)),
+            const SizedBox(width: 5),
+            Text(
+              value,
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF8C736B),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileTabSwitcher() {
+    final tabs = [
+      ('Professional', Icons.business_center_outlined),
+      ('Interests', Icons.explore_outlined),
+      ('Settings', Icons.settings_outlined),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8E2DD).withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: List.generate(tabs.length, (index) {
+            final isSelected = _activeProfileTab == index;
+            final item = tabs[index];
+            return Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _activeProfileTab = index;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFF7A432D) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF7A432D).withValues(alpha: 0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        item.$2,
+                        size: 14,
+                        color: isSelected ? Colors.white : const Color(0xFF8C736B),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        item.$1,
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                          color: isSelected ? Colors.white : const Color(0xFF5C473E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
         ),
       ),
     );
@@ -714,73 +843,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatCard(IconData icon, String label, String value, String subtitle) {
-    return _buildCardContainer(
-      width: 165,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF7A432D).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 18, color: const Color(0xFF7A432D)),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF5C473E),
-            ),
-          ),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 10,
-              color: Color(0xFF8C736B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSectionLabel(String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(7),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: const Color(0xFF7A432D).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 17, color: const Color(0xFF7A432D)),
+            child: Icon(icon, size: 16, color: const Color(0xFF7A432D)),
           ),
-          const SizedBox(width: 11),
+          const SizedBox(width: 10),
           Text(
             title,
             style: const TextStyle(
               fontFamily: 'PlayfairDisplay',
-              fontSize: 19,
+              fontSize: 17,
               fontWeight: FontWeight.bold,
               color: Color(0xFF3E1F11),
             ),
@@ -797,7 +878,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     if (items.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: _buildCardContainer(
           child: Row(
             children: [
@@ -828,7 +909,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
         child: Column(
           children: List.generate(items.length, (index) {
@@ -851,114 +932,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final description = item['description'] ?? '';
 
             return Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
-              child: IntrinsicHeight(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAF7F5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE8E2DD)),
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          width: 14,
-                          height: 14,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF7A432D),
-                            border: Border.all(color: Colors.white, width: 2.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF7A432D).withValues(alpha: 0.35),
-                                blurRadius: 6,
-                                spreadRadius: 0.5,
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (!isLast)
-                          Expanded(
-                            child: Container(
-                              width: 2.5,
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    const Color(0xFF7A432D).withValues(alpha: 0.5),
-                                    const Color(0xFFE8E2DD),
-                                  ],
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                    Container(
+                      width: 3,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7A432D),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAF7F5),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE8E2DD).withValues(alpha: 0.6)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              titleText,
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF3E1F11),
-                              ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            titleText,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF3E1F11),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              subtitleText,
-                              style: const TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF7A432D),
-                              ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitleText,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF7A432D),
                             ),
-                            if (durationLine.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF7A432D).withValues(alpha: 0.06),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    durationLine,
-                                    style: const TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 11,
-                                      color: Color(0xFF7A432D),
-                                    ),
-                                  ),
+                          ),
+                          if (durationLine.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                durationLine,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFF8C736B),
                                 ),
                               ),
-                            if (description.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  description,
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 12,
-                                    color: Color(0xFF5C473E),
-                                    height: 1.5,
-                                  ),
+                            ),
+                          if (description.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                description,
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  color: Color(0xFF5C473E),
+                                  height: 1.4,
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
@@ -970,8 +1012,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Column(
@@ -1022,36 +1062,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildAboutCard(String bio) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    bio,
-                    style: const TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 13,
-                      color: Color(0xFF5C473E),
-                      height: 1.6,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            SizedBox(
-              width: 72,
-              height: 72,
-              child: CustomPaint(
-                painter: ConstellationPainter(),
-              ),
-            ),
-          ],
+        child: Text(
+          bio,
+          style: const TextStyle(
+            fontFamily: 'PlusJakartaSans',
+            fontSize: 13,
+            color: Color(0xFF5C473E),
+            height: 1.5,
+          ),
         ),
       ),
     );
@@ -1059,7 +1079,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSkillsCard(List<String> skills, UserProfile profile) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
         child: skills.isEmpty
             ? Row(
@@ -1086,14 +1106,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               )
             : Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 8,
+                runSpacing: 8,
                 children: skills.map((s) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
                       color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: const Color(0xFF7A432D).withValues(alpha: 0.15),
                       ),
@@ -1102,14 +1122,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 6,
-                          height: 6,
+                          width: 5,
+                          height: 5,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
                             color: Color(0xFF7A432D),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
                           s,
                           style: const TextStyle(
@@ -1130,7 +1150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildInterestsCard(List<String> interests, UserProfile profile) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
         child: interests.isEmpty
             ? Row(
@@ -1157,15 +1177,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               )
             : Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 8,
+                runSpacing: 8,
                 children: interests.map((tag) {
                   final icon = _getInterestIcon(tag);
                   return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
                       color: const Color(0xFF7A432D).withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: const Color(0xFF7A432D).withValues(alpha: 0.15),
                       ),
@@ -1173,8 +1193,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(icon, size: 14, color: const Color(0xFF7A432D)),
-                        const SizedBox(width: 7),
+                        Icon(icon, size: 13, color: const Color(0xFF7A432D)),
+                        const SizedBox(width: 6),
                         Text(
                           tag,
                           style: const TextStyle(
@@ -1195,7 +1215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildTravelCard(String currentLocation, String travelFrequency) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(child: _buildTravelBody(currentLocation, travelFrequency)),
     );
   }
@@ -1209,11 +1229,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
-
   Widget _buildSettingsMenu(BuildContext context, UserProfile profile) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
         padding: EdgeInsets.zero,
         child: Column(

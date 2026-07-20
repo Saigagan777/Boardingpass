@@ -16,6 +16,7 @@ import '../services/location_service.dart';
 import 'package:geocoding/geocoding.dart';
 import '../utils/google_search_helper.dart';
 import 'google_location_dropdown.dart';
+import '../widgets/country_phone_input.dart';
 
 
 enum OnboardingView {
@@ -44,6 +45,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  CountryCode _selectedCountry = defaultCountries.first;
   final TextEditingController _headlineController = TextEditingController();
   final TextEditingController _companyController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
@@ -307,6 +310,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
+    _phoneController.dispose();
     _headlineController.dispose();
     _companyController.dispose();
     _roleController.dispose();
@@ -615,6 +619,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         email: email,
         password: password,
         name: name,
+        phone: _phoneController.text.trim(),
+        phoneCountryCode: _selectedCountry.dialCode,
         headline: headline.isNotEmpty ? headline : '$role at $company',
         company: company.isNotEmpty ? company : null,
         role: role.isNotEmpty ? role : null,
@@ -1296,6 +1302,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
           const SizedBox(height: 16),
+          CountryPhoneInput(
+            controller: _phoneController,
+            label: 'Phone Number',
+            isRequired: true,
+            initialCountry: _selectedCountry,
+            onCountryChanged: (c) => setState(() => _selectedCountry = c),
+          ),
+          const SizedBox(height: 16),
           _buildTextField(
             controller: _passwordController,
             labelText: 'Password',
@@ -1398,22 +1412,43 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () {
-                if (_nameController.text.trim().isEmpty ||
-                    _emailController.text.trim().isEmpty ||
-                    _passwordController.text.isEmpty) {
+              onPressed: () async {
+                final name = _nameController.text.trim();
+                final email = _emailController.text.trim();
+                final phone = _phoneController.text.trim();
+                final password = _passwordController.text;
+
+                if (name.isEmpty || email.isEmpty || password.isEmpty || phone.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Please fill in all credentials fields'),
+                      content: Text('Please fill in all credential and contact fields'),
                       backgroundColor: Color(0xFF7A432D),
                     ),
                   );
                   return;
                 }
-                if (_passwordController.text.length < 6) {
+                if (!_isValidEmail(email)) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Password must be at least 6 characters'),
+                      content: Text('Please enter a valid email address'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (phone.length != 10) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Phone number must be exactly 10 digits'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (!_isPasswordValid(password)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
                       backgroundColor: Color(0xFF7A432D),
                     ),
                   );
@@ -1430,6 +1465,53 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   );
                   return;
                 }
+
+                // Create the Firebase account before collecting profile details.
+                setState(() => _isLoading = true);
+                final currentUser = FirebaseAuth.instance.currentUser;
+                try {
+                  if (currentUser == null || currentUser.email != email) {
+                    try {
+                      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                    } on FirebaseAuthException catch (e) {
+                      if (e.code == 'email-already-in-use') {
+                        try {
+                          await FirebaseAuth.instance.signInWithEmailAndPassword(
+                            email: email,
+                            password: password,
+                          );
+                        } on FirebaseAuthException {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('This email is already registered. Incorrect password for existing account.'),
+                              backgroundColor: Color(0xFF7A432D),
+                            ),
+                          );
+                          setState(() => _isLoading = false);
+                          return;
+                        }
+                      } else {
+                        rethrow;
+                      }
+                    }
+                  }
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not create account: $e'),
+                      backgroundColor: const Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                } finally {
+                  if (mounted) setState(() => _isLoading = false);
+                }
+
                 setState(() {
                   _currentView = OnboardingView.signUpStep2;
                 });

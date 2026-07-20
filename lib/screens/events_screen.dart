@@ -624,7 +624,7 @@ class _EventsScreenState extends State<EventsScreen> {
                               day: finalDay,
                               title: titleController.text.trim(),
                               location: locController.text.isEmpty ? 'General Lounge' : locController.text.trim(),
-                              time: "${timeVal.isEmpty ? '6:00 PM' : timeVal} • Today",
+                              time: timeVal.isEmpty ? '6:00 PM' : timeVal,
                               attendees: '1 attending',
                               category: selectedCat,
                               price: priceController.text.trim().isEmpty ? 'Free' : priceController.text.trim(),
@@ -810,11 +810,11 @@ class _EventsScreenState extends State<EventsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${event.day} ${event.month}',
+                              '${event.dayOfWeek}, ${event.day} ${_getMonthFull(event.month)} 2026',
                               style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
                             ),
                             Text(
-                              event.time,
+                              event.formattedTimeString,
                               style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF8C736B)),
                             ),
                           ],
@@ -1764,20 +1764,26 @@ class _EventsScreenState extends State<EventsScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Free Entry pill
+                    // Free Entry / Expired pill
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2E7D32),
+                        color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.confirmation_number_rounded, size: 13, color: Colors.white),
+                          Icon(
+                            event.isExpired ? Icons.timer_off_outlined : Icons.confirmation_number_rounded,
+                            size: 13,
+                            color: Colors.white,
+                          ),
                           const SizedBox(width: 5),
                           Text(
-                            event.price == 'Free' ? 'FREE ENTRY' : event.price.toUpperCase(),
+                            event.isExpired
+                                ? 'EXPIRED'
+                                : (event.price == 'Free' ? 'FREE ENTRY' : event.price.toUpperCase()),
                             style: const TextStyle(
                               fontFamily: 'PlusJakartaSans',
                               fontSize: 11,
@@ -1943,7 +1949,7 @@ class _EventsScreenState extends State<EventsScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      '${_getDayLabel(event.day)}, ${event.day} ${_getMonthFull(event.month)} 2026',
+                                      '${event.dayOfWeek}, ${event.day} ${_getMonthFull(event.month)} 2026',
                                       style: const TextStyle(
                                         fontFamily: 'PlusJakartaSans',
                                         fontSize: 13,
@@ -1953,7 +1959,7 @@ class _EventsScreenState extends State<EventsScreen> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      event.time,
+                                      event.formattedTimeString,
                                       style: const TextStyle(
                                         fontFamily: 'PlusJakartaSans',
                                         fontSize: 11,
@@ -2018,13 +2024,20 @@ class _EventsScreenState extends State<EventsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // Register Now / Host tools button
+                    // Register Now / Host tools / Expired button
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: GestureDetector(
                         onTap: () {
                           if (event.isHostedBy(_currentUid)) {
                             _showEventDetailsBottomSheet(event);
+                          } else if (event.isExpired && !event.isRegistered) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('This event has ended on ${event.day} ${_getMonthFull(event.month)} 2026.'),
+                                backgroundColor: const Color(0xFF616161),
+                              ),
+                            );
                           } else {
                             _openRegistrationOrPass(event);
                           }
@@ -2032,7 +2045,11 @@ class _EventsScreenState extends State<EventsScreen> {
                         child: Container(
                           height: 52,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF7A432D),
+                            color: event.isHostedBy(_currentUid)
+                                ? const Color(0xFF7A432D)
+                                : (event.isExpired && !event.isRegistered
+                                    ? const Color(0xFF616161)
+                                    : const Color(0xFF7A432D)),
                             borderRadius: BorderRadius.circular(26),
                           ),
                           child: Row(
@@ -2041,7 +2058,9 @@ class _EventsScreenState extends State<EventsScreen> {
                               Text(
                                 event.isHostedBy(_currentUid)
                                     ? 'MANAGE EVENT'
-                                    : 'REGISTER NOW',
+                                    : (event.isExpired
+                                        ? (event.isRegistered ? 'VIEW YOUR PASS' : 'EVENT EXPIRED')
+                                        : 'REGISTER NOW'),
                                 style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 13,
@@ -2061,7 +2080,9 @@ class _EventsScreenState extends State<EventsScreen> {
                                 child: Icon(
                                   event.isHostedBy(_currentUid)
                                       ? Icons.qr_code_scanner_rounded
-                                      : Icons.arrow_forward_rounded,
+                                      : (event.isExpired && !event.isRegistered
+                                          ? Icons.timer_off_outlined
+                                          : Icons.arrow_forward_rounded),
                                   color: Colors.white,
                                   size: 18,
                                 ),
@@ -2080,13 +2101,6 @@ class _EventsScreenState extends State<EventsScreen> {
         ),
       ),
     );
-  }
-
-  String _getDayLabel(String day) {
-    final d = int.tryParse(day);
-    if (d == null) return 'Sat';
-    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days[(d - 1) % 7];
   }
 
   String _getMonthFull(String abbr) {
@@ -2182,9 +2196,18 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             const Icon(Icons.calendar_today, size: 10, color: Color(0xFF8C736B)),
                             const SizedBox(width: 4),
-                            Text(
-                              '${event.day} ${event.month}',
-                              style: const TextStyle(fontSize: 10, color: Color(0xFF8C736B), fontFamily: 'PlusJakartaSans'),
+                            Expanded(
+                              child: Text(
+                                '${event.dayOfWeek}, ${event.day} ${event.month}${event.isExpired ? " • Expired" : ""}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF8C736B),
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontWeight: event.isExpired ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -2219,24 +2242,26 @@ class _EventsScreenState extends State<EventsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              event.price == 'Free' ? 'FREE' : event.price,
-                              style: const TextStyle(
+                              event.isExpired ? 'EXPIRED' : (event.price == 'Free' ? 'FREE' : event.price),
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF2E7D32),
+                                color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
                                 fontFamily: 'PlusJakartaSans',
                               ),
                             ),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
-                                color: event.isJoined ? const Color(0xFFE8E2DD) : const Color(0xFF7A432D),
+                                color: event.isExpired
+                                    ? const Color(0xFFB0A29C)
+                                    : (event.isJoined ? const Color(0xFFE8E2DD) : const Color(0xFF7A432D)),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                event.isJoined ? 'Joined' : 'Join',
+                                event.isExpired ? 'Ended' : (event.isJoined ? 'Joined' : 'Join'),
                                 style: TextStyle(
-                                  color: event.isJoined ? const Color(0xFF3E1F11) : Colors.white,
+                                  color: event.isJoined && !event.isExpired ? const Color(0xFF3E1F11) : Colors.white,
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'PlusJakartaSans',
