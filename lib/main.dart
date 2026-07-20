@@ -240,6 +240,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
   bool _isCompletingFeatureTour = false;
 
   bool _isLocationServiceEnabled = true;
+  Timer? _locationCheckTimer;
 
   @override
   void initState() {
@@ -247,6 +248,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
     WidgetsBinding.instance.addObserver(this);
     _state.addListener(_onStateChanged);
     _checkLocationService();
+    _locationCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _checkLocationService();
+    });
     
     // Set initial uid and subscribe to notifications if logged in
     final initialUid =
@@ -259,6 +263,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
 
   @override
   void dispose() {
+    _locationCheckTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _state.removeListener(_onStateChanged);
     _notificationSub?.cancel();
@@ -528,6 +533,97 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
               !_isCompletingFeatureTour)
             Positioned.fill(
               child: FeatureTourScreen(onComplete: _completeFeatureTour),
+            ),
+          // Blocking location service required overlay screen
+          if (!_isLocationServiceEnabled)
+            Positioned.fill(
+              child: Material(
+                color: const Color(0xFFFAF7F5),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7A432D).withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.location_off_rounded,
+                            size: 40,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Location Services Required',
+                          style: TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'BoardingPass requires device location services to be turned on to connect you with nearby professionals and airport lounge members.\n\nPlease turn on location services on your device to continue using the application.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 14,
+                            color: Color(0xFF5C473E),
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7A432D),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            onPressed: () async {
+                              await Geolocator.openLocationSettings();
+                              await _checkLocationService();
+                            },
+                            icon: const Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
+                            label: const Text(
+                              'Turn On Location Services',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextButton(
+                          onPressed: _checkLocationService,
+                          child: const Text(
+                            'I\'ve Turned It On (Check Again)',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF7A432D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
