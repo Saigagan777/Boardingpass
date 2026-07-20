@@ -531,7 +531,7 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          0.0,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -1552,16 +1552,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showQuickMeetingRequestSheet() {
+  void _showQuickMeetingRequestSheet() async {
     if (_otherUid == null || _chatId == null) return;
+
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid != null) {
+      final isConn = await ChatService().hasConnection(currentUid, _otherUid!);
+      if (!isConn) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot request meeting: Match required to schedule meetings with this profile.'),
+            backgroundColor: Color(0xFF7A432D),
+          ),
+        );
+        return;
+      }
+    }
 
     DateTime selectedDate = DateTime.now().add(const Duration(hours: 1));
     TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
     String selectedLocation = '';
+    String sheetMeetingType = 'in_person';
+    final onlineLinkController = TextEditingController();
     final noteController = TextEditingController();
     int selectedReminderMinutes = 15;
     String? conflictWarning;
     bool isValidating = false;
+    bool isSubmittingMeeting = false;
     bool initialCheckDone = false;
 
     final searchController = TextEditingController(text: selectedLocation);
@@ -1678,97 +1696,178 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const Divider(color: Color(0xFFE8E2DD)),
                   const SizedBox(height: 8),
-                  const Text(
-                    'LOCATION',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF8C736B),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: searchController,
-                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Search meetings venue (e.g. Novotel, Cafe)...',
-                      hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
-                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF8C736B)),
-                      suffixIcon: searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 16),
-                              onPressed: () {
-                                searchController.clear();
-                                setSheetState(() {
-                                  selectedLocation = '';
-                                  suggestions = [];
-                                });
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-                      ),
-                    ),
-                    onChanged: (query) async {
-                      if (query.trim().length < 3) {
-                        setSheetState(() => suggestions = []);
-                        return;
-                      }
-                      final results = await venueRepository.searchVenues(query);
-                      setSheetState(() {
-                        suggestions = results;
-                      });
-                    },
-                  ),
 
-                  // Autocomplete suggestions dropdown
-                  if (suggestions.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 160),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFE8E2DD)),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Material(
-                        color: Colors.white,
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          padding: EdgeInsets.zero,
-                          itemCount: suggestions.length,
-                          itemBuilder: (context, index) {
-                            final v = suggestions[index];
-                            return ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.location_on, size: 18, color: Color(0xFF7A432D)),
-                              title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold)),
-                              subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              onTap: () {
-                                setSheetState(() {
-                                  selectedLocation = v.name;
-                                  searchController.text = v.name;
-                                  suggestions = [];
-                                });
-                              },
-                            );
+                  // Meeting Type Selector
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(
+                            child: Text(
+                              'In-Person',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          selected: sheetMeetingType == 'in_person',
+                          selectedColor: const Color(0xFF7A432D),
+                          labelStyle: TextStyle(
+                            color: sheetMeetingType == 'in_person' ? Colors.white : const Color(0xFF3E1F11),
+                          ),
+                          onSelected: (sel) {
+                            if (sel) setSheetState(() => sheetMeetingType = 'in_person');
                           },
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Center(
+                            child: Text(
+                              'Online Meeting',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          selected: sheetMeetingType == 'online',
+                          selectedColor: const Color(0xFF7A432D),
+                          labelStyle: TextStyle(
+                            color: sheetMeetingType == 'online' ? Colors.white : const Color(0xFF3E1F11),
+                          ),
+                          onSelected: (sel) {
+                            if (sel) setSheetState(() => sheetMeetingType = 'online');
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (sheetMeetingType == 'online') ...[
+                    const Text(
+                      'ONLINE MEETING LINK',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8C736B),
+                      ),
                     ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: onlineLinkController,
+                      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Paste Google Meet, Zoom, or Teams link...',
+                        hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                        prefixIcon: const Icon(Icons.link, size: 18, color: Color(0xFF7A432D)),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'LOCATION',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8C736B),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Search meetings venue (e.g. Novotel, Cafe)...',
+                        hintStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                        prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF8C736B)),
+                        suffixIcon: searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () {
+                                  searchController.clear();
+                                  setSheetState(() {
+                                    selectedLocation = '';
+                                    suggestions = [];
+                                  });
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFFE8E2DD), width: 1.2),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                        ),
+                      ),
+                      onChanged: (query) async {
+                        if (query.trim().length < 3) {
+                          setSheetState(() => suggestions = []);
+                          return;
+                        }
+                        final results = await venueRepository.searchVenues(query);
+                        setSheetState(() {
+                          suggestions = results;
+                        });
+                      },
+                    ),
+
+                    // Autocomplete suggestions dropdown
+                    if (suggestions.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 160),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFFE8E2DD)),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Material(
+                          color: Colors.white,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: suggestions.length,
+                            itemBuilder: (context, index) {
+                              final v = suggestions[index];
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.location_on, size: 18, color: Color(0xFF7A432D)),
+                                title: Text(v.name, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold)),
+                                subtitle: Text(v.formattedAddress, style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () {
+                                  setSheetState(() {
+                                    selectedLocation = v.name;
+                                    searchController.text = v.name;
+                                    suggestions = [];
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: 12),
                   Row(
@@ -1983,7 +2082,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: isValidating
+                      onPressed: (isValidating || isSubmittingMeeting)
                           ? null
                           : () async {
                               if (conflictWarning != null) {
@@ -2031,6 +2130,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 return;
                               }
 
+                              setSheetState(() => isSubmittingMeeting = true);
+
                               try {
                                 final scheduledAt = DateTime(
                                   selectedDate.year,
@@ -2040,20 +2141,27 @@ class _ChatScreenState extends State<ChatScreen> {
                                   selectedTime.minute,
                                 );
 
+                                final onlineLink = onlineLinkController.text.trim();
+                                final finalLocation = sheetMeetingType == 'online'
+                                    ? (onlineLink.isNotEmpty ? onlineLink : 'Online Meeting (Virtual)')
+                                    : selectedLocation;
+
                                 final timeStr =
                                     '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
                                 final meetingId = await MeetingService()
                                     .createMeeting(
                                       attendeeIds: [_otherUid!],
                                       scheduledAt: scheduledAt,
-                                      location: selectedLocation,
+                                      location: finalLocation,
                                       note: noteController.text.trim(),
                                       chatId: _chatId,
+                                      meetingType: sheetMeetingType,
+                                      meetingLink: onlineLink,
                                       reminderMinutes: selectedReminderMinutes,
                                     );
 
                                 final msg =
-                                    "📅 Meeting Request: Let's meet at $selectedLocation on $timeStr [meetingId:$meetingId]";
+                                    "📅 Meeting Request: Let's meet at $finalLocation on $timeStr [meetingId:$meetingId]";
                                 await ChatService().sendTextMessage(
                                   chatId: _chatId!,
                                   text: msg,
@@ -2069,6 +2177,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   );
                                 }
                               } catch (e) {
+                                setSheetState(() => isSubmittingMeeting = false);
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -2081,15 +2190,24 @@ class _ChatScreenState extends State<ChatScreen> {
                                 }
                               }
                             },
-                      child: const Text(
-                        'Send Meeting Request',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                      ),
+                      child: isSubmittingMeeting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Send Meeting Request',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -2285,45 +2403,77 @@ class _ChatScreenState extends State<ChatScreen> {
                   .doc(embeddedMeetingId)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData || !snapshot.data!.exists) {
-                  final isVirtual = venue.toLowerCase().contains('virtual') ||
-                      venue.toLowerCase().contains('online') ||
-                      venue == 'Not specified';
-                  if (isVirtual) return const SizedBox.shrink();
+                final mData = snapshot.data?.data();
+                final mLoc = (mData?['location'] as String?) ?? venue;
+                final mType = mData?['meetingType'] as String? ?? '';
+                final rawLink = (mData?['meetingLink'] as String?) ?? (mLoc.startsWith('http') ? mLoc : '');
+                final isVirtual = mType == 'online' ||
+                    mLoc.toLowerCase().contains('virtual') ||
+                    mLoc.toLowerCase().contains('online') ||
+                    mLoc.startsWith('http') ||
+                    rawLink.isNotEmpty;
+
+                if (isVirtual) {
+                  final ts = mData?['scheduledAt'] as Timestamp?;
+                  final schedDt = ts?.toDate();
+                  final now = DateTime.now();
+                  final bool isTimeReached = schedDt == null || now.isAfter(schedDt.subtract(const Duration(minutes: 15)));
+
                   return Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: isMe ? Colors.white : const Color(0xFF7A432D),
-                          side: BorderSide(color: isMe ? Colors.white60 : const Color(0xFF7A432D)),
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isTimeReached
+                              ? (isMe ? Colors.white : const Color(0xFF7A432D))
+                              : Colors.grey.shade400,
+                          foregroundColor: isTimeReached
+                              ? (isMe ? const Color(0xFF7A432D) : Colors.white)
+                              : Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                         ),
-                        icon: Icon(Icons.map_outlined, size: 14, color: isMe ? Colors.white : const Color(0xFF7A432D)),
-                        label: const Text(
-                          'Directions',
-                          style: TextStyle(
+                        icon: Icon(isTimeReached ? Icons.videocam : Icons.lock_clock, size: 15),
+                        label: Text(
+                          isTimeReached ? 'Join Meeting' : 'Join (Unlocks at scheduled time)',
+                          style: const TextStyle(
                             fontFamily: 'PlusJakartaSans',
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        onPressed: () => _openDirections(venue, null),
+                        onPressed: isTimeReached
+                            ? () async {
+                                final linkToOpen = rawLink.isNotEmpty ? rawLink : mLoc;
+                                if (linkToOpen.startsWith('http')) {
+                                  final uri = Uri.tryParse(linkToOpen);
+                                  if (uri != null) {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  }
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('No meeting link available to join.'),
+                                      backgroundColor: Color(0xFF7A432D),
+                                    ),
+                                  );
+                                }
+                              }
+                            : () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Join Meeting button unlocks at the scheduled time.'),
+                                    backgroundColor: Color(0xFF7A432D),
+                                  ),
+                                );
+                              },
                       ),
                     ),
                   );
                 }
 
-                final mData = snapshot.data!.data()!;
-                final mLoc = mData['location'] as String? ?? venue;
-                final isVirtual = mLoc.toLowerCase().contains('virtual') ||
-                    mLoc.toLowerCase().contains('online') ||
-                    mLoc == 'Not specified';
-                if (isVirtual) return const SizedBox.shrink();
-
-                final venueSnapshot = mData['selectedVenueSnapshot'] as Map<String, dynamic>?;
+                final venueSnapshot = mData?['selectedVenueSnapshot'] as Map<String, dynamic>?;
 
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -2355,8 +2505,47 @@ class _ChatScreenState extends State<ChatScreen> {
             Builder(builder: (context) {
               final isVirtual = venue.toLowerCase().contains('virtual') ||
                   venue.toLowerCase().contains('online') ||
-                  venue == 'Not specified';
-              if (isVirtual) return const SizedBox.shrink();
+                  venue.startsWith('http');
+              if (isVirtual) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isMe ? Colors.white : const Color(0xFF7A432D),
+                        foregroundColor: isMe ? const Color(0xFF7A432D) : Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                      ),
+                      icon: const Icon(Icons.videocam, size: 15),
+                      label: const Text(
+                        'Join Meeting',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onPressed: () async {
+                        if (venue.startsWith('http')) {
+                          final uri = Uri.tryParse(venue);
+                          if (uri != null) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('No meeting link available to join.'),
+                              backgroundColor: Color(0xFF7A432D),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              }
               return Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: SizedBox(
@@ -4249,23 +4438,28 @@ class _ChatScreenState extends State<ChatScreen> {
                   Expanded(
                     child: ListView.builder(
                       controller: _scrollController,
+                      reverse: true,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 16,
                       ),
                       itemCount: listToShow.length + (isAnyOtherTyping ? 1 : 0),
                       itemBuilder: (context, index) {
-                        if (index == listToShow.length) {
-                          return _TypingIndicator(
-                            profileImageUrl: null,
-                            initials: '...',
+                        final reversedMsgs = listToShow.reversed.toList();
+                        if (isAnyOtherTyping && index == 0) {
+                          return const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: _TypingIndicator(
+                              profileImageUrl: null,
+                              initials: '...',
+                            ),
                           );
                         }
-                        final msg = listToShow[index];
-                        final showDateHeader =
-                            index == 0 ||
+                        final msgIndex = isAnyOtherTyping ? index - 1 : index;
+                        final msg = reversedMsgs[msgIndex];
+                        final showDateHeader = msgIndex == reversedMsgs.length - 1 ||
                             !_isSameDay(
-                              listToShow[index - 1].createdAt,
+                              reversedMsgs[msgIndex + 1].createdAt,
                               msg.createdAt,
                             );
 

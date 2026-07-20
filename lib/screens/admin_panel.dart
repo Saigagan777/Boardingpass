@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/moderation_service.dart';
 import '../services/sponsor_service.dart';
+import '../services/event_service.dart';
 import '../state_manager.dart';
 
 class AdminPanel extends StatefulWidget {
@@ -68,6 +69,7 @@ class _AdminPanelState extends State<AdminPanel> {
                 destinations: const [
                   NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Overview'),
                   NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'People'),
+                  NavigationDestination(icon: Icon(Icons.event_outlined), selectedIcon: Icon(Icons.event), label: 'Events'),
                   NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Reports'),
                   NavigationDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: 'Ads'),
                 ],
@@ -88,6 +90,7 @@ class _AdminPanelState extends State<AdminPanel> {
     destinations: const [
       NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('Overview')),
       NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('People')),
+      NavigationRailDestination(icon: Icon(Icons.event_outlined), selectedIcon: Icon(Icons.event), label: Text('Events')),
       NavigationRailDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: Text('Reports')),
       NavigationRailDestination(icon: Icon(Icons.campaign_outlined), selectedIcon: Icon(Icons.campaign), label: Text('Ads')),
     ],
@@ -104,7 +107,8 @@ class _AdminPanelState extends State<AdminPanel> {
         child: switch (_section) {
           0 => _overview(users.length, discoverable, pending, restricted, reports, names),
           1 => _people(users),
-          2 => _reports(reports, names),
+          2 => _eventsManagement(),
+          3 => _reports(reports, names),
           _ => _ads(),
         },
       ),
@@ -268,5 +272,247 @@ class _AdminPanelState extends State<AdminPanel> {
     final brand = TextEditingController(); final title = TextEditingController(); final cta = TextEditingController(text: 'Learn more'); final url = TextEditingController();
     showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Add advertisement'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [_field(brand, 'Advertiser / brand'), const SizedBox(height: 12), _field(title, 'Offer title'), const SizedBox(height: 12), _field(cta, 'Button label'), const SizedBox(height: 12), _field(url, 'Destination URL')])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () async { if (brand.text.trim().isEmpty || title.text.trim().isEmpty) return; await SponsorService().addSponsor(brand: brand.text.trim(), title: title.text.trim(), cta: cta.text.trim(), url: url.text.trim()); if (context.mounted) Navigator.pop(context); }, style: FilledButton.styleFrom(backgroundColor: _brand), child: const Text('Publish'))]));
   }
+
+  Widget _eventsManagement() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Events Management',
+                  style: TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 28,
+                    color: _ink,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Create priority admin events and manage community listings.',
+                  style: TextStyle(color: Color(0xFF6B5A52)),
+                ),
+              ],
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: _showCreateAdminEventDialog,
+            style: FilledButton.styleFrom(backgroundColor: _brand),
+            icon: const Icon(Icons.add),
+            label: const Text('Create Admin Event'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance.collection('events').snapshots(),
+        builder: (context, snapshot) {
+          final docs = snapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          if (docs.isEmpty) return _empty('No events found.');
+
+          // Sort Admin created events FIRST
+          final sortedEvents = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(docs)
+            ..sort((a, b) {
+              final aAdmin = a.data()['createdByAdmin'] == true;
+              final bAdmin = b.data()['createdByAdmin'] == true;
+              if (aAdmin && !bAdmin) return -1;
+              if (!aAdmin && bAdmin) return 1;
+              return 0;
+            });
+
+          return Column(
+            children: sortedEvents.map((eventDoc) {
+              final data = eventDoc.data();
+              final isAdminEvent = data['createdByAdmin'] == true;
+              final title = data['title'] ?? 'Untitled Event';
+              final location = data['location'] ?? 'Location TBA';
+              final time = data['time'] ?? '';
+              final month = data['month'] ?? '';
+              final day = data['day'] ?? '';
+              final category = data['category'] ?? 'Meetups';
+
+              return Card(
+                elevation: 0,
+                margin: const EdgeInsets.only(bottom: 10),
+                color: isAdminEvent ? const Color(0xFFFFF8F3) : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isAdminEvent ? const Color(0xFFE5A475) : _line,
+                    width: isAdminEvent ? 1.5 : 1,
+                  ),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isAdminEvent ? _brand : const Color(0xFFE8E2DD),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          month.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: isAdminEvent ? Colors.white : _ink,
+                          ),
+                        ),
+                        Text(
+                          day,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isAdminEvent ? Colors.white : _ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: _ink),
+                        ),
+                      ),
+                      if (isAdminEvent) ...[
+                        const SizedBox(width: 8),
+                        _statusChip('ADMIN CREATED', _brand),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text('$location • $time • $category'),
+                  trailing: Wrap(
+                    spacing: 4,
+                    children: [
+                      IconButton(
+                        tooltip: isAdminEvent ? 'Remove Admin Priority' : 'Mark as Admin Created',
+                        icon: Icon(
+                          isAdminEvent ? Icons.star : Icons.star_border,
+                          color: isAdminEvent ? const Color(0xFFB45309) : Colors.grey,
+                        ),
+                        onPressed: () => FirebaseFirestore.instance
+                            .collection('events')
+                            .doc(eventDoc.id)
+                            .update({'createdByAdmin': !isAdminEvent}),
+                      ),
+                      IconButton(
+                        tooltip: 'Delete Event',
+                        icon: const Icon(Icons.delete_outline, color: Color(0xFFC62828)),
+                        onPressed: () => _confirmDeleteEvent(eventDoc.id, title),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    ],
+  );
+
+  void _showCreateAdminEventDialog() {
+    final title = TextEditingController();
+    final location = TextEditingController();
+    final time = TextEditingController(text: '7:00 PM');
+    final month = TextEditingController(text: 'JUL');
+    final day = TextEditingController(text: '25');
+    final category = TextEditingController(text: 'Meetups');
+    final price = TextEditingController(text: 'Free');
+    final imageUrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Priority Admin Event'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _field(title, 'Event Title'),
+              const SizedBox(height: 12),
+              _field(location, 'Location / Venue'),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _field(month, 'Month (e.g. JUL)')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _field(day, 'Day (e.g. 25)')),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _field(time, 'Time (e.g. 7:00 PM)'),
+              const SizedBox(height: 12),
+              _field(category, 'Category (e.g. Networking / Tech / Meetups)'),
+              const SizedBox(height: 12),
+              _field(price, 'Price (e.g. Free or \$10)'),
+              const SizedBox(height: 12),
+              _field(imageUrl, 'Flyer / Image URL (optional)'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (title.text.trim().isEmpty || location.text.trim().isEmpty) return;
+              await EventService().createEvent(
+                title: title.text.trim(),
+                location: location.text.trim(),
+                time: time.text.trim(),
+                month: month.text.trim().toUpperCase(),
+                day: day.text.trim(),
+                category: category.text.trim(),
+                price: price.text.trim(),
+                imageUrl: imageUrl.text.trim().isNotEmpty ? imageUrl.text.trim() : null,
+                createdByAdmin: true,
+              );
+              if (context.mounted) Navigator.pop(context);
+            },
+            style: FilledButton.styleFrom(backgroundColor: _brand),
+            child: const Text('Publish Admin Event'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteEvent(String eventId, String title) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $title?'),
+        content: const Text('This will permanently delete this event.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await EventService().deleteEvent(eventId);
+    }
+  }
+
   Widget _field(TextEditingController controller, String label) => TextField(controller: controller, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()));
 }

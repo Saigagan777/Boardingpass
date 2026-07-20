@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 
 /// Singleton service wrapping the Geolocator plugin.
 ///
@@ -53,12 +56,12 @@ class LocationService {
 
   /// Returns the device's current position.
   ///
-  /// Requests permission first if not already granted.  Throws on failure.
+  /// Requests permission first if not already granted. Throws on failure.
   Future<Position> getCurrentPosition() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw Exception('Location services are disabled');
+        throw Exception('Location services are disabled on device');
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
@@ -71,16 +74,15 @@ class LocationService {
 
       if (permission == LocationPermission.deniedForever) {
         throw Exception(
-          'Location permissions are permanently denied. '
-          'Please enable them in Settings.',
+          'Location permissions are permanently denied. Please enable them in device settings.',
         );
       }
 
       try {
         return await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 5),
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 12),
           ),
         );
       } catch (e) {
@@ -89,17 +91,74 @@ class LocationService {
         if (lastKnown != null) {
           return lastKnown;
         }
-        // If last known is also null, try with lower accuracy
+        // If last known is also null, try with lowest accuracy
         return await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.low,
-            timeLimit: Duration(seconds: 5),
+            accuracy: LocationAccuracy.lowest,
+            timeLimit: Duration(seconds: 8),
           ),
         );
       }
     } catch (e) {
       throw Exception('Failed to get current position: $e');
     }
+  }
+
+  /// Reverse geocodes coordinates to get City, State, and Country.
+  /// Uses native placemarkFromCoordinates with OpenStreetMap web fallback.
+  Future<Map<String, String>> reverseGeocode(double latitude, double longitude) async {
+    String city = '';
+    String state = '';
+    String country = '';
+
+    // 1. Try native geocoding plugin
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude).timeout(const Duration(seconds: 6));
+      if (placemarks.isNotEmpty) {
+        final pm = placemarks.first;
+        country = pm.country ?? '';
+        state = pm.administrativeArea ?? '';
+        city = (pm.locality?.isNotEmpty == true)
+            ? pm.locality!
+            : ((pm.subAdministrativeArea?.isNotEmpty == true)
+                ? pm.subAdministrativeArea!
+                : (pm.subLocality ?? ''));
+      }
+    } catch (_) {}
+
+    // 2. Fallback to OpenStreetMap Nominatim API if native geocoding is empty
+    if (city.isEmpty && country.isEmpty) {
+      try {
+        final uri = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$latitude&lon=$longitude&zoom=10',
+        );
+        final response = await http.get(uri, headers: {
+          'User-Agent': 'NexMeetApp/1.0',
+        }).timeout(const Duration(seconds: 6));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>?;
+          final address = data?['address'] as Map<String, dynamic>?;
+          if (address != null) {
+            city = address['city'] ??
+                address['town'] ??
+                address['village'] ??
+                address['municipality'] ??
+                address['county'] ??
+                address['state_district'] ??
+                '';
+            state = address['state'] ?? '';
+            country = address['country'] ?? '';
+          }
+        }
+      } catch (_) {}
+    }
+
+    return {
+      'city': city,
+      'state': state,
+      'country': country,
+    };
   }
 
   /// Convenience – returns the current position as a Firestore [GeoPoint].

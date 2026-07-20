@@ -436,9 +436,16 @@ class AppStateManager extends ChangeNotifier {
             imageUrl: data['imageUrl'],
             organiserId: data['organiserId']?.toString(),
             isJoined: attendeesList.contains(user.uid),
+            createdByAdmin: data['createdByAdmin'] == true,
           ),
         );
       }
+      // Display Admin Created events FIRST
+      _events.sort((a, b) {
+        if (a.createdByAdmin && !b.createdByAdmin) return -1;
+        if (!a.createdByAdmin && b.createdByAdmin) return 1;
+        return 0;
+      });
       notifyListeners();
     });
 

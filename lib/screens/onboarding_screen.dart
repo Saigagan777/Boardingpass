@@ -2284,40 +2284,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     try {
       setState(() => _isLocating = true);
       final position = await LocationService().getCurrentPosition();
-      List<Placemark> placemarks = [];
-      try {
-        placemarks = await placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-      } catch (_) {
-        // Geocoding can fail on some devices/regions — silently ignore
-      }
+      final geocoded = await LocationService().reverseGeocode(
+        position.latitude,
+        position.longitude,
+      );
 
-      String country = '';
-      String state = '';
-      String city = '';
-
-      if (placemarks.isNotEmpty) {
-        final pm = placemarks.first;
-        country = pm.country ?? '';
-        state = pm.administrativeArea ?? '';
-        city = (pm.locality?.isNotEmpty == true)
-            ? pm.locality!
-            : (pm.subAdministrativeArea ?? '');
-      } else {
-        // Fallback to Google Geocoding API if system geocoding fails
-        try {
-          final googleResult = await reverseGeocodeAddress(position.latitude, position.longitude);
-          if (googleResult != null) {
-            country = googleResult['country'] ?? '';
-            state = googleResult['state'] ?? '';
-            city = googleResult['city'] ?? '';
-          }
-        } catch (_) {
-          // Ignore
-        }
-      }
+      final country = geocoded['country'] ?? '';
+      final state = geocoded['state'] ?? '';
+      final city = geocoded['city'] ?? '';
 
       if (country.isNotEmpty || state.isNotEmpty || city.isNotEmpty) {
         setState(() {
@@ -2326,9 +2300,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _currentLocationCity = city;
         });
         _onFieldChanged();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Location detected: ${[city, state, country].where((s) => s.isNotEmpty).join(", ")}'),
+              backgroundColor: const Color(0xFF7A432D),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not determine city name from coordinates. Please select your location manually.'),
+              backgroundColor: Color(0xFF7A432D),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('Auto detect current location failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location auto-detect error: ${e.toString().replaceAll("Exception:", "").trim()}'),
+            backgroundColor: const Color(0xFFC62828),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLocating = false);

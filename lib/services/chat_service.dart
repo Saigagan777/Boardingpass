@@ -417,6 +417,11 @@ class ChatService {
     required String userId2,
   }) async {
     try {
+      final isConnected = await hasConnection(userId1, userId2);
+      if (!isConnected) {
+        throw Exception('You can only chat with accepted connections.');
+      }
+
       final query = await _chatsRef
           .where('isGroup', isEqualTo: false)
           .where('participants', arrayContains: userId1)
@@ -425,13 +430,19 @@ class ChatService {
       for (final doc in query.docs) {
         final participants = List<String>.from(doc['participants'] ?? []);
         if (participants.contains(userId2)) {
+          // Reconnecting must restore the existing conversation rather than
+          // creating a new one, while preserving its full message history.
+          if (doc.data()['isUnmatched'] == true) {
+            await doc.reference.update({
+              'isUnmatched': false,
+              'unmatchedBy': FieldValue.delete(),
+              'unmatchedUsers': FieldValue.delete(),
+              'unmatchedAt': FieldValue.delete(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
           return doc.id;
         }
-      }
-
-      final isConnected = await hasConnection(userId1, userId2);
-      if (!isConnected) {
-        throw Exception('You can only chat with accepted connections.');
       }
 
       return createChat(userId1: userId1, userId2: userId2);

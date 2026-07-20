@@ -1142,7 +1142,12 @@ class _EventsScreenState extends State<EventsScreen> {
     final upcomingEvents = _state.events.where((e) {
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
-    }).toList();
+    }).toList()
+      ..sort((a, b) {
+        if (a.createdByAdmin && !b.createdByAdmin) return -1;
+        if (!a.createdByAdmin && b.createdByAdmin) return 1;
+        return 0;
+      });
 
     final myEvents = _state.events.where((e) {
       if (!e.isJoined && !e.isRegistered) return false;

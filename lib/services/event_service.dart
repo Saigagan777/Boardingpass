@@ -40,6 +40,7 @@ class EventService {
     double? latitude,
     double? longitude,
     String? imageUrl,
+    bool createdByAdmin = false,
   }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('User not signed in');
@@ -55,9 +56,10 @@ class EventService {
         'category': category,
         'price': price,
         if (mapUrl != null && mapUrl.isNotEmpty) 'mapUrl': mapUrl,
-        'latitude': ?latitude,
-        'longitude': ?longitude,
-        'imageUrl': ?imageUrl,
+        'latitude': latitude,
+        'longitude': longitude,
+        'imageUrl': imageUrl,
+        'createdByAdmin': createdByAdmin,
         'organiserId': uid,
         'attendees': <String>[],
         'attendeeCount': 0,

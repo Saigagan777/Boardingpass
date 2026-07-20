@@ -72,5 +72,9 @@
 	<string>This app requires access to the photo library to pick cover and profile images.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app requires camera access to scan event ticket QR codes and share photos.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app requires location access to auto-detect your city and show nearby events and connections.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app requires location access to auto-detect your city and show nearby events and connections.</string>
 </dict>
 </plist>

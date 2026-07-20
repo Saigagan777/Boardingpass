@@ -21,6 +21,8 @@ class Event {
   bool isRegistered;
   /// Registration document id when [isRegistered] is true.
   String? registrationId;
+  /// True when the event was created by an admin.
+  final bool createdByAdmin;
 
   Event({
     required this.id,
@@ -42,6 +44,7 @@ class Event {
     this.isJoined = false,
     this.isRegistered = false,
     this.registrationId,
+    this.createdByAdmin = false,
   });
 
   bool isHostedBy(String? uid) =>

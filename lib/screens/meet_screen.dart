@@ -42,6 +42,8 @@ class _MeetScreenState extends State<MeetScreen> {
   UserProfile? _currentUserProfile;
   final Set<String> _expandedMeetingIds = {};
 
+  final TextEditingController _onlineLinkController = TextEditingController();
+
   String _meetingDate = '';
   String _meetingTime = '';
   String _selectedLocation = '';
@@ -110,9 +112,14 @@ class _MeetScreenState extends State<MeetScreen> {
           fetchedGroups.add({'id': doc.id, ...chatData});
           continue;
         }
+        if (chatData['isUnmatched'] == true) {
+          continue;
+        }
         final participants = List<String>.from(chatData['participants'] ?? []);
         final otherUid = participants.firstWhere((p) => p != uid, orElse: () => '');
         if (otherUid.isNotEmpty && !seenUids.contains(otherUid)) {
+          final isConn = await ChatService().hasConnection(uid, otherUid);
+          if (!isConn) continue;
           seenUids.add(otherUid);
           final profile = await UserService().getUserProfile(otherUid);
           if (profile != null) {
@@ -429,9 +436,10 @@ class _MeetScreenState extends State<MeetScreen> {
         );
       }
 
+      final onlineLink = _onlineLinkController.text.trim();
       // Determine final location text
       final finalLocation = _meetingType == 'online'
-          ? 'Online Meeting (Virtual)'
+          ? (onlineLink.isNotEmpty ? onlineLink : 'Online Meeting (Virtual)')
           : (_selectedVenue != null ? _selectedVenue!.name : _selectedLocation);
 
       // Create Firestore meeting document
@@ -444,6 +452,7 @@ class _MeetScreenState extends State<MeetScreen> {
         meetingCity: _meetingCity,
         meetingPurpose: _meetingPurpose.name,
         meetingType: _meetingType,
+        meetingLink: onlineLink,
         selectedVenueSnapshot: _selectedVenue?.toMap(),
         selectedVenueId: _selectedVenue?.id,
         selectedVenueProvider: _selectedVenue?.provider,
@@ -2232,7 +2241,47 @@ class _MeetScreenState extends State<MeetScreen> {
         const SizedBox(height: 24),
 
         // Location & Search Selector
-        if (_meetingType == 'in_person') ...[
+        if (_meetingType == 'online') ...[
+          const Text(
+            'ONLINE MEETING LINK',
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _onlineLinkController,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 13,
+              color: Color(0xFF3E1F11),
+            ),
+            decoration: InputDecoration(
+              hintText: 'Paste meeting link (Google Meet, Zoom, Teams)...',
+              hintStyle: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: Color(0xFF8C736B),
+              ),
+              prefixIcon: const Icon(Icons.link, size: 18, color: Color(0xFF7A432D)),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+              ),
+            ),
+          ),
+        ] else if (_meetingType == 'in_person') ...[
           const Text(
             'MEETING LOCATION',
             style: TextStyle(
