@@ -75,6 +75,15 @@ class _EventsScreenState extends State<EventsScreen> {
           ),
         );
       } else {
+        if (event.isExpired) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Registration is closed for expired events.'),
+              backgroundColor: const Color(0xFF616161),
+            ),
+          );
+          return;
+        }
         await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => EventRegistrationFormScreen(event: event),
@@ -1050,40 +1059,50 @@ class _EventsScreenState extends State<EventsScreen> {
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(
-                                  color: event.isJoined
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFF7A432D),
+                                  color: event.isExpired
+                                      ? const Color(0xFFB0A29C)
+                                      : (event.isJoined
+                                          ? const Color(0xFF2E7D32)
+                                          : const Color(0xFF7A432D)),
                                   width: 1.5,
                                 ),
-                                backgroundColor: event.isJoined
+                                backgroundColor: event.isJoined && !event.isExpired
                                     ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
                                     : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
-                              onPressed: () {
-                                _state.toggleJoinEvent(event.id);
-                                Navigator.pop(context);
-                              },
+                              onPressed: event.isExpired
+                                  ? null
+                                  : () {
+                                      _state.toggleJoinEvent(event.id);
+                                      Navigator.pop(context);
+                                    },
                               icon: Icon(
-                                event.isJoined
+                                event.isJoined && !event.isExpired
                                     ? Icons.star_rounded
                                     : Icons.star_border_rounded,
                                 size: 18,
-                                color: event.isJoined
-                                    ? const Color(0xFF2E7D32)
-                                    : const Color(0xFF7A432D),
+                                color: event.isExpired
+                                    ? const Color(0xFFB0A29C)
+                                    : (event.isJoined
+                                        ? const Color(0xFF2E7D32)
+                                        : const Color(0xFF7A432D)),
                               ),
                               label: Text(
-                                event.isJoined ? 'Interested' : 'Interested?',
+                                event.isExpired
+                                    ? 'Ended'
+                                    : (event.isJoined ? 'Interested' : 'Interested?'),
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: event.isJoined
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFF7A432D),
+                                  color: event.isExpired
+                                      ? const Color(0xFFB0A29C)
+                                      : (event.isJoined
+                                          ? const Color(0xFF2E7D32)
+                                          : const Color(0xFF7A432D)),
                                 ),
                               ),
                             ),
@@ -1096,23 +1115,38 @@ class _EventsScreenState extends State<EventsScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF7A432D),
+                                backgroundColor: (event.isExpired && !event.isRegistered)
+                                    ? const Color(0xFF616161)
+                                    : const Color(0xFF7A432D),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
                               onPressed: () async {
+                                if (event.isExpired && !event.isRegistered) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Registration is closed for expired events.'),
+                                      backgroundColor: Color(0xFF616161),
+                                    ),
+                                  );
+                                  return;
+                                }
                                 Navigator.pop(context);
                                 await _openRegistrationOrPass(event);
                               },
-                              icon: const Icon(
-                                Icons.confirmation_number_outlined,
+                              icon: Icon(
+                                (event.isExpired && !event.isRegistered)
+                                    ? Icons.timer_off_outlined
+                                    : Icons.confirmation_number_outlined,
                                 size: 18,
                                 color: Colors.white,
                               ),
-                              label: const Text(
-                                'Register / View Pass',
-                                style: TextStyle(
+                              label: Text(
+                                event.isExpired
+                                    ? (event.isRegistered ? 'View Your Pass' : 'Registration Closed')
+                                    : (event.isRegistered ? 'View Your Pass' : 'Register Now'),
+                                style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,

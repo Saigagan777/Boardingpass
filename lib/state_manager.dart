@@ -357,6 +357,7 @@ class AppStateManager extends ChangeNotifier {
         _currentUserProfile = profile;
         _profileData = {
           'sub': user.uid,
+          'uid': user.uid,
           'name': profile.name.isNotEmpty
               ? profile.name
               : (user.displayName ?? user.email?.split('@')[0] ?? 'User'),

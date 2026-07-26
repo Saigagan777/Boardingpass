@@ -82,6 +82,15 @@ class _EventRegistrationFormScreenState
   }
 
   Future<void> _submit() async {
+    if (widget.event.isExpired) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Registration is closed for expired events.'),
+          backgroundColor: Color(0xFF616161),
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
 

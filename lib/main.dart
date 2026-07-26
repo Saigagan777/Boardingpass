@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'firebase_options.dart';
 import 'state_manager.dart';
 import 'services/auth_service.dart';
@@ -227,7 +228,7 @@ class MainNavigationShell extends StatefulWidget {
   State<MainNavigationShell> createState() => _MainNavigationShellState();
 }
 
-class _MainNavigationShellState extends State<MainNavigationShell> {
+class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsBindingObserver {
   final AppStateManager _state = AppStateManager();
   // Session-level set of dismissed notification IDs (not marked as read in Firestore)
   final Set<String> _dismissedNotificationIds = {};
@@ -238,10 +239,18 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   String? _currentUid;
   bool _isCompletingFeatureTour = false;
 
+  bool _isLocationServiceEnabled = true;
+  Timer? _locationCheckTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _state.addListener(_onStateChanged);
+    _checkLocationService();
+    _locationCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _checkLocationService();
+    });
     
     // Set initial uid and subscribe to notifications if logged in
     final initialUid =
@@ -254,9 +263,32 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   @override
   void dispose() {
+    _locationCheckTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _state.removeListener(_onStateChanged);
     _notificationSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationService();
+    }
+  }
+
+  Future<void> _checkLocationService() async {
+    if (kIsWeb) return;
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (mounted && _isLocationServiceEnabled != enabled) {
+        setState(() {
+          _isLocationServiceEnabled = enabled;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking location service: $e');
+    }
   }
 
   void _onStateChanged() {
@@ -428,10 +460,18 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(
-                          Icons.notifications_active,
-                          color: Color(0xFFE5A475),
-                          size: 22,
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7A432D),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_active_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -443,7 +483,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                                 _latestUnreadNotification?['title'] ??
                                     'New Notification',
                                 style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
+                                  fontFamily: 'PlayfairDisplay',
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
@@ -451,38 +491,35 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              if ((_latestUnreadNotification?['body'] ?? '')
-                                  .toString()
-                                  .isNotEmpty)
-                                Text(
-                                  _latestUnreadNotification!['body'],
-                                  style: const TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 11,
-                                    color: Color(0xFFE8E2DD),
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                              const SizedBox(height: 2),
+                              Text(
+                                _latestUnreadNotification?['body'] ?? '',
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFFE8E2DD),
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        // Close button — dismisses locally, does NOT mark as read
-                        GestureDetector(
-                          onTap: () {
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white70,
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            if (_latestUnreadNotificationId != null) {
+                              _dismissedNotificationIds
+                                  .add(_latestUnreadNotificationId!);
+                            }
                             setState(() {
-                              _dismissedNotificationIds.add(
-                                _latestUnreadNotificationId!,
-                              );
                               _showNotificationBanner = false;
                             });
                           },
-                          child: const Icon(
-                            Icons.close,
-                            color: Color(0xFF8C736B),
-                            size: 18,
-                          ),
                         ),
                       ],
                     ),
@@ -496,6 +533,97 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               !_isCompletingFeatureTour)
             Positioned.fill(
               child: FeatureTourScreen(onComplete: _completeFeatureTour),
+            ),
+          // Blocking location service required overlay screen
+          if (!_isLocationServiceEnabled)
+            Positioned.fill(
+              child: Material(
+                color: const Color(0xFFFAF7F5),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF7A432D).withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.location_off_rounded,
+                            size: 40,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Location Services Required',
+                          style: TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'BoardingPass requires device location services to be turned on to connect you with nearby professionals and airport lounge members.\n\nPlease turn on location services on your device to continue using the application.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 14,
+                            color: Color(0xFF5C473E),
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF7A432D),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            onPressed: () async {
+                              await Geolocator.openLocationSettings();
+                              await _checkLocationService();
+                            },
+                            icon: const Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
+                            label: const Text(
+                              'Turn On Location Services',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextButton(
+                          onPressed: _checkLocationService,
+                          child: const Text(
+                            'I\'ve Turned It On (Check Again)',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF7A432D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
