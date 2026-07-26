@@ -13,8 +13,6 @@ import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../utils/app_logo.dart';
 import '../services/location_service.dart';
-import 'package:geocoding/geocoding.dart';
-import '../utils/google_search_helper.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
 
