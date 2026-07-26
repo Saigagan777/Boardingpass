@@ -65,6 +65,10 @@ class UserProfile {
   final DateTime lastSeen;
   final String? phone;
   final String? phoneCountryCode;
+  final String? dob;
+  final String? gender;
+  final String? occupation;
+  final String? profession;
 
   // New LinkedIn and Notification Fields
   final String? coverImageUrl;
@@ -130,6 +134,10 @@ class UserProfile {
     required this.lastSeen,
     this.phone,
     this.phoneCountryCode,
+    this.dob,
+    this.gender,
+    this.occupation,
+    this.profession,
     this.coverImageUrl,
     this.linkedinProfileUrl,
     this.connectionCount = 0,
@@ -193,6 +201,10 @@ class UserProfile {
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
       phone: data['phone'],
       phoneCountryCode: data['phoneCountryCode'],
+      dob: data['dob'],
+      gender: data['gender'],
+      occupation: data['occupation'],
+      profession: data['profession'],
       coverImageUrl: data['coverImageUrl'],
       linkedinProfileUrl: data['linkedinProfileUrl'],
       connectionCount: data['connectionCount'] ?? 0,
@@ -265,6 +277,10 @@ class UserProfile {
       'lastSeen': Timestamp.fromDate(lastSeen),
       'phone': phone,
       'phoneCountryCode': phoneCountryCode,
+      'dob': dob,
+      'gender': gender,
+      'occupation': occupation,
+      'profession': profession,
       'coverImageUrl': coverImageUrl,
       'linkedinProfileUrl': linkedinProfileUrl,
       'connectionCount': connectionCount,

@@ -649,7 +649,7 @@ class _EventsScreenState extends State<EventsScreen> {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Event hosted successfully!'),
+                                  content: Text('Event submitted for Admin approval!'),
                                   backgroundColor: Color(0xFF7A432D),
                                 ),
                               );
@@ -808,6 +808,42 @@ class _EventsScreenState extends State<EventsScreen> {
                         )
                       ],
                     ),
+                    if (event.status != 'approved') ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: event.status == 'rejected' ? const Color(0xFFFEF2F2) : const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: event.status == 'rejected' ? const Color(0xFFFCA5A5) : const Color(0xFFFDE68A),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              event.status == 'rejected' ? Icons.cancel_outlined : Icons.hourglass_empty_rounded,
+                              color: event.status == 'rejected' ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                event.status == 'rejected'
+                                    ? 'This event was rejected by the admin team and is not visible to the community.'
+                                    : 'This event is awaiting admin approval. It will be published to the community once approved.',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: event.status == 'rejected' ? const Color(0xFF991B1B) : const Color(0xFF92400E),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const Divider(height: 24, color: Color(0xFFE8E2DD)),
 
                     // Schedule Info Row
@@ -1059,32 +1095,32 @@ class _EventsScreenState extends State<EventsScreen> {
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(
-                                  color: event.isExpired
+                                  color: event.isExpired || event.status != 'approved'
                                       ? const Color(0xFFB0A29C)
                                       : (event.isJoined
                                           ? const Color(0xFF2E7D32)
                                           : const Color(0xFF7A432D)),
                                   width: 1.5,
                                 ),
-                                backgroundColor: event.isJoined && !event.isExpired
+                                backgroundColor: event.isJoined && !event.isExpired && event.status == 'approved'
                                     ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
                                     : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
-                              onPressed: event.isExpired
+                              onPressed: event.isExpired || event.status != 'approved'
                                   ? null
                                   : () {
                                       _state.toggleJoinEvent(event.id);
                                       Navigator.pop(context);
                                     },
                               icon: Icon(
-                                event.isJoined && !event.isExpired
+                                event.isJoined && !event.isExpired && event.status == 'approved'
                                     ? Icons.star_rounded
                                     : Icons.star_border_rounded,
                                 size: 18,
-                                color: event.isExpired
+                                color: event.isExpired || event.status != 'approved'
                                     ? const Color(0xFFB0A29C)
                                     : (event.isJoined
                                         ? const Color(0xFF2E7D32)
@@ -1093,12 +1129,12 @@ class _EventsScreenState extends State<EventsScreen> {
                               label: Text(
                                 event.isExpired
                                     ? 'Ended'
-                                    : (event.isJoined ? 'Interested' : 'Interested?'),
+                                    : (event.status != 'approved' ? 'Locked' : (event.isJoined ? 'Interested' : 'Interested?')),
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: event.isExpired
+                                  color: event.isExpired || event.status != 'approved'
                                       ? const Color(0xFFB0A29C)
                                       : (event.isJoined
                                           ? const Color(0xFF2E7D32)
@@ -1115,37 +1151,41 @@ class _EventsScreenState extends State<EventsScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: (event.isExpired && !event.isRegistered)
+                                backgroundColor: (event.isExpired && !event.isRegistered) || event.status != 'approved'
                                     ? const Color(0xFF616161)
                                     : const Color(0xFF7A432D),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
-                              onPressed: () async {
-                                if (event.isExpired && !event.isRegistered) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Registration is closed for expired events.'),
-                                      backgroundColor: Color(0xFF616161),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                Navigator.pop(context);
-                                await _openRegistrationOrPass(event);
-                              },
+                              onPressed: event.status != 'approved'
+                                  ? null
+                                  : () async {
+                                      if (event.isExpired && !event.isRegistered) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Registration is closed for expired events.'),
+                                            backgroundColor: Color(0xFF616161),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      Navigator.pop(context);
+                                      await _openRegistrationOrPass(event);
+                                    },
                               icon: Icon(
-                                (event.isExpired && !event.isRegistered)
+                                (event.isExpired && !event.isRegistered) || event.status != 'approved'
                                     ? Icons.timer_off_outlined
                                     : Icons.confirmation_number_outlined,
                                 size: 18,
                                 color: Colors.white,
                               ),
                               label: Text(
-                                event.isExpired
-                                    ? (event.isRegistered ? 'View Your Pass' : 'Registration Closed')
-                                    : (event.isRegistered ? 'View Your Pass' : 'Register Now'),
+                                event.status != 'approved'
+                                    ? (event.status == 'rejected' ? 'Rejected' : 'Approval Pending')
+                                    : (event.isExpired
+                                        ? (event.isRegistered ? 'View Your Pass' : 'Registration Closed')
+                                        : (event.isRegistered ? 'View Your Pass' : 'Register Now')),
                                 style: const TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 12,
@@ -1174,6 +1214,7 @@ class _EventsScreenState extends State<EventsScreen> {
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
     final upcomingEvents = _state.events.where((e) {
+      if (e.status != 'approved') return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList()
@@ -1184,6 +1225,7 @@ class _EventsScreenState extends State<EventsScreen> {
       });
 
     final myEvents = _state.events.where((e) {
+      if (e.status != 'approved') return false;
       if (!e.isJoined && !e.isRegistered) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
@@ -1803,36 +1845,44 @@ class _EventsScreenState extends State<EventsScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Free Entry / Expired pill
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            event.isExpired ? Icons.timer_off_outlined : Icons.confirmation_number_rounded,
-                            size: 13,
-                            color: Colors.white,
+                    Row(
+                      children: [
+                        // Free Entry / Expired pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: event.isExpired ? const Color(0xFFC62828) : const Color(0xFF2E7D32),
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            event.isExpired
-                                ? 'EXPIRED'
-                                : (event.price == 'Free' ? 'FREE ENTRY' : event.price.toUpperCase()),
-                            style: const TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                event.isExpired ? Icons.timer_off_outlined : Icons.confirmation_number_rounded,
+                                size: 13,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                event.isExpired
+                                    ? 'EXPIRED'
+                                    : (event.price == 'Free' ? 'FREE ENTRY' : event.price.toUpperCase()),
+                                style: const TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                        if (event.isHostedBy(_currentUid)) ...[
+                          const SizedBox(width: 8),
+                          _buildEventStatusBadge(event),
                         ],
-                      ),
+                      ],
                     ),
                     // Bookmark button
                     GestureDetector(
@@ -2151,6 +2201,57 @@ class _EventsScreenState extends State<EventsScreen> {
     return monthMap[abbr.toUpperCase()] ?? abbr;
   }
 
+  Widget _buildEventStatusBadge(Event event) {
+    Color badgeColor;
+    String label;
+    IconData icon;
+
+    switch (event.status) {
+      case 'approved':
+        badgeColor = const Color(0xFF2E7D32);
+        label = 'APPROVED';
+        icon = Icons.check_circle_outline;
+        break;
+      case 'rejected':
+        badgeColor = const Color(0xFFC62828);
+        label = 'REJECTED';
+        icon = Icons.cancel_outlined;
+        break;
+      case 'pending':
+      default:
+        badgeColor = const Color(0xFFB45309);
+        label = 'PENDING APPROVAL';
+        icon = Icons.hourglass_empty;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGridEventCard(Event event) {
     return GestureDetector(
       onTap: () => _showEventDetailsBottomSheet(event),
@@ -2204,6 +2305,12 @@ class _EventsScreenState extends State<EventsScreen> {
                       ),
                     ),
                   ),
+                  if (event.isHostedBy(_currentUid))
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: _buildEventStatusBadge(event),
+                    ),
                 ],
               ),
             ),

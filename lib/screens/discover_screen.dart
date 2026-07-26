@@ -29,13 +29,13 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   static const double _upSwipeThreshold = 100.0;
   static const Duration _swipeExitDuration = Duration(milliseconds: 230);
 
-  // Filter states
   final TextEditingController _searchQuery = TextEditingController();
   String? _selectedIndustry;
   String? _selectedInterest;
   String? _selectedHomeBase;
   String? _selectedCurrentLocation;
   String? _selectedFilterExpertise;
+  double? _maxDistanceKm;
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
 
@@ -102,8 +102,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   void initState() {
     super.initState();
     _cardIndex = _state.activeCandidateIndex;
-    // Listen for state-manager notifications so we rebuild when
-    // loadCandidates() finishes and populates _state.candidates.
     _state.addListener(_onStateChanged);
     _state.loadCandidates();
     _searchQuery.addListener(() {
@@ -115,9 +113,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     });
   }
 
-  /// Called whenever AppStateManager.notifyListeners() fires (e.g. after
-  /// loadCandidates completes). Triggers a rebuild so filteredCandidates
-  /// reflects the newly loaded data — identical to what Reset Filters does.
   void _onStateChanged() {
     if (mounted) setState(() {});
   }
@@ -214,6 +209,13 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         }
       }
 
+      // 7. Maximum Distance filter
+      if (_maxDistanceKm != null && _maxDistanceKm! > 0) {
+        if (c.displayDistanceKm != null && c.displayDistanceKm! > _maxDistanceKm!) {
+          return false;
+        }
+      }
+
       return true;
     }).toList();
   }
@@ -249,7 +251,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               child: Column(
                 children: [
-                  // Pull Handle
                   Container(
                     width: 40,
                     height: 4,
@@ -259,41 +260,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Title
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "${c.name}'s Showcase Deck",
-                            style: const TextStyle(
-                              fontFamily: 'PlayfairDisplay',
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFFE5A475),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            "Swipe left/right to view cards",
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontSize: 11,
-                              color: Colors.white54,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white54),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
+                  Text(
+                    '${c.name}\'s Highlights',
+                    style: const TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  // PageView Carousel
+                  const SizedBox(height: 16),
                   Expanded(
                     child: PageView.builder(
                       itemCount: c.customCards.length,
@@ -318,7 +294,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Indicators
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(c.customCards.length, (idx) {
@@ -352,7 +327,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       _connectScale = 1.0;
     });
 
-    // Pulse handshake animation
     _connectTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
       if (mounted) {
         setState(() {
@@ -361,7 +335,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       }
     });
 
-    // Dismiss overlay and keep the user on Discovery.
     Future.delayed(const Duration(milliseconds: 1600), () {
       _connectTimer?.cancel();
       if (mounted) {
@@ -372,7 +345,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       }
     });
   }
-
   void _showConnectionRequestError(Candidate candidate) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -1381,6 +1353,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             _selectedHomeBase = null;
                             _selectedCurrentLocation = null;
                             _selectedFilterExpertise = null;
+                            _maxDistanceKm = null;
                           });
                           setState(() {});
                         },
@@ -1403,6 +1376,156 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Maximum Distance Filter section
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Maximum Distance',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Color(0xFF3E1F11),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7A432D).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _maxDistanceKm == null
+                                      ? 'Any distance'
+                                      : '≤ ${_maxDistanceKm!.toInt()} km',
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: Color(0xFF7A432D),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Preset Distance Chips: 5 km, 10 km, 25 km, 50 km, Any distance
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final dist in [5.0, 10.0, 25.0, 50.0])
+                                ChoiceChip(
+                                  label: Text('${dist.toInt()} km'),
+                                  selected: _maxDistanceKm == dist,
+                                  selectedColor: const Color(0xFF7A432D),
+                                  backgroundColor: const Color(0xFFF9F8F6),
+                                  side: BorderSide(
+                                    color: _maxDistanceKm == dist
+                                        ? const Color(0xFF7A432D)
+                                        : const Color(0xFFE8E2DD),
+                                  ),
+                                  labelStyle: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: _maxDistanceKm == dist
+                                        ? Colors.white
+                                        : const Color(0xFF5C473E),
+                                  ),
+                                  onSelected: (selected) {
+                                    setModalState(() {
+                                      _maxDistanceKm = selected ? dist : null;
+                                    });
+                                    setState(() {});
+                                  },
+                                ),
+                              ChoiceChip(
+                                label: const Text('Any distance'),
+                                selected: _maxDistanceKm == null,
+                                selectedColor: const Color(0xFF7A432D),
+                                backgroundColor: const Color(0xFFF9F8F6),
+                                side: BorderSide(
+                                  color: _maxDistanceKm == null
+                                      ? const Color(0xFF7A432D)
+                                      : const Color(0xFFE8E2DD),
+                                ),
+                                labelStyle: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _maxDistanceKm == null
+                                      ? Colors.white
+                                      : const Color(0xFF5C473E),
+                                ),
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    setModalState(() {
+                                      _maxDistanceKm = null;
+                                    });
+                                    setState(() {});
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Slider for Custom Range
+                          Row(
+                            children: [
+                              const Text(
+                                '1 km',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              ),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderThemeData(
+                                    activeTrackColor: const Color(0xFF7A432D),
+                                    inactiveTrackColor: const Color(0xFFE8E2DD),
+                                    thumbColor: const Color(0xFF7A432D),
+                                    overlayColor: const Color(0xFF7A432D).withValues(alpha: 0.15),
+                                    valueIndicatorTextStyle: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  child: Slider(
+                                    value: (_maxDistanceKm ?? 50.0).clamp(1.0, 100.0),
+                                    min: 1.0,
+                                    max: 100.0,
+                                    divisions: 99,
+                                    label: '${(_maxDistanceKm ?? 50.0).toInt()} km',
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        _maxDistanceKm = val;
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                ),
+                              ),
+                              const Text(
+                                '100 km',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 11,
+                                  color: Color(0xFF8C736B),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+
                           // Industry Dropdown
                           const Text(
                             'Industry',
@@ -1413,7 +1536,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               color: Color(0xFF3E1F11),
                             ),
                           ),
-                          const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
                               final candidateIndustries = _state.candidates
@@ -2059,6 +2181,40 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   ),
                 ),
 
+
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _selectedIndustry = null;
+                      _selectedInterest = null;
+                      _selectedHomeBase = null;
+                      _selectedCurrentLocation = null;
+                      _selectedFilterExpertise = null;
+                      _maxDistanceKm = null;
+                      _searchQuery.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text(
+                    'Reset All Filters',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7A432D),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+
                 _buildIncomingRequestsPanel(),
 
                 // Active Filter Chips
@@ -2066,7 +2222,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     _selectedInterest != null ||
                     _selectedHomeBase != null ||
                     _selectedCurrentLocation != null ||
-                    _selectedFilterExpertise != null)
+                    _selectedFilterExpertise != null ||
+                    _maxDistanceKm != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SizedBox(
@@ -2119,6 +2276,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 });
                               },
                             ),
+                          if (_maxDistanceKm != null)
+                            _buildFilterChip(
+                              label: 'Distance: ≤ ${_maxDistanceKm!.toInt()} km',
+                              onClear: () {
+                                setState(() {
+                                  _maxDistanceKm = null;
+                                });
+                              },
+                            ),
                           TextButton(
                             onPressed: () {
                               setState(() {
@@ -2127,6 +2293,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 _selectedHomeBase = null;
                                 _selectedCurrentLocation = null;
                                 _selectedFilterExpertise = null;
+                                _maxDistanceKm = null;
                               });
                             },
                             child: const Text(
@@ -2145,120 +2312,115 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   ),
 
                 Expanded(
-                  child: filteredCount == 0
-                      ? _buildEmptyState()
-                      : Center(
-                          child: AnimatedScale(
-                            scale: _isProfileExpanded ? 0.97 : 1.0,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            child: SizedBox(
-                              width: double.infinity,
-                              height: screenHeight * 0.62,
-                              child: Builder(
-                                builder: (context) {
-                                  final int index = _cardIndex % filteredCount;
-                                  final first = filtered[index];
-                                  final second = filteredCount > 1
-                                      ? filtered[(index + 1) % filteredCount]
-                                      : null;
-                                  final third = filteredCount > 2
-                                      ? filtered[(index + 2) % filteredCount]
-                                      : null;
-                                  final activeAction = _activeOverlayAction();
-                                  final stackProgress = activeAction == null
-                                      ? 0.0
-                                      : _progressForAction(activeAction);
+                  child: (_state.isLoadingCandidates ||
+                          (_state.candidates.isEmpty &&
+                              _selectedIndustry == null &&
+                              _selectedInterest == null &&
+                              _selectedHomeBase == null &&
+                              _selectedCurrentLocation == null &&
+                              _selectedFilterExpertise == null &&
+                              _maxDistanceKm == null &&
+                              _searchQuery.text.trim().isEmpty))
+                      ? const EngagingDiscoverLoader()
+                      : (filteredCount == 0
+                          ? _buildEmptyState()
+                          : Center(
+                              child: AnimatedScale(
+                                scale: _isProfileExpanded ? 0.97 : 1.0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  height: screenHeight * 0.62,
+                                  child: Builder(
+                                    builder: (context) {
+                                      final int index = _cardIndex % filteredCount;
+                                      final first = filtered[index];
+                                      final second = filteredCount > 1
+                                          ? filtered[(index + 1) % filteredCount]
+                                          : null;
+                                      final third = filteredCount > 2
+                                          ? filtered[(index + 2) % filteredCount]
+                                          : null;
+                                      final activeAction = _activeOverlayAction();
+                                      final stackProgress = activeAction == null
+                                          ? 0.0
+                                          : _progressForAction(activeAction);
 
-                                  return Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      // Third Card (Bottom)
-                                      if (third != null)
-                                        Positioned(
-                                          left: 0,
-                                          right: 0,
-                                          top: 20 - (10 * stackProgress),
-                                          bottom: 10 * stackProgress,
-                                          child: Transform.scale(
-                                            scale:
-                                                0.92 + (0.04 * stackProgress),
-                                            child: _buildCard(
-                                              third,
-                                              isTop: false,
-                                            ),
-                                          ),
-                                        ),
-
-                                      // Second Card (Middle)
-                                      if (second != null)
-                                        Positioned(
-                                          left: 0,
-                                          right: 0,
-                                          top: 10 - (10 * stackProgress),
-                                          bottom: 10 + (10 * stackProgress),
-                                          child: Transform.scale(
-                                            scale:
-                                                0.96 + (0.04 * stackProgress),
-                                            child: _buildCard(
-                                              second,
-                                              isTop: false,
-                                            ),
-                                          ),
-                                        ),
-
-                                      // First Card (Top - Draggable)
-                                      Positioned(
-                                        left: 0,
-                                        right: 0,
-                                        top: 0,
-                                        bottom: 20,
-                                        child: GestureDetector(
-                                          onTap: () =>
-                                              _showProfileOnlyBottomSheet(
-                                                first,
+                                      return Stack(
+                                        clipBehavior: Clip.none,
+                                        children: [
+                                          // Third Card (Bottom)
+                                          if (third != null)
+                                            Positioned(
+                                              left: 0,
+                                              right: 0,
+                                              top: 20 - (10 * stackProgress),
+                                              bottom: 10 * stackProgress,
+                                              child: Transform.scale(
+                                                scale: 0.92 + (0.04 * stackProgress),
+                                                child: _buildCard(
+                                                  third,
+                                                  isTop: false,
+                                                ),
                                               ),
-                                          onPanUpdate: _handlePanUpdate,
-                                          onPanEnd: (_) =>
-                                              _handlePanEnd(filtered),
-                                          child: AnimatedContainer(
-                                            duration: _isAnimating
-                                                ? _swipeExitDuration
-                                                : Duration.zero,
-                                            curve: Curves.easeOutCubic,
-                                            transformAlignment:
-                                                Alignment.center,
-                                            transform: Matrix4.identity()
-                                              ..translateByDouble(
-                                                _dragDx,
-                                                _dragDy,
-                                                0,
-                                                1,
-                                              )
-                                              ..rotateZ(_cardRotationAngle),
-                                            child: Stack(
-                                              fit: StackFit.expand,
-                                              children: [
-                                                _buildCard(first, isTop: true),
-                                                _buildSwipeActionOverlay(),
-                                              ],
+                                            ),
+
+                                          // Second Card (Middle)
+                                          if (second != null)
+                                            Positioned(
+                                              left: 0,
+                                              right: 0,
+                                              top: 10 - (10 * stackProgress),
+                                              bottom: 10 + (10 * stackProgress),
+                                              child: Transform.scale(
+                                                scale: 0.96 + (0.04 * stackProgress),
+                                                child: _buildCard(
+                                                  second,
+                                                  isTop: false,
+                                                ),
+                                              ),
+                                            ),
+
+                                          // First Card (Top - Draggable)
+                                          Positioned(
+                                            left: 0,
+                                            right: 0,
+                                            top: 0,
+                                            bottom: 20,
+                                            child: GestureDetector(
+                                              onTap: () => _showProfileOnlyBottomSheet(first),
+                                              onPanUpdate: _handlePanUpdate,
+                                              onPanEnd: (_) => _handlePanEnd(filtered),
+                                              child: AnimatedContainer(
+                                                duration: _isAnimating ? _swipeExitDuration : Duration.zero,
+                                                curve: Curves.easeOutCubic,
+                                                transformAlignment: Alignment.center,
+                                                transform: Matrix4.identity()
+                                                  ..translateByDouble(_dragDx, _dragDy, 0, 1)
+                                                  ..rotateZ(_cardRotationAngle),
+                                                child: Stack(
+                                                  fit: StackFit.expand,
+                                                  children: [
+                                                    _buildCard(first, isTop: true),
+                                                    _buildSwipeActionOverlay(),
+                                                  ],
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
+                            )),
                 ),
 
                 // Button controls (only visible if filtered list is not empty)
                 if (filteredCount > 0)
                   Container(
-                    padding: const EdgeInsets.only(bottom: 20, top: 10),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
@@ -3269,13 +3431,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                     visualDensity: VisualDensity.compact,
                                   ),
                                   onPressed: () {
-                                    Navigator.pop(
-                                      context,
-                                    ); // Close favorites sheet
-                                    _showFavoriteProfileDetailsSheet(
-                                      context,
-                                      c,
-                                    );
+                                    Navigator.pop(context); // Close favorites sheet
+                                    _showFavoriteProfileDetailsSheet(context, c);
                                   },
                                   child: const Text(
                                     'View Profile',
@@ -3320,7 +3477,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           ),
           child: Column(
             children: [
-              // Pull Handle
               const SizedBox(height: 12),
               Container(
                 width: 40,
@@ -3402,4 +3558,199 @@ class _InterestStyle {
   final Color backgroundColor;
   final Color foregroundColor;
   const _InterestStyle(this.icon, this.backgroundColor, this.foregroundColor);
+}
+
+class EngagingDiscoverLoader extends StatefulWidget {
+  const EngagingDiscoverLoader({super.key});
+
+  @override
+  State<EngagingDiscoverLoader> createState() => _EngagingDiscoverLoaderState();
+}
+
+class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
+    with SingleTickerProviderStateMixin {
+  final List<String> _loadingMessages = const [
+    'Searching for nearby people...',
+    'Finding people with similar interests...',
+    'Discovering nearby skills and expertise...',
+    'Looking for meaningful connections...',
+    'Matching you with like-minded travelers...',
+    'Exploring opportunities around you...',
+    'Finding your next connection...',
+    'Syncing with people nearby...',
+  ];
+
+  int _currentIndex = 0;
+  Timer? _timer;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
+    _timer = Timer.periodic(const Duration(milliseconds: 2400), (timer) {
+      if (mounted) {
+        setState(() {
+          _currentIndex = (_currentIndex + 1) % _loadingMessages.length;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFE8E2DD), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Pulsing Radar Rings Animation
+              AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, child) {
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Outer Pulse Ring
+                      Container(
+                        width: 110 + (28 * _pulseController.value),
+                        height: 110 + (28 * _pulseController.value),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF7A432D).withValues(
+                            alpha: (1 - _pulseController.value) * 0.25,
+                          ),
+                        ),
+                      ),
+                      // Middle Pulse Ring
+                      Container(
+                        width: 85 + (18 * _pulseController.value),
+                        height: 85 + (18 * _pulseController.value),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF7A432D).withValues(
+                            alpha: (1 - _pulseController.value) * 0.4,
+                          ),
+                        ),
+                      ),
+                      // Center Glowing Icon Badge
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF8C4F35),
+                              Color(0xFF633320),
+                            ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7A432D).withValues(alpha: 0.35),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.radar_rounded,
+                          color: Color(0xFFF9EAE1),
+                          size: 34,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 36),
+
+              // Animated Message Switcher
+              SizedBox(
+                height: 48,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.25),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Text(
+                    _loadingMessages[_currentIndex],
+                    key: ValueKey<int>(_currentIndex),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: 'PlayfairDisplay',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3E1F11),
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Progress Indicator Dots
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(_loadingMessages.length, (idx) {
+                  final bool isCurrent = idx == _currentIndex;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: isCurrent ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: isCurrent
+                          ? const Color(0xFF7A432D)
+                          : const Color(0xFFE8E2DD),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

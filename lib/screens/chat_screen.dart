@@ -4151,6 +4151,19 @@ class _ChatScreenState extends State<ChatScreen> {
                                       color: Color(0xFF3E1F11),
                                     ),
                                   ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    _formatLastSeen(lastSeen),
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w600,
+                                      color: isOnline
+                                          ? const Color(0xFF2E7D32)
+                                          : const Color(0xFF8C736B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 1),
                                   Row(
                                     children: [
                                       Flexible(
@@ -4160,7 +4173,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             fontFamily: 'PlusJakartaSans',
-                                            fontSize: 10,
+                                            fontSize: 9,
                                             color: Color(0xFF8C736B),
                                           ),
                                         ),
@@ -7411,4 +7424,14 @@ class _TypingIndicatorState extends State<_TypingIndicator>
       ),
     );
   }
+}
+
+String _formatLastSeen(DateTime? lastSeen) {
+  if (lastSeen == null) return 'Offline';
+  final diff = DateTime.now().difference(lastSeen);
+  if (diff.inMinutes < 5) return 'Active now';
+  if (diff.inMinutes < 60) return 'Active ${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return 'Active ${diff.inHours}h ago';
+  if (diff.inDays == 1) return 'Active yesterday';
+  return 'Active ${diff.inDays}d ago';
 }

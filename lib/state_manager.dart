@@ -67,6 +67,7 @@ class AppStateManager extends ChangeNotifier {
   // Navigation and View Modes
   AppScreen _currentScreen = AppScreen.hub;
   bool _isAdminView = false;
+  bool isLoadingCandidates = false;
   String? _activeChatContact;
   Offset? _lastTappedSegmentCenter;
   List<String>? _activityOrder;
@@ -217,6 +218,7 @@ class AppStateManager extends ChangeNotifier {
 
   void createEvent(Event newEvent) async {
     try {
+      final isAdmin = await AuthService().isAdmin();
       await EventService().createEvent(
         title: newEvent.title,
         location: newEvent.location,
@@ -230,6 +232,7 @@ class AppStateManager extends ChangeNotifier {
         latitude: newEvent.latitude,
         longitude: newEvent.longitude,
         imageUrl: newEvent.imageUrl,
+        createdByAdmin: isAdmin,
       );
     } catch (e) {
       debugPrint('Error creating event: $e');
@@ -248,6 +251,27 @@ class AppStateManager extends ChangeNotifier {
       _activeCandidateIndex = (_activeCandidateIndex + 1) % _candidates.length;
       notifyListeners();
     }
+  }
+
+  // Screenshot Harness Mock Setters
+  void setMockUserProfile(UserProfile profile) {
+    _currentUserProfile = profile;
+    _isLoggedIn = true;
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  void setMockCandidates(List<Candidate> mockCandidates) {
+    _candidates.clear();
+    _candidates.addAll(mockCandidates);
+    _activeCandidateIndex = 0;
+    notifyListeners();
+  }
+
+  void setMockEvents(List<Event> mockEvents) {
+    _events.clear();
+    _events.addAll(mockEvents);
+    notifyListeners();
   }
 
   // Chat messages list
@@ -438,6 +462,7 @@ class AppStateManager extends ChangeNotifier {
             organiserId: data['organiserId']?.toString(),
             isJoined: attendeesList.contains(user.uid),
             createdByAdmin: data['createdByAdmin'] == true,
+            status: data['status']?.toString() ?? 'approved',
           ),
         );
       }
@@ -506,6 +531,8 @@ class AppStateManager extends ChangeNotifier {
   }
 
   Future<void> loadCandidates() async {
+    isLoadingCandidates = true;
+    notifyListeners();
     try {
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
       debugPrint('[DEBUG loadCandidates] called. currentUid: $currentUid');
@@ -865,9 +892,11 @@ class AppStateManager extends ChangeNotifier {
       _candidates.addAll([...nonDisliked, ...disliked]);
       _activeCandidateIndex = 0;
       debugPrint('[DEBUG loadCandidates] finished. Final _candidates length: ${_candidates.length}');
-      notifyListeners();
     } catch (e) {
       debugPrint('Error loading candidates: $e');
+    } finally {
+      isLoadingCandidates = false;
+      notifyListeners();
     }
   }
 

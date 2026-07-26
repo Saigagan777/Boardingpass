@@ -306,9 +306,12 @@ class _AdminPanelState extends State<AdminPanel> {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final cardWidth = constraints.maxWidth >= 700
-                ? (constraints.maxWidth - 36) / 4
-                : (constraints.maxWidth >= 450 ? (constraints.maxWidth - 12) / 2 : double.infinity);
+            final pendingEvents = events.where((e) => e.data()['status'] == 'pending').length;
+            final cardWidth = constraints.maxWidth >= 900
+                ? (constraints.maxWidth - 48) / 5
+                : (constraints.maxWidth >= 700
+                    ? (constraints.maxWidth - 36) / 4
+                    : (constraints.maxWidth >= 450 ? (constraints.maxWidth - 12) / 2 : double.infinity));
 
             return Wrap(
               spacing: 12,
@@ -340,6 +343,15 @@ class _AdminPanelState extends State<AdminPanel> {
                   icon: Icons.security_rounded,
                   color: const Color(0xFFB45309),
                   bgColor: const Color(0xFFFFFBEB),
+                ),
+                _metricCard(
+                  width: cardWidth,
+                  label: 'Pending Events',
+                  value: '$pendingEvents',
+                  badgeText: pendingEvents > 0 ? '$pendingEvents Approvals' : '0 Pending',
+                  icon: Icons.event_note_rounded,
+                  color: const Color(0xFF854D0E),
+                  bgColor: const Color(0xFFFEF9C3),
                 ),
                 _metricCard(
                   width: cardWidth,
@@ -854,23 +866,58 @@ class _AdminPanelState extends State<AdminPanel> {
                       if (isAdminEvent) ...[
                         const SizedBox(width: 8),
                         _statusChip('ADMIN CREATED', _brand),
+                      ] else ...[
+                        const SizedBox(width: 8),
+                        if (data['status'] == 'approved')
+                          _statusChip('APPROVED', const Color(0xFF2E7D32))
+                        else if (data['status'] == 'rejected')
+                          _statusChip('REJECTED', const Color(0xFFC62828))
+                        else
+                          _statusChip('PENDING', const Color(0xFFB45309)),
                       ],
                     ],
                   ),
                   subtitle: Text('$location • $time • $category'),
                   trailing: Wrap(
                     spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      if (!isAdminEvent) ...[
+                        if (data['status'] != 'approved')
+                          IconButton(
+                            tooltip: 'Approve Event',
+                            icon: const Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32)),
+                            onPressed: () => FirebaseFirestore.instance
+                                .collection('events')
+                                .doc(eventDoc.id)
+                                .update({'status': 'approved'}),
+                          ),
+                        if (data['status'] != 'rejected')
+                          IconButton(
+                            tooltip: 'Reject Event',
+                            icon: const Icon(Icons.cancel_outlined, color: Color(0xFFC62828)),
+                            onPressed: () => FirebaseFirestore.instance
+                                .collection('events')
+                                .doc(eventDoc.id)
+                                .update({'status': 'rejected'}),
+                          ),
+                      ],
                       IconButton(
                         tooltip: isAdminEvent ? 'Remove Admin Priority' : 'Mark as Admin Created',
                         icon: Icon(
                           isAdminEvent ? Icons.star : Icons.star_border,
                           color: isAdminEvent ? const Color(0xFFB45309) : Colors.grey,
                         ),
-                        onPressed: () => FirebaseFirestore.instance
-                            .collection('events')
-                            .doc(eventDoc.id)
-                            .update({'createdByAdmin': !isAdminEvent}),
+                        onPressed: () {
+                          final newAdminVal = !isAdminEvent;
+                          FirebaseFirestore.instance
+                              .collection('events')
+                              .doc(eventDoc.id)
+                              .update({
+                            'createdByAdmin': newAdminVal,
+                            if (newAdminVal) 'status': 'approved',
+                          });
+                        },
                       ),
                       IconButton(
                         tooltip: 'Delete Event',

@@ -11,6 +11,7 @@ import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
 import '../services/event_service.dart';
+import '../services/face_detection_service.dart';
 import '../models/user_profile.dart';
 import '../utils/image_helper.dart';
 import 'google_location_dropdown.dart';
@@ -733,7 +734,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 stream: EventService().streamEventsByUser(profile.uid),
                 builder: (context, hostedSnapshot) {
                   final count = hostedSnapshot.hasData
-                      ? hostedSnapshot.data!.docs.length
+                      ? hostedSnapshot.data!.docs.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>?;
+                          if (data == null) return false;
+                          final isMe = profile.uid == FirebaseAuth.instance.currentUser?.uid;
+                          if (isMe) return true;
+                          return data['status'] == 'approved';
+                        }).length
                       : profile.eventsHostedCount;
                   return _buildStatItem(
                     Icons.star_border_rounded,
@@ -2678,6 +2685,37 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         setState(() => _isCoverLoading = true);
       }
       bytes = await pickedFile.readAsBytes();
+      if (isProfile) {
+        final isValidFace = await FaceDetectionService.isValidProfilePicture(bytes);
+        if (!isValidFace) {
+          setState(() => _isProfileLoading = false);
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
+                    SizedBox(width: 10),
+                    Text('Invalid Profile Photo'),
+                  ],
+                ),
+                content: const Text(
+                  'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
+                  style: TextStyle(fontFamily: 'PlusJakartaSans'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK', style: TextStyle(color: Color(0xFF7A432D))),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      }
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('profile_images')

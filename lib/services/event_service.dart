@@ -63,6 +63,7 @@ class EventService {
         'organiserId': uid,
         'attendees': <String>[],
         'attendeeCount': 0,
+        'status': createdByAdmin ? 'approved' : 'pending',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
