@@ -680,6 +680,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
           },
         );
         break;
+      case AppScreen.requests:
+        activeWidget = HubScreen();
+        break;
     }
 
     return KeyedSubtree(

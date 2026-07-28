@@ -1,12 +1,10 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/linkedin_oauth_config.dart';
-import '../services/linkedin_mobile_auth.dart';
 import 'linkedin_webview.dart';
 import '../utils/image_helper.dart';
 import '../state_manager.dart';
@@ -16,6 +14,7 @@ import '../utils/app_logo.dart';
 import '../services/location_service.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
+import '../widgets/searchable_multi_select.dart';
 
 
 enum OnboardingView {
@@ -115,18 +114,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String _currentLocationState = '';
   String _currentLocationCity = '';
 
-  final List<String> _industries = [
-    'Technology',
-    'Finance',
-    'Healthcare',
-    'Education',
-    'Consulting',
-    'Real Estate',
-    'Automotive',
-    'Entertainment',
-    'Other',
-  ];
-
   final List<String> _travelFrequencies = [
     'Rarely',
     'Occasional',
@@ -134,38 +121,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Never',
   ];
 
-  final List<String> _expertiseOptions = [
-    'React',
-    'Flutter',
-    'Spring Boot',
-    'AI/ML',
-    'Data Science',
-    'Stock Market',
-    'Investing',
-    'Leadership',
-    'Product Strategy',
-    'UI/UX',
-    'Marketing',
-    'Sales',
-    'Public Speaking',
-    'Other',
-  ];
-
-  final List<String> _interestOptions = [
-    'Stock Market',
-    'Artificial Intelligence',
-    'Startups',
-    'Investing',
-    'Public Speaking',
-    'Fitness',
-    'Personal Finance',
-    'Entrepreneurship',
-    'Design',
-    'Content Creation',
-    'Other',
-  ];
-
   List<String> _selectedExpertise = [];
+  List<String> _selectedIndustries = [];
   List<String> _selectedInterests = [];
   final Map<String, String> _expertiseLevels = {};
   final Map<String, String> _interestsPriorities = {};
@@ -281,6 +238,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
         if (profile.industry != null && profile.industry!.isNotEmpty) {
           _selectedIndustry = profile.industry;
+          _selectedIndustries = profile.industry!
+              .split(', ')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
         }
         if (profile.travelFrequency != null &&
             profile.travelFrequency!.isNotEmpty) {
@@ -352,36 +314,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _handleLinkedInSignIn() async {
-    if (!kIsWeb) {
-      setState(() => _isLoading = true);
-      try {
-        final result = await startLinkedInMobileOAuth();
-        if (result == null) return;
-
-        final credential = await AuthService().signInWithLinkedIn(
-          result.code,
-          redirectUri: result.redirectUri,
-          codeVerifier: result.codeVerifier,
-        );
-        final user = credential?.user ?? FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          await AppStateManager().syncSignedInUser(user);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('LinkedIn login failed: $e'),
-              backgroundColor: const Color(0xFF7A432D),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
-      return;
-    }
-
     final String redirectUri = LinkedInOAuthConfig.redirectUri;
     final String authUrl = LinkedInOAuthConfig.authorizationUrl(
       redirectUri: redirectUri,
@@ -393,6 +325,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     debugPrint('Full authorizationUrl: $authUrl');
     debugPrint('---------------------------------');
 
+    if (!mounted) return;
     final String? authCode = await showLinkedInWebView(context, authUrl);
 
     if (authCode == null) {
@@ -418,10 +351,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
-      await AuthService().signInWithLinkedIn(
+      final credential = await AuthService().signInWithLinkedIn(
         authCode,
         redirectUri: redirectUri,
       );
+      final user = credential?.user ?? FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await AppStateManager().syncSignedInUser(user);
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1606,31 +1543,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             hintText: 'e.g. Lead Software Engineer',
             isRequired: true,
           ),
+          SearchableMultiSelectField(
+            label: 'Industry / Sectors',
+            placeholder: 'Select industry (searchable)',
+            options: kIndustryOptions,
+            selectedValues: _selectedIndustries,
+            isRequired: true,
+            onChanged: (newList) {
+              setState(() {
+                _selectedIndustries = newList;
+                _selectedIndustry = newList.isNotEmpty ? newList.join(', ') : null;
+              });
+            },
+          ),
           const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _buildDropdownField(
-                  label: 'Industry',
-                  currentValue: _selectedIndustry,
-                  items: _industries,
-                  hintText: 'Select industry',
-                  isRequired: true,
-                  onChanged: (val) => setState(() => _selectedIndustry = val),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildTextField(
-                  controller: _experienceController,
-                  labelText: 'Experience (Years)',
-                  hintText: 'e.g. 5',
-                  keyboardType: TextInputType.number,
-                  isRequired: true,
-                ),
-              ),
-            ],
+          _buildTextField(
+            controller: _experienceController,
+            labelText: 'Experience (Years)',
+            hintText: 'e.g. 5',
+            keyboardType: TextInputType.number,
+            isRequired: true,
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -1746,64 +1678,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             isRequired: true,
           ),
           const SizedBox(height: 20),
-          const Text.rich(
-            TextSpan(
-              text: 'Expertise Areas (What can you share?):',
-              style: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3E1F11),
-              ),
-              children: [
-                TextSpan(
-                  text: ' *',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildMultiSelectDropdown(
-            options: _expertiseOptions,
-            selectedList: _selectedExpertise,
-            onListChanged: _onFieldChanged,
-            isExpertise: true,
-            levelsMap: _expertiseLevels,
-            placeholder: 'Select expertise area',
+          SearchableMultiSelectField(
+            label: 'Expertise Areas (What can you share?)',
+            placeholder: 'Select expertise area (searchable)',
+            options: kExpertiseOptions,
+            selectedValues: _selectedExpertise,
+            isRequired: true,
+            onChanged: (newList) {
+              setState(() {
+                _selectedExpertise = newList;
+                _expertiseLevels.removeWhere((key, value) => !newList.contains(key));
+                for (final item in newList) {
+                  _expertiseLevels.putIfAbsent(item, () => 'Intermediate');
+                }
+              });
+              _onFieldChanged();
+            },
           ),
           const SizedBox(height: 20),
-          const Text.rich(
-            TextSpan(
-              text: 'Interests (What are you looking for / want to learn?):',
-              style: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3E1F11),
-              ),
-              children: [
-                TextSpan(
-                  text: ' *',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildMultiSelectDropdown(
-            options: _interestOptions,
-            selectedList: _selectedInterests,
-            onListChanged: _onFieldChanged,
-            isExpertise: false,
+          SearchableMultiSelectField(
+            label: 'Interests (What are you looking for / want to learn?)',
+            placeholder: 'Select interests (searchable)',
+            options: kInterestOptions,
+            selectedValues: _selectedInterests,
+            isRequired: true,
             prioritiesMap: _interestsPriorities,
-            placeholder: 'Select interest area',
+            onChanged: (newList) {
+              setState(() {
+                _selectedInterests = newList;
+              });
+              _onFieldChanged();
+            },
           ),
           const SizedBox(height: 32),
           SizedBox(
@@ -2429,26 +2334,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildMultiSelectDropdown({
-    required List<String> options,
-    required List<String> selectedList,
-    required VoidCallback onListChanged,
-    bool isExpertise = false,
-    Map<String, String>? levelsMap,
-    Map<String, String>? prioritiesMap,
-    required String placeholder,
-  }) {
-    return _MultiSelectDropdownWidget(
-      options: options,
-      selectedList: selectedList,
-      onListChanged: onListChanged,
-      isExpertise: isExpertise,
-      levelsMap: levelsMap,
-      prioritiesMap: prioritiesMap,
-      placeholder: placeholder,
     );
   }
 
@@ -3350,223 +3235,5 @@ String getCountryForPicker(String? countryName) {
     'Zimbabwe': 'ðŸ‡¿ðŸ‡¼   Zimbabwe',
   };
   return countryToEmoji[countryName] ?? countryName;
-}
-
-class _MultiSelectDropdownWidget extends StatefulWidget {
-  final List<String> options;
-  final List<String> selectedList;
-  final VoidCallback onListChanged;
-  final bool isExpertise;
-  final Map<String, String>? levelsMap;
-  final Map<String, String>? prioritiesMap;
-  final String placeholder;
-
-  const _MultiSelectDropdownWidget({
-    required this.options,
-    required this.selectedList,
-    required this.onListChanged,
-    this.isExpertise = false,
-    this.levelsMap,
-    this.prioritiesMap,
-    required this.placeholder,
-  });
-
-  @override
-  State<_MultiSelectDropdownWidget> createState() => _MultiSelectDropdownWidgetState();
-}
-
-class _MultiSelectDropdownWidgetState extends State<_MultiSelectDropdownWidget> {
-  bool _showCustomInput = false;
-  final TextEditingController _customController = TextEditingController();
-
-  @override
-  void dispose() {
-    _customController.dispose();
-    super.dispose();
-  }
-
-  void _addCustomItem(String text) {
-    final trimmed = text.trim();
-    if (trimmed.isNotEmpty && !widget.selectedList.contains(trimmed)) {
-      setState(() {
-        widget.selectedList.add(trimmed);
-        if (widget.isExpertise && widget.levelsMap != null) {
-          widget.levelsMap![trimmed] = 'Intermediate';
-        } else if (!widget.isExpertise && widget.prioritiesMap != null) {
-          widget.prioritiesMap![trimmed] = 'Medium';
-        }
-        _showCustomInput = false;
-        _customController.clear();
-      });
-      widget.onListChanged();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final availableOptions = widget.options
-        .where((opt) => opt == 'Other' || opt == 'Others' || !widget.selectedList.contains(opt))
-        .toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE8E2DD)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: null,
-              hint: Text(
-                widget.placeholder,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 13,
-                  color: Color(0xFF8C736B),
-                ),
-              ),
-              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
-              dropdownColor: Colors.white,
-              items: availableOptions.map((String opt) {
-                final isOther = (opt == 'Other' || opt == 'Others');
-                return DropdownMenuItem<String>(
-                  value: opt,
-                  child: Text(
-                    opt,
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 13,
-                      fontWeight: isOther ? FontWeight.bold : FontWeight.normal,
-                      color: isOther ? const Color(0xFF7A432D) : const Color(0xFF3E1F11),
-                    ),
-                  ),
-                );
-              }).toList(),
-              onChanged: (String? val) {
-                if (val != null) {
-                  if (val == 'Other' || val == 'Others') {
-                    setState(() {
-                      _showCustomInput = true;
-                    });
-                  } else {
-                    setState(() {
-                      widget.selectedList.add(val);
-                      if (widget.isExpertise && widget.levelsMap != null) {
-                        widget.levelsMap![val] = 'Intermediate';
-                      } else if (!widget.isExpertise && widget.prioritiesMap != null) {
-                        widget.prioritiesMap![val] = 'Medium';
-                      }
-                    });
-                    widget.onListChanged();
-                  }
-                }
-              },
-            ),
-          ),
-        ),
-        if (_showCustomInput) ...[
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _customController,
-                  autofocus: true,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 13,
-                    color: Color(0xFF3E1F11),
-                  ),
-                  decoration: InputDecoration(
-                    hintText: widget.isExpertise ? 'Enter custom expertise...' : 'Enter custom interest...',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    filled: true,
-                    fillColor: Colors.white,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-                    ),
-                  ),
-                  onSubmitted: _addCustomItem,
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7A432D),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-                onPressed: () => _addCustomItem(_customController.text),
-                child: const Text(
-                  'Add',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Color(0xFF8C736B), size: 20),
-                onPressed: () {
-                  setState(() {
-                    _showCustomInput = false;
-                    _customController.clear();
-                  });
-                },
-              ),
-            ],
-          ),
-        ],
-        if (widget.selectedList.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.selectedList.map((opt) {
-              return Chip(
-                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                label: Text(
-                  opt,
-                  style: const TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 12,
-                    color: Color(0xFF7A432D),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
-                onDeleted: () {
-                  setState(() {
-                    widget.selectedList.remove(opt);
-                    if (widget.isExpertise && widget.levelsMap != null) {
-                      widget.levelsMap!.remove(opt);
-                    } else if (!widget.isExpertise && widget.prioritiesMap != null) {
-                      widget.prioritiesMap!.remove(opt);
-                    }
-                  });
-                  widget.onListChanged();
-                },
-                side: BorderSide.none,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              );
-            }).toList(),
-          ),
-        ],
-      ],
-    );
-  }
 }
 

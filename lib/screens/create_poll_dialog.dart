@@ -180,7 +180,10 @@ class _CreatePollDialogState extends State<CreatePollDialog> with SingleTickerPr
 
       for (final slot in _slots) {
         final dateStr = "${slot.date!.year}-${slot.date!.month.toString().padLeft(2, '0')}-${slot.date!.day.toString().padLeft(2, '0')}";
-        final timeStr = "${slot.time!.hour.toString().padLeft(2, '0')}:${slot.time!.minute.toString().padLeft(2, '0')}";
+        final h = slot.time!.hourOfPeriod == 0 ? 12 : slot.time!.hourOfPeriod;
+        final p = slot.time!.period == DayPeriod.am ? 'AM' : 'PM';
+        final m = slot.time!.minute.toString().padLeft(2, '0');
+        final timeStr = "$h:$m $p";
 
         options.add(PollOption(
           optionId: const Uuid().v4(),

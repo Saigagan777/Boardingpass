@@ -315,7 +315,7 @@ class UserService {
 
       // 1. Exchange authorization code for access token
       final String tokenUri = kIsWeb
-          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
+          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
           : 'https://www.linkedin.com/oauth/v2/accessToken';
 
       final tokenResponse = await http
@@ -341,7 +341,7 @@ class UserService {
 
       // 2. Fetch real user info from LinkedIn OpenID Connect endpoint
       final String userInfoUri = kIsWeb
-          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
+          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
           : 'https://api.linkedin.com/v2/userinfo';
 
       final userInfoResponse = await http
@@ -387,15 +387,5 @@ class UserService {
     } catch (e) {
       throw Exception('Failed to sync LinkedIn profile: $e');
     }
-  }
-
-  /// Legacy compatibility wrapper — redirects to the profile screen
-  /// to trigger the real OAuth flow.
-  @Deprecated('Use syncLinkedInProfile with a real auth code instead')
-  Future<void> enrichUserProfileWithLinkedIn(String userId) async {
-    throw UnimplementedError(
-      'Mock LinkedIn enrichment has been removed. '
-      'Use syncLinkedInProfile() with a real LinkedIn authorization code.',
-    );
   }
 }

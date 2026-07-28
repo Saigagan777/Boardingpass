@@ -1,5 +1,24 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+
+String wrapCorsUrl(String url) {
+  if (url.isEmpty) return url;
+
+  // Clean out any legacy corsproxy.io or other broken proxy prefixes stored in DB or memory
+  String cleanUrl = url;
+  if (cleanUrl.contains('corsproxy.io/?url=')) {
+    final parts = cleanUrl.split('corsproxy.io/?url=');
+    if (parts.length > 1) {
+      cleanUrl = Uri.decodeComponent(parts.last);
+    }
+  }
+
+  if (kIsWeb && cleanUrl.contains('firebasestorage.googleapis.com')) {
+    return 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(cleanUrl)}';
+  }
+  return cleanUrl;
+}
 
 Widget buildProfileImage(
   String url, {
@@ -28,7 +47,7 @@ Widget buildProfileImage(
 
   if (url.isNotEmpty) {
     return Image(
-      image: NetworkImage(url),
+      image: NetworkImage(wrapCorsUrl(url)),
       width: width,
       height: height,
       fit: fit,

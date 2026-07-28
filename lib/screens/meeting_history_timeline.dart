@@ -193,6 +193,9 @@ class MeetingHistoryTimeline extends StatelessWidget {
   }
 
   String _formatDate(DateTime dt) {
-    return '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final m = dt.minute.toString().padLeft(2, '0');
+    final p = dt.hour >= 12 ? 'PM' : 'AM';
+    return '${dt.day}/${dt.month} $h:$m $p';
   }
 }

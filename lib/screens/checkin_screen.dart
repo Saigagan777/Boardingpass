@@ -178,10 +178,13 @@ class _OldCheckinScreenState {
   void initState() {
     final now = DateTime.now();
     _checkinDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    _checkinTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+    final h = now.hour == 0 ? 12 : (now.hour > 12 ? now.hour - 12 : now.hour);
+    final m = now.minute.toString().padLeft(2, '0');
+    final p = now.hour >= 12 ? 'PM' : 'AM';
+    _checkinTime = "$h:$m $p";
     final tomorrow = now.add(const Duration(days: 1));
     _checkoutDate = "${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}";
-    _checkoutTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+    _checkoutTime = "$h:$m $p";
   }
 
   void dispose() {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../utils/google_search_helper.dart';
+import '../utils/image_helper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../state_manager.dart';
@@ -47,7 +48,7 @@ class _EventsScreenState extends State<EventsScreen> {
       }
     }
     return CachedNetworkImage(
-      imageUrl: url,
+      imageUrl: wrapCorsUrl(url),
       width: width,
       height: height,
       fit: fit,
@@ -589,6 +590,7 @@ class _EventsScreenState extends State<EventsScreen> {
                           }
                         },
                       ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -599,7 +601,9 @@ class _EventsScreenState extends State<EventsScreen> {
                   child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C736B))),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7A432D),
+                  ),
                   onPressed: isUploadingImage
                       ? null
                       : () async {
@@ -2459,4 +2463,5 @@ class _EventsScreenState extends State<EventsScreen> {
       ),
     );
   }
+
 }

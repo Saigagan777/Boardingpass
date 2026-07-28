@@ -10,7 +10,7 @@ class LinkedInOAuthConfig {
   // when the user switches to the LinkedIn app.
   static const String mobileRedirectUri = 'https://www.google.com';
   static const String nativeAuthorizationEndpoint =
-      'https://www.linkedin.com/oauth/native-pkce/authorization';
+      'https://www.linkedin.com/oauth/v2/authorization';
 
   static String get redirectUri {
     if (!kIsWeb) {
@@ -48,7 +48,6 @@ class LinkedInOAuthConfig {
         'scope': 'openid profile email',
         'code_challenge': codeChallenge,
         'code_challenge_method': 'S256',
-        'enable_extended_login': 'true',
       },
     );
   }

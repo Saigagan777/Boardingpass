@@ -119,18 +119,32 @@ class EventRegistrantsScreen extends StatelessWidget {
                 label: 'Ticket ID',
                 value: reg.ticketId,
               ),
-              _DetailRow(
-                icon: Icons.schedule,
-                label: 'Registered',
-                value:
-                    '${reg.registeredAt.day}/${reg.registeredAt.month}/${reg.registeredAt.year} ${reg.registeredAt.hour.toString().padLeft(2, '0')}:${reg.registeredAt.minute.toString().padLeft(2, '0')}',
+              Builder(
+                builder: (context) {
+                  final r = reg.registeredAt;
+                  final rh = r.hour == 0 ? 12 : (r.hour > 12 ? r.hour - 12 : r.hour);
+                  final rm = r.minute.toString().padLeft(2, '0');
+                  final rp = r.hour >= 12 ? 'PM' : 'AM';
+                  return _DetailRow(
+                    icon: Icons.schedule,
+                    label: 'Registered',
+                    value: '${r.day}/${r.month}/${r.year} $rh:$rm $rp',
+                  );
+                },
               ),
               if (reg.checkedInAt != null)
-                _DetailRow(
-                  icon: Icons.verified_outlined,
-                  label: 'Checked in',
-                  value:
-                      '${reg.checkedInAt!.day}/${reg.checkedInAt!.month}/${reg.checkedInAt!.year} ${reg.checkedInAt!.hour.toString().padLeft(2, '0')}:${reg.checkedInAt!.minute.toString().padLeft(2, '0')}',
+                Builder(
+                  builder: (context) {
+                    final c = reg.checkedInAt!;
+                    final ch = c.hour == 0 ? 12 : (c.hour > 12 ? c.hour - 12 : c.hour);
+                    final cm = c.minute.toString().padLeft(2, '0');
+                    final cp = c.hour >= 12 ? 'PM' : 'AM';
+                    return _DetailRow(
+                      icon: Icons.verified_outlined,
+                      label: 'Checked in',
+                      value: '${c.day}/${c.month}/${c.year} $ch:$cm $cp',
+                    );
+                  },
                 ),
               if (reg.userId.isNotEmpty) ...[
                 const SizedBox(height: 16),

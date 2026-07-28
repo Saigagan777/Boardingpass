@@ -3376,7 +3376,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                               const SizedBox(height: 8),
                               const Text(
-                                'Go to the Discover tab to connect with people nearby.',
+                                'Go to the Discovery tab to connect with people nearby.',
                                 style: TextStyle(
                                   fontFamily: 'PlusJakartaSans',
                                   fontSize: 13,
@@ -3395,7 +3395,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   _state.currentScreen = AppScreen.discover;
                                 },
                                 child: const Text(
-                                  'Discover Connections',
+                                  'Discovery Connections',
                                   style: TextStyle(
                                     fontFamily: 'PlusJakartaSans',
                                     color: Colors.white,
@@ -3447,9 +3447,11 @@ class _ChatScreenState extends State<ChatScreen> {
                             String lastTime = 'now';
                             final ts = lastMsgInfo?['timestamp'] as Timestamp?;
                             if (ts != null) {
-                              final dt = ts.toDate();
-                              lastTime =
-                                  '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                                final dt = ts.toDate();
+                                final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+                                final m = dt.minute.toString().padLeft(2, '0');
+                                final p = dt.hour >= 12 ? 'PM' : 'AM';
+                                lastTime = '$h:$m $p';
                             }
 
                             final unreadMap =
@@ -3673,8 +3675,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                   lastMsgInfo?['timestamp'] as Timestamp?;
                               if (ts != null) {
                                 final dt = ts.toDate();
-                                lastTime =
-                                    '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                                final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+                                final m = dt.minute.toString().padLeft(2, '0');
+                                final p = dt.hour >= 12 ? 'PM' : 'AM';
+                                lastTime = '$h:$m $p';
                               }
 
                               final unreadMap =
@@ -4320,8 +4324,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 final ts = data['createdAt'] as Timestamp?;
                 final dt = ts?.toDate() ?? DateTime.now();
-                final time =
-                    "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+                final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+                final m = dt.minute.toString().padLeft(2, '0');
+                final p = dt.hour >= 12 ? 'PM' : 'AM';
+                final time = "$h:$m $p";
 
                 final typeStr = data['type'] ?? 'text';
                 final kind = MessageKind.values.firstWhere(
@@ -4551,7 +4557,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ? CircleAvatar(
                           radius: 14,
                           backgroundImage: NetworkImage(
-                            _otherUserProfileImage!,
+                            wrapCorsUrl(_otherUserProfileImage!),
                           ),
                         )
                       : CircleAvatar(
@@ -4593,7 +4599,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: CircleAvatar(
                         radius: 14,
                         backgroundImage: img.isNotEmpty
-                            ? NetworkImage(img)
+                            ? NetworkImage(wrapCorsUrl(img))
                             : null,
                         backgroundColor: const Color(0xFFE5A475),
                         child: img.isEmpty
@@ -4995,7 +5001,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
-                  msg.imageUrl ?? '',
+                  wrapCorsUrl(msg.imageUrl ?? ''),
                   width: 200,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
@@ -5295,25 +5301,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 IconButton(
                   tooltip: _isUploadingAttachment
                       ? 'Uploading attachment'
-                      : 'Add photo or document',
+                      : 'Add attachment',
                   icon: Icon(
                     _isUploadingAttachment
                         ? Icons.upload_file_outlined
                         : Icons.add_circle_outline,
-                    color: Color(0xFF8C736B),
+                    color: const Color(0xFF8C736B),
                   ),
                   onPressed: _isUploadingAttachment
                       ? null
                       : _showAttachmentDrawer,
-                ),
-
-                // Voice memo button
-                IconButton(
-                  icon: const Icon(
-                    Icons.mic_none_outlined,
-                    color: Color(0xFF8C736B),
-                  ),
-                  onPressed: _startRecording,
                 ),
 
                 // Meeting request button
@@ -5607,6 +5604,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       onTap: () async {
                         Navigator.pop(context);
                         await _pickAndSendDocument();
+                      },
+                    ),
+                    _buildDrawerItem(
+                      icon: Icons.mic_none_outlined,
+                      label: 'Voice Note',
+                      color: const Color(0xFFC86D51),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _startRecording();
                       },
                     ),
                     _buildDrawerItem(
@@ -6092,7 +6098,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     backgroundImage:
                                         user.profileImageUrl != null &&
                                             user.profileImageUrl!.isNotEmpty
-                                        ? NetworkImage(user.profileImageUrl!)
+                                        ? NetworkImage(wrapCorsUrl(user.profileImageUrl!))
                                         : null,
                                     backgroundColor: const Color(0xFFE5A475),
                                     child:
@@ -6275,7 +6281,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           backgroundImage:
                               u.profileImageUrl != null &&
                                   u.profileImageUrl!.isNotEmpty
-                              ? NetworkImage(u.profileImageUrl!)
+                              ? NetworkImage(wrapCorsUrl(u.profileImageUrl!))
                               : null,
                           backgroundColor: const Color(0xFFE5A475),
                           child:
@@ -6606,7 +6612,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               backgroundImage:
                                   member.profileImageUrl != null &&
                                       member.profileImageUrl!.isNotEmpty
-                                  ? NetworkImage(member.profileImageUrl!)
+                                  ? NetworkImage(wrapCorsUrl(member.profileImageUrl!))
                                   : null,
                               backgroundColor: const Color(0xFFE5A475),
                               child:
@@ -6851,7 +6857,7 @@ class _ChatScreenState extends State<ChatScreen> {
               backgroundImage:
                   user.profileImageUrl != null &&
                       user.profileImageUrl!.isNotEmpty
-                  ? NetworkImage(user.profileImageUrl!)
+                  ? NetworkImage(wrapCorsUrl(user.profileImageUrl!))
                   : null,
               backgroundColor: const Color(0xFFE5A475),
               child:
@@ -7205,7 +7211,7 @@ class _ChatImagePreview extends StatelessWidget {
                   minScale: 1,
                   maxScale: 4,
                   child: Image.network(
-                    imageUrl,
+                    wrapCorsUrl(imageUrl),
                     width: double.infinity,
                     fit: BoxFit.contain,
                     loadingBuilder: (context, child, loadingProgress) {

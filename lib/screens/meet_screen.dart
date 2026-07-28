@@ -66,7 +66,10 @@ class _MeetScreenState extends State<MeetScreen> {
     });
     final now = DateTime.now();
     _meetingDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    _meetingTime = "${(now.hour + 1).toString().padLeft(2, '0')}:00";
+    final nextHour = now.add(const Duration(hours: 1));
+    final h12 = nextHour.hour == 0 ? 12 : (nextHour.hour > 12 ? nextHour.hour - 12 : nextHour.hour);
+    final period = nextHour.hour >= 12 ? 'PM' : 'AM';
+    _meetingTime = "$h12:00 $period";
     _fetchConnections();
   }
 
@@ -346,7 +349,10 @@ class _MeetScreenState extends State<MeetScreen> {
     );
     if (picked != null) {
       setState(() {
-        _meetingTime = "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}";
+        final h = picked.hourOfPeriod == 0 ? 12 : picked.hourOfPeriod;
+        final p = picked.period == DayPeriod.am ? 'AM' : 'PM';
+        final m = picked.minute.toString().padLeft(2, '0');
+        _meetingTime = "$h:$m $p";
       });
       _checkConflicts();
     }
@@ -801,7 +807,10 @@ class _MeetScreenState extends State<MeetScreen> {
     
     String timeStr = 'Not scheduled';
     if (scheduledAt != null) {
-      timeStr = "${scheduledAt.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][scheduledAt.month - 1]} at ${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}";
+      final h = scheduledAt.hour == 0 ? 12 : (scheduledAt.hour > 12 ? scheduledAt.hour - 12 : scheduledAt.hour);
+      final p = scheduledAt.hour >= 12 ? 'PM' : 'AM';
+      final m = scheduledAt.minute.toString().padLeft(2, '0');
+      timeStr = "${scheduledAt.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][scheduledAt.month - 1]} at $h:$m $p";
     }
 
     final isExpanded = _expandedMeetingIds.contains(meetingId);
@@ -1075,7 +1084,7 @@ class _MeetScreenState extends State<MeetScreen> {
                               final pNote = proposal['note'] as String? ?? '';
                               final pId = proposal['proposalId'] as String? ?? '';
                               final pTimeStr = pTime != null
-                                  ? '${pTime.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][pTime.month - 1]} at ${pTime.hour.toString().padLeft(2, '0')}:${pTime.minute.toString().padLeft(2, '0')}'
+                                  ? '${pTime.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][pTime.month - 1]} at ${pTime.hour == 0 ? 12 : (pTime.hour > 12 ? pTime.hour - 12 : pTime.hour)}:${pTime.minute.toString().padLeft(2, '0')} ${pTime.hour >= 12 ? 'PM' : 'AM'}'
                                   : 'Unknown';
 
                               return Container(
@@ -1248,9 +1257,17 @@ class _MeetScreenState extends State<MeetScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                'Proposed: ${proposedTime!.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][proposedTime.month - 1]} at ${proposedTime.hour.toString().padLeft(2, '0')}:${proposedTime.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                              Builder(
+                                builder: (context) {
+                                  final pt = proposedTime;
+                                  final ptHour = pt!.hour == 0 ? 12 : (pt.hour > 12 ? pt.hour - 12 : pt.hour);
+                                  final ptMin = pt.minute.toString().padLeft(2, '0');
+                                  final ptPeriod = pt.hour >= 12 ? 'PM' : 'AM';
+                                  return Text(
+                                    'Proposed: ${pt.day} ${const ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][pt.month - 1]} at $ptHour:$ptMin $ptPeriod',
+                                    style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+                                  );
+                                },
                               ),
                               if (proposalNote.isNotEmpty)
                                 Padding(
@@ -1767,7 +1784,7 @@ class _MeetScreenState extends State<MeetScreen> {
                 _state.currentScreen = AppScreen.hub;
               },
               child: const Text(
-                'Go to Discover',
+                'Go to Discovery',
                 style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontWeight: FontWeight.bold,

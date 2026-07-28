@@ -12,6 +12,7 @@ import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
 import '../utils/match_calculator.dart';
 import 'candidate_profile_sheet.dart';
+import '../widgets/searchable_multi_select.dart';
 
 enum _SwipeAction { reject, like, favorite }
 
@@ -39,46 +40,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
 
-  final List<String> _industryOptions = [
-    'Technology',
-    'Finance',
-    'Healthcare',
-    'Education',
-    'Consulting',
-    'Real Estate',
-    'Automotive',
-    'Entertainment',
-    'Other',
-  ];
+  final List<String> _industryOptions = kIndustryOptions;
 
-  final List<String> _interestOptions = [
-    'Stock Market',
-    'Artificial Intelligence',
-    'Startups',
-    'Investing',
-    'Public Speaking',
-    'Fitness',
-    'Personal Finance',
-    'Entrepreneurship',
-    'Design',
-    'Content Creation',
-  ];
+  final List<String> _interestOptions = kInterestOptions;
 
-  final List<String> _expertiseOptions = [
-    'React',
-    'Flutter',
-    'Spring Boot',
-    'AI/ML',
-    'Data Science',
-    'Stock Market',
-    'Investing',
-    'Leadership',
-    'Product Strategy',
-    'UI/UX',
-    'Marketing',
-    'Sales',
-    'Public Speaking',
-  ];
+  final List<String> _expertiseOptions = kExpertiseOptions;
 
   // Swiping state variables
   double _dragDx = 0.0;
@@ -487,7 +453,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 radius: 22,
                 backgroundColor: const Color(0xFFE8E2DD),
                 backgroundImage: imageUrl.isNotEmpty
-                    ? NetworkImage(imageUrl)
+                    ? NetworkImage(wrapCorsUrl(imageUrl))
                     : null,
                 child: imageUrl.isEmpty
                     ? Text(
@@ -1213,12 +1179,170 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     );
   }
 
-  Widget _buildLocationFilterDropdown({
-    required String label,
-    required List<String> locations,
+  Future<String?> _showSearchableFilterPicker({
+    required BuildContext context,
+    required String title,
+    required List<String> options,
     required String? selectedValue,
+  }) async {
+    return showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        String searchQuery = '';
+        return StatefulBuilder(
+          builder: (ctx, setPickerState) {
+            final filteredOptions = options.where((opt) {
+              if (searchQuery.isEmpty) return true;
+              return opt.toLowerCase().contains(searchQuery.toLowerCase());
+            }).toList();
+
+            return Container(
+              height: MediaQuery.of(ctx).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8E2DD),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Select $title',
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        if (selectedValue != null)
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, null),
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFB06F4D),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Search Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      onChanged: (val) {
+                        setPickerState(() => searchQuery = val);
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Search $title...',
+                        hintStyle: const TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 13,
+                          color: Color(0xFF8C736B),
+                        ),
+                        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF8C736B)),
+                        suffixIcon: searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 18),
+                                onPressed: () => setPickerState(() => searchQuery = ''),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: filteredOptions.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No matching options found',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                color: Color(0xFF8C736B),
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            itemCount: filteredOptions.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF0EBE6)),
+                            itemBuilder: (ctx, index) {
+                              final opt = filteredOptions[index];
+                              final isSelected = opt == selectedValue;
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                title: Text(
+                                  opt,
+                                  style: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 14,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    color: isSelected ? const Color(0xFF7A432D) : const Color(0xFF3E1F11),
+                                  ),
+                                ),
+                                trailing: isSelected
+                                    ? const Icon(Icons.check_circle_rounded, color: Color(0xFF7A432D))
+                                    : null,
+                                onTap: () => Navigator.pop(ctx, opt),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchableFilterTile({
+    required BuildContext context,
+    required StateSetter setModalState,
+    required String label,
+    required String placeholder,
+    required String? selectedValue,
+    required List<String> options,
     required ValueChanged<String?> onChanged,
   }) {
+    final hasValue = selectedValue != null && selectedValue.isNotEmpty;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1232,62 +1356,60 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           ),
         ),
         const SizedBox(height: 8),
-        InputDecorator(
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 4,
-            ),
-            border: OutlineInputBorder(
+        InkWell(
+          onTap: () async {
+            final picked = await _showSearchableFilterPicker(
+              context: context,
+              title: label,
+              options: options,
+              selectedValue: selectedValue,
+            );
+            if (picked != selectedValue) {
+              onChanged(picked);
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFF7A432D),
-                width: 1.5,
+              border: Border.all(
+                color: hasValue ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
+                width: hasValue ? 1.5 : 1.0,
               ),
             ),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: selectedValue,
-              hint: const Text(
-                'Select location',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 14,
-                  color: Color(0xFF8C736B),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  size: 18,
+                  color: hasValue ? const Color(0xFF7A432D) : const Color(0xFF8C736B),
                 ),
-              ),
-              isExpanded: true,
-              isDense: true,
-              dropdownColor: Colors.white,
-              icon: const Icon(
-                Icons.arrow_drop_down,
-                color: Color(0xFF7A432D),
-              ),
-              style: const TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 14,
-                color: Color(0xFF3E1F11),
-              ),
-              items: locations
-                  .map(
-                    (location) => DropdownMenuItem<String?>(
-                      value: location,
-                      child: Text(location),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    hasValue ? selectedValue : placeholder,
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 14,
+                      fontWeight: hasValue ? FontWeight.bold : FontWeight.normal,
+                      color: hasValue ? const Color(0xFF3E1F11) : const Color(0xFF8C736B),
+                    ),
+                  ),
+                ),
+                if (hasValue)
+                  GestureDetector(
+                    onTap: () => onChanged(null),
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 6),
+                      child: Icon(Icons.close_rounded, size: 18, color: Color(0xFF8C736B)),
                     ),
                   )
-                  .toList(),
-              onChanged: onChanged,
+                else
+                  const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+              ],
             ),
           ),
         ),
@@ -1526,16 +1648,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                           const SizedBox(height: 20),
 
-                          // Industry Dropdown
-                          const Text(
-                            'Industry',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
+                          // Industry Searchable Dropdown
                           Builder(
                             builder: (context) {
                               final candidateIndustries = _state.candidates
@@ -1551,75 +1664,22 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               }.toList()..sort();
                               return Column(
                                 children: [
-                                  InputDecorator(
-                                    decoration: InputDecoration(
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 4,
-                                          ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Color(0xFFE8E2DD),
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Color(0xFFE8E2DD),
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                          color: Color(0xFF7A432D),
-                                          width: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                    child: DropdownButtonHideUnderline(
-                                      child: DropdownButton<String?>(
-                                        value: _selectedIndustry,
-                                        hint: const Text(
-                                          'Select industry',
-                                          style: TextStyle(
-                                            fontFamily: 'PlusJakartaSans',
-                                            fontSize: 14,
-                                            color: Color(0xFF8C736B),
-                                          ),
-                                        ),
-                                        isExpanded: true,
-                                        isDense: true,
-                                        dropdownColor: Colors.white,
-                                        icon: const Icon(
-                                          Icons.arrow_drop_down,
-                                          color: Color(0xFF7A432D),
-                                        ),
-                                        style: const TextStyle(
-                                          fontFamily: 'PlusJakartaSans',
-                                          fontSize: 14,
-                                          color: Color(0xFF3E1F11),
-                                        ),
-                                        items: allIndustries.map((val) {
-                                          return DropdownMenuItem<String?>(
-                                            value: val,
-                                            child: Text(val),
-                                          );
-                                        }).toList(),
-                                        onChanged: (val) {
-                                          setModalState(() {
-                                            _selectedIndustry = val;
-                                            if (val == 'Other') {
-                                              _industryController.clear();
-                                            }
-                                          });
-                                          setState(() {});
-                                        },
-                                      ),
-                                    ),
+                                  _buildSearchableFilterTile(
+                                    context: context,
+                                    setModalState: setModalState,
+                                    label: 'Industry',
+                                    placeholder: 'Select industry',
+                                    selectedValue: _selectedIndustry,
+                                    options: allIndustries,
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        _selectedIndustry = val;
+                                        if (val == 'Other') {
+                                          _industryController.clear();
+                                        }
+                                      });
+                                      setState(() {});
+                                    },
                                   ),
                                   if (_selectedIndustry == 'Other')
                                     Padding(
@@ -1636,25 +1696,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                                 vertical: 12,
                                               ),
                                           border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: Color(0xFFE8E2DD),
-                                            ),
+                                            borderRadius: BorderRadius.circular(12),
+                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
                                           ),
                                           enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            borderSide: const BorderSide(
-                                              color: Color(0xFFE8E2DD),
-                                            ),
+                                            borderRadius: BorderRadius.circular(12),
+                                            borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
                                           ),
                                           focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
+                                            borderRadius: BorderRadius.circular(12),
                                             borderSide: const BorderSide(
                                               color: Color(0xFF7A432D),
                                               width: 1.5,
@@ -1685,17 +1735,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                           const SizedBox(height: 20),
 
-                          // Expertise Dropdown
-                          const Text(
-                            'Expertise',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
+                          // Expertise Searchable Dropdown
                           Builder(
                             builder: (context) {
                               final candidateSkills = _state.candidates
@@ -1710,87 +1750,25 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   (s) => !_expertiseOptions.contains(s),
                                 ),
                               }.toList()..sort();
-                              return InputDecorator(
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 4,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFF7A432D),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String?>(
-                                    value: _selectedFilterExpertise,
-                                    hint: const Text(
-                                      'Select expertise',
-                                      style: TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 14,
-                                        color: Color(0xFF8C736B),
-                                      ),
-                                    ),
-                                    isExpanded: true,
-                                    isDense: true,
-                                    dropdownColor: Colors.white,
-                                    icon: const Icon(
-                                      Icons.arrow_drop_down,
-                                      color: Color(0xFF7A432D),
-                                    ),
-                                    style: const TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 14,
-                                      color: Color(0xFF3E1F11),
-                                    ),
-                                    items: allExpertise.map((val) {
-                                      return DropdownMenuItem<String?>(
-                                        value: val,
-                                        child: Text(val),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) {
-                                      setModalState(() {
-                                        _selectedFilterExpertise = val;
-                                      });
-                                      setState(() {});
-                                    },
-                                  ),
-                                ),
+                              return _buildSearchableFilterTile(
+                                context: context,
+                                setModalState: setModalState,
+                                label: 'Expertise',
+                                placeholder: 'Select expertise',
+                                selectedValue: _selectedFilterExpertise,
+                                options: allExpertise,
+                                onChanged: (val) {
+                                  setModalState(() {
+                                    _selectedFilterExpertise = val;
+                                  });
+                                  setState(() {});
+                                },
                               );
                             },
                           ),
                           const SizedBox(height: 20),
 
-                          // Interest Dropdown
-                          const Text(
-                            'Interest',
-                            style: TextStyle(
-                              fontFamily: 'PlusJakartaSans',
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              color: Color(0xFF3E1F11),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
+                          // Interest Searchable Dropdown
                           Builder(
                             builder: (context) {
                               final candidateInterests = _state.candidates
@@ -1803,115 +1781,66 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   (i) => !_interestOptions.contains(i),
                                 ),
                               }.toList()..sort();
-                              return InputDecorator(
-                                decoration: InputDecoration(
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 4,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFE8E2DD),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFF7A432D),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String?>(
-                                    value: _selectedInterest,
-                                    hint: const Text(
-                                      'Select interest',
-                                      style: TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 14,
-                                        color: Color(0xFF8C736B),
-                                      ),
-                                    ),
-                                    isExpanded: true,
-                                    isDense: true,
-                                    dropdownColor: Colors.white,
-                                    icon: const Icon(
-                                      Icons.arrow_drop_down,
-                                      color: Color(0xFF7A432D),
-                                    ),
-                                    style: const TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 14,
-                                      color: Color(0xFF3E1F11),
-                                    ),
-                                    items: allInterests.map((val) {
-                                      return DropdownMenuItem<String?>(
-                                        value: val,
-                                        child: Text(val),
-                                      );
-                                    }).toList(),
-                                    onChanged: (val) {
-                                      setModalState(() {
-                                        _selectedInterest = val;
-                                      });
-                                      setState(() {});
-                                    },
-                                  ),
-                                ),
+                              return _buildSearchableFilterTile(
+                                context: context,
+                                setModalState: setModalState,
+                                label: 'Interest',
+                                placeholder: 'Select interest',
+                                selectedValue: _selectedInterest,
+                                options: allInterests,
+                                onChanged: (val) {
+                                  setModalState(() {
+                                    _selectedInterest = val;
+                                  });
+                                  setState(() {});
+                                },
                               );
                             },
                           ),
                           const SizedBox(height: 20),
 
+                          // Home Base & Current Location Searchable Dropdowns
                           Builder(
                             builder: (context) {
-                              final homeBaseLocations =
-                                  _state.candidates
-                                      .where((c) => c.homeBase.isNotEmpty)
-                                      .map((c) => c.homeBase)
-                                      .toSet()
-                                      .toList()
-                                    ..sort();
-                              final currentLocationOptions =
-                                  _state.candidates
-                                      .where(
-                                        (c) => c.currentLocationName.isNotEmpty,
-                                      )
-                                      .map((c) => c.currentLocationName)
-                                      .toSet()
-                                      .toList()
-                                    ..sort();
+                              final homeBaseLocations = _state.candidates
+                                  .where((c) => c.homeBase.isNotEmpty)
+                                  .map((c) => c.homeBase)
+                                  .toSet()
+                                  .toList()
+                                ..sort();
+                              final currentLocationOptions = _state.candidates
+                                  .where((c) => c.currentLocationName.isNotEmpty)
+                                  .map((c) => c.currentLocationName)
+                                  .toSet()
+                                  .toList()
+                                ..sort();
                               return Column(
                                 children: [
-                                  _buildLocationFilterDropdown(
+                                  _buildSearchableFilterTile(
+                                    context: context,
+                                    setModalState: setModalState,
                                     label: 'Home Base',
-                                    locations: homeBaseLocations,
+                                    placeholder: 'Select location',
                                     selectedValue: _selectedHomeBase,
-                                    onChanged: (value) {
+                                    options: homeBaseLocations,
+                                    onChanged: (val) {
                                       setModalState(() {
-                                        _selectedHomeBase = value;
+                                        _selectedHomeBase = val;
                                       });
                                       setState(() {});
                                     },
                                   ),
                                   const SizedBox(height: 20),
-                                  _buildLocationFilterDropdown(
+                                  _buildSearchableFilterTile(
+                                    context: context,
+                                    setModalState: setModalState,
                                     label: 'Current Location',
-                                    locations: currentLocationOptions,
+                                    placeholder: 'Select location',
                                     selectedValue: _selectedCurrentLocation,
-                                    onChanged: (value) {
+                                    options: currentLocationOptions,
+                                    onChanged: (val) {
                                       setModalState(() {
-                                        _selectedCurrentLocation = value;
+                                        _selectedCurrentLocation = val;
                                       });
                                       setState(() {});
                                     },
@@ -1999,43 +1928,55 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _searchQuery.clear();
-                  _selectedIndustry = null;
-                  _selectedInterest = null;
-                  _selectedHomeBase = null;
-                  _selectedCurrentLocation = null;
-                  _selectedFilterExpertise = null;
-                });
-              },
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text(
-                'Reset All Filters',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontWeight: FontWeight.bold,
+            if (_hasActiveFilters) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _searchQuery.clear();
+                    _selectedIndustry = null;
+                    _selectedInterest = null;
+                    _selectedHomeBase = null;
+                    _selectedCurrentLocation = null;
+                    _selectedFilterExpertise = null;
+                    _maxDistanceKm = null;
+                  });
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text(
+                  'Reset All Filters',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7A432D),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  bool get _hasActiveFilters =>
+      (_selectedIndustry != null && _selectedIndustry!.isNotEmpty) ||
+      (_selectedInterest != null && _selectedInterest!.isNotEmpty) ||
+      (_selectedHomeBase != null && _selectedHomeBase!.isNotEmpty) ||
+      (_selectedCurrentLocation != null && _selectedCurrentLocation!.isNotEmpty) ||
+      (_selectedFilterExpertise != null && _selectedFilterExpertise!.isNotEmpty) ||
+      _maxDistanceKm != null ||
+      _searchQuery.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -2182,38 +2123,42 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 ),
 
 
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selectedIndustry = null;
-                      _selectedInterest = null;
-                      _selectedHomeBase = null;
-                      _selectedCurrentLocation = null;
-                      _selectedFilterExpertise = null;
-                      _maxDistanceKm = null;
-                      _searchQuery.clear();
-                    });
-                  },
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text(
-                    'Reset All Filters',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontWeight: FontWeight.bold,
+                if (_hasActiveFilters) ...[
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _selectedIndustry = null;
+                        _selectedInterest = null;
+                        _selectedHomeBase = null;
+                        _selectedCurrentLocation = null;
+                        _selectedFilterExpertise = null;
+                        _maxDistanceKm = null;
+                        _searchQuery.clear();
+                      });
+                    },
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text(
+                      'Reset All Filters',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF7A432D),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7A432D),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                ),
+                  const SizedBox(height: 8),
+                ],
 
                 _buildIncomingRequestsPanel(),
 
@@ -3387,7 +3332,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   radius: 24,
                                   backgroundColor: const Color(0xFFFAF0E6),
                                   backgroundImage: imageUrl.isNotEmpty
-                                      ? NetworkImage(imageUrl)
+                                      ? NetworkImage(wrapCorsUrl(imageUrl))
                                       : null,
                                   child: imageUrl.isEmpty
                                       ? Text(

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import '../services/user_service.dart';
 
+import '../utils/image_helper.dart';
+
 /// Displays the real profile photos of the latest event attendees.
 ///
 /// Attendee IDs are appended when someone marks an event as interested. This
@@ -106,7 +108,7 @@ class _ProfileAvatar extends StatelessWidget {
           child: imageUrl.isEmpty
               ? _ProfileInitial(initial: initial)
               : Image.network(
-                  imageUrl,
+                  wrapCorsUrl(imageUrl),
                   fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => _ProfileInitial(initial: initial),
                 ),

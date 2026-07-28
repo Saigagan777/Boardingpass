@@ -16,7 +16,7 @@ import 'models/user_profile.dart'; // Added import for CustomCard
 import 'utils/match_calculator.dart';
 import 'utils/google_search_helper.dart';
 
-enum AppScreen { hub, profile, checkin, events, discover, chat, meeting }
+enum AppScreen { hub, profile, checkin, events, discover, chat, meeting, requests }
 
 enum ConnectionRequestResult { sent, accepted, alreadyPending, failed }
 

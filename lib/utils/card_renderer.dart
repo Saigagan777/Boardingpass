@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/user_profile.dart'; // To get CustomCard
+import 'image_helper.dart';
 
 class PremiumCustomCard extends StatelessWidget {
   final CustomCard card;
@@ -47,7 +48,7 @@ class PremiumCustomCard extends StatelessWidget {
               decoration: BoxDecoration(
                 image: card.imageUrl.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(card.imageUrl),
+                        image: NetworkImage(wrapCorsUrl(card.imageUrl)),
                         fit: BoxFit.cover,
                       )
                     : null,
@@ -109,7 +110,7 @@ class PremiumCustomCard extends StatelessWidget {
               decoration: BoxDecoration(
                 image: card.imageUrl.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(card.imageUrl),
+                        image: NetworkImage(wrapCorsUrl(card.imageUrl)),
                         fit: BoxFit.cover,
                       )
                     : null,
@@ -168,7 +169,7 @@ class PremiumCustomCard extends StatelessWidget {
             Positioned.fill(
               child: card.imageUrl.isNotEmpty
                   ? Image.network(
-                      card.imageUrl,
+                      wrapCorsUrl(card.imageUrl),
                       fit: BoxFit.cover,
                     )
                   : Container(color: const Color(0xFFE8E2DD)),

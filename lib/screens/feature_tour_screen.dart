@@ -20,7 +20,7 @@ class _FeatureTourScreenState extends State<FeatureTourScreen>
 
   static const _stories = [
     _TourStory(
-      eyebrow: 'DISCOVER',
+      eyebrow: 'DISCOVERY',
       title: 'Meet people\nworth knowing.',
       description:
           'Browse tailored professional cards and find people with goals that complement yours.',

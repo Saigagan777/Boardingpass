@@ -80,16 +80,16 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
   // 6 Dial activities
   final List<Map<String, dynamic>> _activities = [
     {
-      'screen': AppScreen.profile,
-      'label': 'Profile',
-      'icon': Icons.business_center_outlined,
-      'hint': 'Who you are',
+      'screen': AppScreen.requests,
+      'label': 'Requests',
+      'icon': Icons.person_add_alt_1_outlined,
+      'hint': 'Connections',
       'color': const Color(0xFFFAF5F0),
       'textColor': const Color(0xFF7A432D),
     },
     {
       'screen': AppScreen.discover,
-      'label': 'Discover',
+      'label': 'Discovery',
       'icon': Icons.explore_outlined,
       'hint': 'Who\'s near',
       'color': const Color(0xFFF1EBF5),
@@ -951,26 +951,37 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                               color: Colors.transparent,
                             ),
                           ),
-                          Container(
-                            width: rCenter * 2,
-                            height: rCenter * 2,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFFAF7F5),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 8 * scale,
-                                  offset: const Offset(0, 3),
-                                )
-                              ],
-                              border: Border.all(
-                                color: const Color(0xFFEDD8C4),
-                                width: 2.0,
+                          GestureDetector(
+                            onTap: () {
+                              if (!_isEditMode) {
+                                final screen = focusedActivity['screen'] as AppScreen;
+                                if (screen == AppScreen.requests) {
+                                  _showRequestsBottomSheet(context);
+                                } else {
+                                  _state.currentScreen = screen;
+                                }
+                              }
+                            },
+                            child: Container(
+                              width: rCenter * 2,
+                              height: rCenter * 2,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFFAF7F5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 8 * scale,
+                                    offset: const Offset(0, 3),
+                                  )
+                                ],
+                                border: Border.all(
+                                  color: const Color(0xFFEDD8C4),
+                                  width: 2.0,
+                                ),
                               ),
-                            ),
-                            alignment: Alignment.center,
-                            child: AnimatedSwitcher(
+                              alignment: Alignment.center,
+                              child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 250),
                               child: _isEditMode
                                   ? GestureDetector(
@@ -1039,6 +1050,7 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                                       ],
                                     ),
                             ),
+                          ),
                           ),
                           ...List.generate(6, (slotIndex) {
                             final activity = _orderedActivities[slotIndex];
@@ -1141,7 +1153,11 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                                   },
                                   onTapUp: (details) {
                                     _state.lastTappedSegmentCenter = details.globalPosition;
-                                    _state.currentScreen = screen;
+                                    if (screen == AppScreen.requests) {
+                                      _showRequestsBottomSheet(context);
+                                    } else {
+                                      _state.currentScreen = screen;
+                                    }
                                   },
                                   child: AnimatedScale(
                                     duration: const Duration(milliseconds: 200),
@@ -1623,13 +1639,29 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
 
   String _formatDateTime(DateTime dt) {
     final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final hourStr = dt.hour.toString().padLeft(2, '0');
+    final h = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
     final minStr = dt.minute.toString().padLeft(2, '0');
-    return "${dt.day} ${months[dt.month - 1]} at $hourStr:$minStr";
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return "${dt.day} ${months[dt.month - 1]} at $h:$minStr $period";
+  }
+
+  void _showRequestsBottomSheet(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _RequestsBottomSheet(currentUid: uid, state: _state),
+    );
   }
 
   Widget _buildSegmentNodeContent(double scale, Color color, Color textColor, IconData icon, String label, {bool isFocused = false}) {
+    final isRequestsNode = (label == 'Requests');
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
     return Stack(
+      clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
         Container(
@@ -1675,6 +1707,42 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
+        if (isRequestsNode && currentUid != null)
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('connection_requests')
+                .where('toUid', isEqualTo: currentUid)
+                .where('status', isEqualTo: 'pending')
+                .snapshots(),
+            builder: (context, snapshot) {
+              final pendingCount = snapshot.data?.docs.length ?? 0;
+              if (pendingCount == 0) return const SizedBox.shrink();
+              return Positioned(
+                top: 0,
+                right: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFC62828),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 2)),
+                    ],
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$pendingCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -1685,6 +1753,767 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
     if (uri != null) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+  }
+}
+
+class _RequestsBottomSheet extends StatefulWidget {
+  final String currentUid;
+  final AppStateManager state;
+
+  const _RequestsBottomSheet({
+    required this.currentUid,
+    required this.state,
+  });
+
+  @override
+  State<_RequestsBottomSheet> createState() => _RequestsBottomSheetState();
+}
+
+class _RequestsBottomSheetState extends State<_RequestsBottomSheet>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('connection_requests')
+          .where('toUid', isEqualTo: widget.currentUid)
+          .snapshots(),
+      builder: (context, incomingSnap) {
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('connection_requests')
+              .where('fromUid', isEqualTo: widget.currentUid)
+              .snapshots(),
+          builder: (context, outgoingSnap) {
+            final incomingDocs = incomingSnap.data?.docs ?? [];
+            final outgoingDocs = outgoingSnap.data?.docs ?? [];
+
+            final pendingIncoming = incomingDocs
+                .where((d) => d.data()['status'] == 'pending')
+                .toList();
+            final acceptedIncoming = incomingDocs
+                .where((d) => d.data()['status'] == 'accepted')
+                .toList();
+            final acceptedOutgoing = outgoingDocs
+                .where((d) => d.data()['status'] == 'accepted')
+                .toList();
+
+            final gotCount = incomingDocs.length;
+            final acceptedCount =
+                acceptedIncoming.length + acceptedOutgoing.length;
+            final pendingCount = pendingIncoming.length;
+
+            return Container(
+              height: screenHeight * 0.88,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAF7F5),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8E2DD),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Connection Requests',
+                              style: TextStyle(
+                                fontFamily: 'PlayfairDisplay',
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF3E1F11),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Manage invites and view connection metrics',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 12,
+                                color: Color(0xFF8C736B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded,
+                              color: Color(0xFF7A432D)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Stats Row ──
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildMetricCard(
+                            label: 'Got',
+                            value: '$gotCount',
+                            subtitle: 'Total Received',
+                            icon: Icons.mark_email_unread_outlined,
+                            bgColors: [const Color(0xFFFFF4EC), const Color(0xFFFFE8D6)],
+                            accentColor: const Color(0xFF7A432D),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildMetricCard(
+                            label: 'Accepted',
+                            value: '$acceptedCount',
+                            subtitle: 'Connected',
+                            icon: Icons.check_circle_outline_rounded,
+                            bgColors: [const Color(0xFFEFF9F2), const Color(0xFFD8F2DF)],
+                            accentColor: const Color(0xFF2E7D32),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildMetricCard(
+                            label: 'Pending',
+                            value: '$pendingCount',
+                            subtitle: 'Needs Action',
+                            icon: Icons.hourglass_top_rounded,
+                            bgColors: [const Color(0xFFFFF0F0), const Color(0xFFFFD6D6)],
+                            accentColor: const Color(0xFFC62828),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Tabs ──
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE8E2DD)),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      labelColor: const Color(0xFF7A432D),
+                      unselectedLabelColor: const Color(0xFF8C736B),
+                      indicatorColor: const Color(0xFF7A432D),
+                      indicatorWeight: 3,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      labelStyle: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      tabs: [
+                        Tab(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text('Pending'),
+                              if (pendingCount > 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFC62828),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$pendingCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Tab(text: 'Accepted ($acceptedCount)'),
+                        Tab(text: 'Sent (${outgoingDocs.length})'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ── Tab Views ──
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildPendingList(pendingIncoming),
+                        _buildAcceptedList(acceptedIncoming, acceptedOutgoing),
+                        _buildSentList(outgoingDocs),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricCard({
+    required String label,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required List<Color> bgColors,
+    required Color accentColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: bgColors,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accentColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                  color: accentColor,
+                ),
+              ),
+              Icon(icon, size: 16, color: accentColor),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontFamily: 'PlayfairDisplay',
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 10,
+              color: accentColor.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingList(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.inbox_outlined, size: 48, color: Color(0xFF8C736B)),
+            SizedBox(height: 12),
+            Text(
+              'No pending connection requests',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'When someone sends you a request, it will show up here live!',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: Color(0xFF8C736B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final doc = docs[index];
+        final data = doc.data();
+        final fromUid = data['fromUid'] as String? ?? '';
+        final reqId = doc.id;
+
+        return FutureBuilder<UserProfile?>(
+          future: UserService().getUserProfile(fromUid),
+          builder: (context, snapshot) {
+            final sender = snapshot.data;
+            final name = sender?.name ?? 'Someone';
+            final role = sender?.role ?? 'Professional';
+            final company = sender?.company ?? '';
+            final imageUrl = sender?.profileImageUrl;
+            final location = sender?.currentLocationName ?? sender?.homeBase ?? '';
+            final industry = sender?.industry ?? '';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE8E2DD)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipOval(
+                    child: buildProfileImage(
+                      imageUrl ?? '',
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      fallback: Container(
+                        width: 48,
+                        height: 48,
+                        color: const Color(0xFFFAF0EB),
+                        alignment: Alignment.center,
+                        child: Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        if (role.isNotEmpty || company.isNotEmpty)
+                          Text(
+                            company.isNotEmpty ? '$role at $company' : role,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              color: Color(0xFF8C736B),
+                            ),
+                          ),
+                        if (industry.isNotEmpty || location.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              if (industry.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    industry,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Color(0xFF7A432D),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              if (location.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF8C736B).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    location,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Color(0xFF8C736B),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF7A432D),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                icon: const Icon(Icons.check, size: 16),
+                                label: const Text('Accept', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                onPressed: () async {
+                                  final res = await widget.state.sendOrAcceptConnection(targetUid: fromUid);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(res == ConnectionRequestResult.accepted ? 'Connection accepted!' : 'Request processed.'),
+                                        backgroundColor: const Color(0xFF7A432D),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF8C736B),
+                                  side: const BorderSide(color: Color(0xFFE8E2DD)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                ),
+                                icon: const Icon(Icons.close, size: 16),
+                                label: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                      .collection('connection_requests')
+                                      .doc(reqId)
+                                      .update({
+                                    'status': 'rejected',
+                                    'updatedAt': FieldValue.serverTimestamp(),
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildAcceptedList(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> incomingAccepted,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> outgoingAccepted) {
+    final allDocs = [...incomingAccepted, ...outgoingAccepted];
+
+    if (allDocs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.people_outline_rounded, size: 48, color: Color(0xFF8C736B)),
+            SizedBox(height: 12),
+            Text(
+              'No accepted connections yet',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      itemCount: allDocs.length,
+      itemBuilder: (context, index) {
+        final data = allDocs[index].data();
+        final otherUid = (data['fromUid'] == widget.currentUid)
+            ? (data['toUid'] as String? ?? '')
+            : (data['fromUid'] as String? ?? '');
+
+        return FutureBuilder<UserProfile?>(
+          future: UserService().getUserProfile(otherUid),
+          builder: (context, snapshot) {
+            final user = snapshot.data;
+            final name = user?.name ?? 'Connected User';
+            final role = user?.role ?? '';
+            final company = user?.company ?? '';
+            final imageUrl = user?.profileImageUrl;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE8E2DD)),
+              ),
+              child: Row(
+                children: [
+                  ClipOval(
+                    child: buildProfileImage(
+                      imageUrl ?? '',
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      fallback: Container(
+                        width: 44,
+                        height: 44,
+                        color: const Color(0xFFFAF0EB),
+                        alignment: Alignment.center,
+                        child: Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        if (role.isNotEmpty || company.isNotEmpty)
+                          Text(
+                            company.isNotEmpty ? '$role at $company' : role,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              color: Color(0xFF8C736B),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF7A432D),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 14),
+                    label: const Text('Chat', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      widget.state.activeChatContact = name;
+                      widget.state.currentScreen = AppScreen.chat;
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSentList(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.send_outlined, size: 48, color: Color(0xFF8C736B)),
+            SizedBox(height: 12),
+            Text(
+              'No outgoing connection requests',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final data = docs[index].data();
+        final toUid = data['toUid'] as String? ?? '';
+        final status = data['status'] as String? ?? 'pending';
+
+        return FutureBuilder<UserProfile?>(
+          future: UserService().getUserProfile(toUid),
+          builder: (context, snapshot) {
+            final user = snapshot.data;
+            final name = user?.name ?? 'User';
+            final role = user?.role ?? '';
+            final imageUrl = user?.profileImageUrl;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE8E2DD)),
+              ),
+              child: Row(
+                children: [
+                  ClipOval(
+                    child: buildProfileImage(
+                      imageUrl ?? '',
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      fallback: Container(
+                        width: 44,
+                        height: 44,
+                        color: const Color(0xFFFAF0EB),
+                        alignment: Alignment.center,
+                        child: Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF7A432D),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontFamily: 'PlayfairDisplay',
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF3E1F11),
+                          ),
+                        ),
+                        if (role.isNotEmpty)
+                          Text(
+                            role,
+                            style: const TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 12,
+                              color: Color(0xFF8C736B),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: status == 'accepted'
+                          ? const Color(0xFF2E7D32).withValues(alpha: 0.1)
+                          : (status == 'rejected'
+                              ? const Color(0xFFC62828).withValues(alpha: 0.1)
+                              : const Color(0xFF7A432D).withValues(alpha: 0.1)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      status.toUpperCase(),
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: status == 'accepted'
+                            ? const Color(0xFF2E7D32)
+                            : (status == 'rejected' ? const Color(0xFFC62828) : const Color(0xFF7A432D)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }
 

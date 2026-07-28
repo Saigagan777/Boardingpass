@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/venue.dart';
 import '../models/enums.dart';
+import '../utils/image_helper.dart';
 import 'map_webview.dart';
 
 class VenueDetailsSheet extends StatelessWidget {
@@ -75,7 +76,7 @@ class VenueDetailsSheet extends StatelessWidget {
                       width: double.infinity,
                       decoration: BoxDecoration(
                         image: DecorationImage(
-                          image: NetworkImage(venue.coverImage),
+                          image: NetworkImage(wrapCorsUrl(venue.coverImage)),
                           fit: BoxFit.cover,
                         ),
                       ),

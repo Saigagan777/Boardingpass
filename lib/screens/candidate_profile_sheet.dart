@@ -284,6 +284,11 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                               Icons.business_outlined,
                               c.org.trim(),
                             ),
+                          if (c.industry.trim().isNotEmpty)
+                            _buildProfilePill(
+                              Icons.domain_outlined,
+                              c.industry.trim(),
+                            ),
                           if (c.loc.trim().isNotEmpty)
                             _buildProfilePill(
                               Icons.location_on_outlined,

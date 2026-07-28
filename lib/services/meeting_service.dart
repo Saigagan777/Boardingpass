@@ -126,7 +126,7 @@ class MeetingService {
   }
 
   String _formatDateTime(DateTime dateTime) {
-    return DateFormat('dd MMM yyyy \'at\' HH:mm').format(dateTime);
+    return DateFormat('dd MMM yyyy \'at\' hh:mm a').format(dateTime);
   }
 
   /// Rules-based helper to generate a realistic agenda based on participants' profiles.

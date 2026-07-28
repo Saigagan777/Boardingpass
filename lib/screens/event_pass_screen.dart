@@ -143,7 +143,7 @@ class _EventPassScreenState extends State<EventPassScreen> {
   Widget build(BuildContext context) {
     final invalid = _reg.isQrInvalid;
     final registeredFmt =
-        DateFormat('d MMM yyyy · HH:mm').format(_reg.registeredAt);
+        DateFormat('d MMM yyyy · hh:mm a').format(_reg.registeredAt);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F0EE),

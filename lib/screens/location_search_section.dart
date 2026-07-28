@@ -67,12 +67,7 @@ class _LocationSearchSectionState extends State<LocationSearchSection> {
     });
   }
 
-  void _onCategorySelected(VenueCategory? cat) {
-    setState(() {
-      _selectedCategory = _selectedCategory == cat ? null : cat;
-    });
-    _onSearchChanged(_searchController.text);
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -210,122 +205,7 @@ class _LocationSearchSectionState extends State<LocationSearchSection> {
           ),
         ),
         ],
-
-        const SizedBox(height: 16),
-
-        // Categories selector scroll
-        SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            children: VenueCategory.values.where((cat) => cat != VenueCategory.custom).map((cat) {
-              final isSelected = _selectedCategory == cat;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(
-                    cat.displayName,
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 11.5,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: isSelected ? Colors.white : const Color(0xFF3E1F11),
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: const Color(0xFF7A432D),
-                  backgroundColor: Colors.white,
-                  checkmarkColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  side: BorderSide(
-                    color: isSelected ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
-                  ),
-                  onSelected: (_) => _onCategorySelected(cat),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-
-        const SizedBox(height: 20),
-
-        // Quick Filters chips
-        Row(
-          children: [
-            _buildFilterChip(
-              icon: Icons.star_border,
-              label: '4.5+ Rating',
-              value: _minRating == 4.5,
-              onTap: () {
-                setState(() => _minRating = _minRating == 4.5 ? 4.0 : 4.5);
-                _onSearchChanged(_searchController.text);
-              },
-            ),
-            const SizedBox(width: 8),
-            _buildFilterChip(
-              icon: Icons.wifi,
-              label: 'WiFi',
-              value: _wifiOnly,
-              onTap: () {
-                setState(() => _wifiOnly = !_wifiOnly);
-                _onSearchChanged(_searchController.text);
-              },
-            ),
-            const SizedBox(width: 8),
-            _buildFilterChip(
-              icon: Icons.local_parking,
-              label: 'Parking',
-              value: _parkingOnly,
-              onTap: () {
-                setState(() => _parkingOnly = !_parkingOnly);
-                _onSearchChanged(_searchController.text);
-              },
-            ),
-          ],
-        ),
       ],
-    );
-  }
-
-  Widget _buildFilterChip({
-    required IconData icon,
-    required String label,
-    required bool value,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: value ? const Color(0xFF7A432D) : Colors.white,
-          border: Border.all(
-            color: value ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD),
-          ),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 14,
-              color: value ? Colors.white : const Color(0xFF8C736B),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 11,
-                fontWeight: value ? FontWeight.bold : FontWeight.w500,
-                color: value ? Colors.white : const Color(0xFF3E1F11),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

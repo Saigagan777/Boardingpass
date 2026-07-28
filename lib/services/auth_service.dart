@@ -223,7 +223,7 @@ class AuthService {
     try {
       // 1. Exchange authorization code for access token
       final String tokenUri = kIsWeb
-          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
+          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
           : 'https://www.linkedin.com/oauth/v2/accessToken';
       final tokenRequestBody = <String, String>{
         'grant_type': 'authorization_code',
@@ -254,7 +254,7 @@ class AuthService {
 
       // 2. Fetch userinfo using OpenID Connect
       final String userInfoUri = kIsWeb
-          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
+          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
           : 'https://api.linkedin.com/v2/userinfo';
       final userInfoResponse = await http
           .get(

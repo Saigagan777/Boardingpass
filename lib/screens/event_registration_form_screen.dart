@@ -30,8 +30,6 @@ class _EventRegistrationFormScreenState
   final _notesCtrl = TextEditingController();
 
   bool _submitting = false;
-  bool _acceptedTerms = false;
-  bool _termsError = false;
   CountryCode _selectedCountry = defaultCountries.first;
 
   @override
@@ -43,6 +41,34 @@ class _EventRegistrationFormScreenState
     _emailCtrl.text = profile?.email ?? user?.email ?? '';
     _companyCtrl.text = profile?.company ?? '';
     _roleCtrl.text = profile?.role ?? '';
+
+    // Auto-fill phone & country code from profile or firebase user
+    String rawPhone = (profile?.phone?.isNotEmpty == true)
+        ? profile!.phone!
+        : (user?.phoneNumber ?? '');
+
+    String countryCodeStr = profile?.phoneCountryCode ?? '';
+
+    if (rawPhone.isNotEmpty) {
+      if (rawPhone.startsWith('+')) {
+        for (final country in defaultCountries) {
+          if (rawPhone.startsWith(country.dialCode)) {
+            _selectedCountry = country;
+            rawPhone = rawPhone.substring(country.dialCode.length).trim();
+            break;
+          }
+        }
+      }
+      _phoneCtrl.text = rawPhone;
+    }
+
+    if (countryCodeStr.isNotEmpty) {
+      final matched = defaultCountries.firstWhere(
+        (c) => c.dialCode == countryCodeStr || c.code.toLowerCase() == countryCodeStr.toLowerCase(),
+        orElse: () => _selectedCountry,
+      );
+      _selectedCountry = matched;
+    }
   }
 
   @override
@@ -83,153 +109,6 @@ class _EventRegistrationFormScreenState
     );
   }
 
-  void _showTermsModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          height: MediaQuery.of(ctx).size.height * 0.75,
-          decoration: const BoxDecoration(
-            color: Color(0xFFFAF7F5),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // Modal Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFE8E2DD))),
-                ),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Event Terms & Conditions',
-                        style: TextStyle(
-                          fontFamily: 'PlayfairDisplay',
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF3E1F11),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Color(0xFF3E1F11)),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-              ),
-              // Modal Content
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: const [
-                    Text(
-                      'Event Rules & Agreement',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF3E1F11),
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      '1. Code of Conduct:\nAttendees must treat all participants, speakers, and staff with dignity and respect. Any harassment or inappropriate behavior will result in immediate expulsion without refund.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '2. Ticket & Pass Policy:\nEvent passes are assigned to the registered individual and are non-transferable unless authorized by the event host prior to check-in.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '3. Media & Photography Notice:\nPhotography and video recording may take place during the event for promotional purposes. Attendance constitutes consent to appear in such media.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '4. Organizer Rights:\nOrganizers reserve the right to modify event agendas, venue details, or cancel the event due to unforeseen circumstances.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '5. Privacy Protection:\nYour registration details are securely stored and shared exclusively with the host for event coordination purposes.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 13,
-                        height: 1.5,
-                        color: Color(0xFF5D4037),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Accept Action Button
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7A432D),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _acceptedTerms = true;
-                        _termsError = false;
-                      });
-                      Navigator.pop(ctx);
-                    },
-                    child: const Text(
-                      'I Understand & Accept Terms',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _submit() async {
     if (widget.event.isExpired) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -241,17 +120,6 @@ class _EventRegistrationFormScreenState
       return;
     }
     if (!_formKey.currentState!.validate()) return;
-    if (!_acceptedTerms) {
-      setState(() => _termsError = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please accept the Terms & Conditions to complete registration.'),
-          backgroundColor: Color(0xFFC62828),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
 
     setState(() => _submitting = true);
 
@@ -429,96 +297,6 @@ class _EventRegistrationFormScreenState
                     hint: 'Dietary needs, accessibility, etc.',
                   ),
                 ),
-                const SizedBox(height: 16),
-                // Mandatory Terms & Conditions Checkbox
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _termsError ? const Color(0xFFFFEBEE) : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _termsError ? const Color(0xFFC62828) : const Color(0xFFE8E2DD),
-                      width: _termsError ? 1.5 : 1.0,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: _acceptedTerms,
-                        activeColor: const Color(0xFF7A432D),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        onChanged: (val) {
-                          setState(() {
-                            _acceptedTerms = val ?? false;
-                            if (_acceptedTerms) _termsError = false;
-                          });
-                        },
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _acceptedTerms = !_acceptedTerms;
-                              if (_acceptedTerms) _termsError = false;
-                            });
-                          },
-                          child: Wrap(
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              const Text(
-                                'I agree to the ',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  color: Color(0xFF3E1F11),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => _showTermsModal(context),
-                                child: const Text(
-                                  'Event Terms & Conditions',
-                                  style: TextStyle(
-                                    fontFamily: 'PlusJakartaSans',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF7A432D),
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ),
-                              const Text(
-                                ' *',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  color: Color(0xFFC62828),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_termsError) ...[
-                  const SizedBox(height: 6),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 12),
-                    child: Text(
-                      'You must accept the Terms & Conditions to complete registration.',
-                      style: TextStyle(
-                        fontFamily: 'PlusJakartaSans',
-                        fontSize: 11,
-                        color: Color(0xFFC62828),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,

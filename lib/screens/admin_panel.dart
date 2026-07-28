@@ -6,8 +6,10 @@ import 'package:image_picker/image_picker.dart';
 import '../services/moderation_service.dart';
 import '../services/sponsor_service.dart';
 import '../services/event_service.dart';
+import '../services/user_service.dart';
 import '../state_manager.dart';
 import '../utils/google_search_helper.dart';
+import '../utils/image_helper.dart';
 
 class AdminPanel extends StatefulWidget {
   const AdminPanel({super.key});
@@ -793,11 +795,17 @@ class _AdminPanelState extends State<AdminPanel> {
           final docs = snapshot.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
           if (docs.isEmpty) return _empty('No events found.');
 
-          // Sort Admin created events FIRST
+          // Sort: Pending first, then admin events, then the rest
           final sortedEvents = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(docs)
             ..sort((a, b) {
+              final aStatus = a.data()['status'] ?? 'pending';
+              final bStatus = b.data()['status'] ?? 'pending';
               final aAdmin = a.data()['createdByAdmin'] == true;
               final bAdmin = b.data()['createdByAdmin'] == true;
+              // Pending first
+              if (aStatus == 'pending' && bStatus != 'pending') return -1;
+              if (aStatus != 'pending' && bStatus == 'pending') return 1;
+              // Then admin events
               if (aAdmin && !bAdmin) return -1;
               if (!aAdmin && bAdmin) return 1;
               return 0;
@@ -805,135 +813,744 @@ class _AdminPanelState extends State<AdminPanel> {
 
           return Column(
             children: sortedEvents.map((eventDoc) {
-              final data = eventDoc.data();
-              final isAdminEvent = data['createdByAdmin'] == true;
-              final title = data['title'] ?? 'Untitled Event';
-              final location = data['location'] ?? 'Location TBA';
-              final time = data['time'] ?? '';
-              final month = data['month'] ?? '';
-              final day = data['day'] ?? '';
-              final category = data['category'] ?? 'Meetups';
-
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 10),
-                color: isAdminEvent ? const Color(0xFFFFF8F3) : Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isAdminEvent ? const Color(0xFFE5A475) : _line,
-                    width: isAdminEvent ? 1.5 : 1,
-                  ),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isAdminEvent ? _brand : const Color(0xFFE8E2DD),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          month.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: isAdminEvent ? Colors.white : _ink,
-                          ),
-                        ),
-                        Text(
-                          day,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: isAdminEvent ? Colors.white : _ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: _ink),
-                        ),
-                      ),
-                      if (isAdminEvent) ...[
-                        const SizedBox(width: 8),
-                        _statusChip('ADMIN CREATED', _brand),
-                      ] else ...[
-                        const SizedBox(width: 8),
-                        if (data['status'] == 'approved')
-                          _statusChip('APPROVED', const Color(0xFF2E7D32))
-                        else if (data['status'] == 'rejected')
-                          _statusChip('REJECTED', const Color(0xFFC62828))
-                        else
-                          _statusChip('PENDING', const Color(0xFFB45309)),
-                      ],
-                    ],
-                  ),
-                  subtitle: Text('$location • $time • $category'),
-                  trailing: Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (!isAdminEvent) ...[
-                        if (data['status'] != 'approved')
-                          IconButton(
-                            tooltip: 'Approve Event',
-                            icon: const Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32)),
-                            onPressed: () => FirebaseFirestore.instance
-                                .collection('events')
-                                .doc(eventDoc.id)
-                                .update({'status': 'approved'}),
-                          ),
-                        if (data['status'] != 'rejected')
-                          IconButton(
-                            tooltip: 'Reject Event',
-                            icon: const Icon(Icons.cancel_outlined, color: Color(0xFFC62828)),
-                            onPressed: () => FirebaseFirestore.instance
-                                .collection('events')
-                                .doc(eventDoc.id)
-                                .update({'status': 'rejected'}),
-                          ),
-                      ],
-                      IconButton(
-                        tooltip: isAdminEvent ? 'Remove Admin Priority' : 'Mark as Admin Created',
-                        icon: Icon(
-                          isAdminEvent ? Icons.star : Icons.star_border,
-                          color: isAdminEvent ? const Color(0xFFB45309) : Colors.grey,
-                        ),
-                        onPressed: () {
-                          final newAdminVal = !isAdminEvent;
-                          FirebaseFirestore.instance
-                              .collection('events')
-                              .doc(eventDoc.id)
-                              .update({
-                            'createdByAdmin': newAdminVal,
-                            if (newAdminVal) 'status': 'approved',
-                          });
-                        },
-                      ),
-                      IconButton(
-                        tooltip: 'Delete Event',
-                        icon: const Icon(Icons.delete_outline, color: Color(0xFFC62828)),
-                        onPressed: () => _confirmDeleteEvent(eventDoc.id, title),
-                      ),
-                    ],
-                  ),
-                ),
-              );
+              return _buildEventApprovalCard(eventDoc);
             }).toList(),
           );
         },
       ),
     ],
   );
+
+  Widget _buildEventApprovalCard(QueryDocumentSnapshot<Map<String, dynamic>> eventDoc) {
+    final data = eventDoc.data();
+    final isAdminEvent = data['createdByAdmin'] == true;
+    final title = data['title'] ?? 'Untitled Event';
+    final location = data['location'] ?? 'Location TBA';
+    final time = data['time'] ?? '';
+    final month = data['month'] ?? '';
+    final day = data['day'] ?? '';
+    final category = data['category'] ?? 'Meetups';
+    final price = data['price'] ?? 'Free';
+    final imageUrl = data['imageUrl'] as String? ?? '';
+    final organiserId = data['organiserId'] as String?;
+    final attendees = data['attendees'] ?? '0';
+    final status = data['status'] ?? 'pending';
+    final mapUrl = data['mapUrl'] as String?;
+    final latitude = data['latitude'];
+    final longitude = data['longitude'];
+    final createdAt = data['createdAt'] as Timestamp?;
+    final rejectionReason = data['rejectionReason'] as String? ?? '';
+
+    Color statusColor;
+    String statusLabel;
+    IconData statusIcon;
+    if (isAdminEvent) {
+      statusColor = _brand;
+      statusLabel = 'ADMIN CREATED';
+      statusIcon = Icons.verified;
+    } else if (status == 'approved') {
+      statusColor = const Color(0xFF2E7D32);
+      statusLabel = 'APPROVED';
+      statusIcon = Icons.check_circle;
+    } else if (status == 'rejected') {
+      statusColor = const Color(0xFFC62828);
+      statusLabel = 'REJECTED';
+      statusIcon = Icons.cancel;
+    } else {
+      statusColor = const Color(0xFFB45309);
+      statusLabel = 'PENDING APPROVAL';
+      statusIcon = Icons.hourglass_top;
+    }
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 20),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: status == 'pending' ? statusColor.withValues(alpha: 0.5) : _line,
+          width: status == 'pending' ? 2 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Event Poster Banner ──
+          Stack(
+            children: [
+              if (imageUrl.isNotEmpty)
+                Image.network(
+                  wrapCorsUrl(imageUrl),
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, e, st) => _eventPosterPlaceholder(category),
+                )
+              else
+                _eventPosterPlaceholder(category),
+              // Status badge overlay
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 14, color: Colors.white),
+                      const SizedBox(width: 5),
+                      Text(
+                        statusLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'PlusJakartaSans',
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Category chip overlay
+              Positioned(
+                top: 12,
+                left: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    category,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PlusJakartaSans',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // ── Content Body ──
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'PlayfairDisplay',
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // ── Details Grid ──
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF7F5),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _line),
+                  ),
+                  child: Column(
+                    children: [
+                      _detailRow(Icons.calendar_today_rounded, 'Date', '$month $day'),
+                      const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                      _detailRow(Icons.access_time_rounded, 'Time', time.isNotEmpty ? time : 'TBA'),
+                      const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                      _detailRow(Icons.location_on_outlined, 'Location', location),
+                      const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                      _detailRow(Icons.sell_outlined, 'Price', price),
+                      const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                      _detailRow(Icons.people_outline, 'Attendees', '$attendees registered'),
+                      if (mapUrl != null && mapUrl.isNotEmpty) ...[
+                        const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                        _detailRow(Icons.map_outlined, 'Map', 'View on Map'),
+                      ],
+                      if (latitude != null && longitude != null) ...[
+                        const Divider(height: 16, color: Color(0xFFE8E2DD)),
+                        _detailRow(Icons.gps_fixed, 'Coordinates', '${(latitude as num).toStringAsFixed(4)}, ${(longitude as num).toStringAsFixed(4)}'),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // ── Organizer Section ──
+                if (organiserId != null && organiserId.isNotEmpty)
+                  FutureBuilder(
+                    future: UserService().getUserProfile(organiserId),
+                    builder: (context, orgSnapshot) {
+                      final orgName = orgSnapshot.data?.name ?? 'Unknown Organizer';
+                      final orgRole = orgSnapshot.data?.role ?? '';
+                      final orgCompany = orgSnapshot.data?.company ?? '';
+                      final orgImageUrl = orgSnapshot.data?.profileImageUrl ?? '';
+                      final orgEmail = orgSnapshot.data?.email ?? '';
+                      final orgPhone = orgSnapshot.data?.phone ?? '';
+                      final orgInitials = orgName.isNotEmpty
+                          ? orgName.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
+                          : 'O';
+
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8F3),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE5A475).withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'ORGANIZER',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'PlusJakartaSans',
+                                color: Color(0xFF8C736B),
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: const Color(0xFFE5A475),
+                                  backgroundImage: orgImageUrl.isNotEmpty
+                                      ? NetworkImage(wrapCorsUrl(orgImageUrl))
+                                      : null,
+                                  child: orgImageUrl.isEmpty
+                                      ? Text(
+                                          orgInitials,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        orgName,
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: _ink,
+                                        ),
+                                      ),
+                                      if (orgRole.isNotEmpty || orgCompany.isNotEmpty)
+                                        Text(
+                                          [orgRole, orgCompany].where((s) => s.isNotEmpty).join(' · '),
+                                          style: const TextStyle(
+                                            fontFamily: 'PlusJakartaSans',
+                                            fontSize: 11,
+                                            color: Color(0xFF8C736B),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (orgEmail.isNotEmpty || orgPhone.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              const Divider(height: 1, color: Color(0xFFE8E2DD)),
+                              const SizedBox(height: 10),
+                              if (orgEmail.isNotEmpty)
+                                Row(
+                                  children: [
+                                    const Icon(Icons.email_outlined, size: 14, color: Color(0xFF8C736B)),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        orgEmail,
+                                        style: const TextStyle(
+                                          fontFamily: 'PlusJakartaSans',
+                                          fontSize: 11,
+                                          color: Color(0xFF6B5A52),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (orgPhone.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF8C736B)),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      orgPhone,
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 11,
+                                        color: Color(0xFF6B5A52),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 14),
+
+                // ── Metadata Row ──
+                Row(
+                  children: [
+                    Icon(Icons.fingerprint, size: 12, color: Colors.grey[400]),
+                    const SizedBox(width: 4),
+                    Text(
+                      eventDoc.id.substring(0, eventDoc.id.length > 8 ? 8 : eventDoc.id.length),
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 10,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                    if (createdAt != null) ...[
+                      const SizedBox(width: 12),
+                      Icon(Icons.calendar_month_outlined, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Created ${_formatCreatedAt(createdAt)}',
+                        style: TextStyle(
+                          fontFamily: 'PlusJakartaSans',
+                          fontSize: 10,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
+                // ── Rejection Reason Banner ──
+                if (status == 'rejected' && rejectionReason.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF5F5),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFC62828).withValues(alpha: 0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.info_outline, size: 14, color: Color(0xFFC62828)),
+                            SizedBox(width: 6),
+                            Text(
+                              'REJECTION REASON',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'PlusJakartaSans',
+                                color: Color(0xFFC62828),
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          rejectionReason,
+                          style: const TextStyle(
+                            fontFamily: 'PlusJakartaSans',
+                            fontSize: 12,
+                            color: Color(0xFF6B5A52),
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Action Bar ──
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFFAF7F5),
+              border: Border(top: BorderSide(color: Color(0xFFE8E2DD))),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                // Approve / Reject buttons for non-admin events
+                if (!isAdminEvent) ...[
+                  // Approve Button (Always available to select / re-select)
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: status == 'approved'
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFE8F5E9),
+                        foregroundColor: status == 'approved'
+                            ? Colors.white
+                            : const Color(0xFF2E7D32),
+                        elevation: status == 'approved' ? 1 : 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: const Color(0xFF2E7D32),
+                            width: status == 'approved' ? 1.5 : 1,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      icon: Icon(
+                        status == 'approved' ? Icons.check_circle : Icons.check_circle_outline,
+                        size: 18,
+                      ),
+                      label: Text(
+                        status == 'approved' ? 'Approved ✓' : 'Approve',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'PlusJakartaSans',
+                        ),
+                      ),
+                      onPressed: () {
+                        FirebaseFirestore.instance
+                            .collection('events')
+                            .doc(eventDoc.id)
+                            .update({
+                          'status': 'approved',
+                          'rejectionReason': FieldValue.delete(),
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Event approved.'),
+                            backgroundColor: Color(0xFF2E7D32),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Reject Button (Always available to select / re-select / edit reason)
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: status == 'rejected'
+                            ? const Color(0xFFC62828)
+                            : const Color(0xFFFFEBEE),
+                        foregroundColor: status == 'rejected'
+                            ? Colors.white
+                            : const Color(0xFFC62828),
+                        elevation: status == 'rejected' ? 1 : 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: const Color(0xFFC62828),
+                            width: status == 'rejected' ? 1.5 : 1,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      icon: Icon(
+                        status == 'rejected' ? Icons.cancel : Icons.cancel_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        status == 'rejected' ? 'Rejected (Edit)' : 'Reject',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'PlusJakartaSans',
+                        ),
+                      ),
+                      onPressed: () => _showRejectReasonDialog(
+                        eventDoc.id,
+                        initialReason: rejectionReason,
+                      ),
+                    ),
+                  ),
+                  if (status != 'pending') ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: 'Reset to Pending Review',
+                      icon: const Icon(Icons.restore, color: Color(0xFFB45309)),
+                      onPressed: () {
+                        FirebaseFirestore.instance
+                            .collection('events')
+                            .doc(eventDoc.id)
+                            .update({
+                          'status': 'pending',
+                          'rejectionReason': FieldValue.delete(),
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Reset to pending review.'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ] else
+                  const Spacer(),
+                // Secondary actions
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: isAdminEvent ? 'Remove Admin Priority' : 'Mark as Admin Created',
+                  icon: Icon(
+                    isAdminEvent ? Icons.star : Icons.star_border,
+                    color: isAdminEvent ? const Color(0xFFB45309) : Colors.grey,
+                  ),
+                  onPressed: () {
+                    final newAdminVal = !isAdminEvent;
+                    FirebaseFirestore.instance
+                        .collection('events')
+                        .doc(eventDoc.id)
+                        .update({
+                      'createdByAdmin': newAdminVal,
+                      if (newAdminVal) 'status': 'approved',
+                    });
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Delete Event',
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFC62828)),
+                  onPressed: () => _confirmDeleteEvent(eventDoc.id, title),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _eventPosterPlaceholder(String category) {
+    return Container(
+      width: double.infinity,
+      height: 200,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF7A432D), Color(0xFFE5A475)],
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.event, size: 48, color: Colors.white54),
+          const SizedBox(height: 8),
+          Text(
+            category,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: _brand),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 80,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF8C736B),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontFamily: 'PlusJakartaSans',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: _ink,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCreatedAt(Timestamp ts) {
+    final dt = ts.toDate();
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays == 1) return 'yesterday';
+    if (diff.inDays < 30) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  void _showRejectReasonDialog(String eventId, {String initialReason = ''}) {
+    final reasonController = TextEditingController(text: initialReason);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.cancel, color: Color(0xFFC62828), size: 22),
+            SizedBox(width: 10),
+            Text(
+              'Reject Event',
+              style: TextStyle(
+                fontFamily: 'PlayfairDisplay',
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: _ink,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please provide a reason for rejecting this event. This will be visible to the organizer.',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: Color(0xFF6B5A52),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'e.g. Incomplete details, inappropriate content, duplicate event...',
+                hintStyle: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFB0A09A),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFFAF7F5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFC62828), width: 1.5),
+                ),
+              ),
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                color: _ink,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF6B5A52),
+              ),
+            ),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.cancel, size: 16),
+            label: const Text(
+              'Reject Event',
+              style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'PlusJakartaSans'),
+            ),
+            onPressed: () {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please provide a rejection reason.'),
+                    backgroundColor: Color(0xFFC62828),
+                  ),
+                );
+                return;
+              }
+              FirebaseFirestore.instance
+                  .collection('events')
+                  .doc(eventId)
+                  .update({
+                'status': 'rejected',
+                'rejectionReason': reason,
+                'rejectedAt': FieldValue.serverTimestamp(),
+              });
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showCreateAdminEventDialog() {
     showDialog(
@@ -1405,6 +2022,7 @@ class _AdminPanelState extends State<AdminPanel> {
                           }
                         },
                       ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -1415,7 +2033,9 @@ class _AdminPanelState extends State<AdminPanel> {
                   child: const Text('Cancel', style: TextStyle(color: Color(0xFF8C736B))),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7A432D),
+                  ),
                   onPressed: isUploadingImage
                       ? null
                       : () async {
@@ -1554,4 +2174,5 @@ class _AdminPanelState extends State<AdminPanel> {
   }
 
   Widget _field(TextEditingController controller, String label) => TextField(controller: controller, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()));
+
 }
