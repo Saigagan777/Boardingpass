@@ -2160,8 +2160,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   const SizedBox(height: 8),
                 ],
 
-                _buildIncomingRequestsPanel(),
-
                 // Active Filter Chips
                 if (_selectedIndustry != null ||
                     _selectedInterest != null ||
