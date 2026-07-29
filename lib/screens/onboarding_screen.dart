@@ -2549,26 +2549,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7EFE9),
       body: Stack(
         children: [
-          // Subtle warm gradient background
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white,
-                    Colors.white,
-                    Color(0xFFF1F3F4),
-                  ],
-                  stops: [0.0, 0.5, 1.0],
-                ),
-              ),
-            ),
-          ),
           SafeArea(
             child: Padding(
               padding: EdgeInsets.symmetric(
@@ -2630,14 +2613,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 (index) => AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeInOut,
-                                  margin: const EdgeInsets.only(right: 5),
-                                  height: 6,
-                                  width: _currentIndex == index ? 20 : 6,
+                                  margin: const EdgeInsets.only(right: 8),
+                                  height: 8,
+                                  width: _currentIndex == index ? 20 : 8,
                                   decoration: BoxDecoration(
                                     color: _currentIndex == index
-                                        ? const Color(0xFF7A432D)
-                                        : const Color(0xFFD5C4BB),
-                                    borderRadius: BorderRadius.circular(3),
+                                        ? const Color(0xFF593625)
+                                        : const Color(0xFFD2C4BB),
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
                               ),
@@ -2659,14 +2642,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                         'Skip',
                                         style: TextStyle(
                                           fontFamily: 'PlusJakartaSans',
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
                                           color: Color(0xFF8C736B),
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 16),
                                   GestureDetector(
                                     onTap: () {
                                       _pageController.nextPage(
@@ -2676,19 +2659,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 12,
+                                        horizontal: 24,
+                                        vertical: 14,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF7A432D),
+                                        color: const Color(0xFF593625),
                                         borderRadius: BorderRadius.circular(28),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFF7A432D).withValues(alpha: 0.30),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -2706,7 +2682,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                           Icon(
                                             Icons.arrow_forward_rounded,
                                             color: Colors.white,
-                                            size: 16,
+                                            size: 18,
                                           ),
                                         ],
                                       ),
@@ -2800,42 +2776,27 @@ class OnboardingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isSmallScreen = screenHeight < 700;
     final double titleSize = screenHeight < 640
-        ? 26.0
+        ? 30.0
         : screenHeight < 700
-            ? 30.0
-            : 36.0;
-    final double imageRatio = isSmallScreen ? 0.27 : 0.32;
+            ? 34.0
+            : 40.0;
+    final double imageRatio = isSmallScreen ? 0.35 : 0.40;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Illustration image with subtle drop shadow card
+          // Illustration image painted onto the background
           Container(
             height: screenHeight * imageRatio,
-            margin: EdgeInsets.only(bottom: screenHeight * 0.025),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Image.asset(
-                    imagePath,
-                    fit: BoxFit.contain,
-                  ),
-                ),
+            margin: EdgeInsets.only(bottom: screenHeight * 0.015),
+            child: Center(
+              child: Image.asset(
+                imagePath,
+                fit: BoxFit.contain,
+                color: const Color(0xFFF7EFE9),
+                colorBlendMode: BlendMode.darken,
               ),
             ),
           ),
@@ -2859,16 +2820,16 @@ class OnboardingPage extends StatelessWidget {
             subtitle,
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
-              fontSize: isSmallScreen ? 14 : 15,
-              color: const Color(0xFF6B5148),
-              height: 1.6,
-              fontWeight: FontWeight.w400,
+              fontSize: isSmallScreen ? 15 : 16,
+              color: const Color(0xFF8C736B),
+              height: 1.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
 
           // Final Page Sign In/Up options
           if (isFinalPage) ...[
-            SizedBox(height: isSmallScreen ? screenHeight * 0.025 : screenHeight * 0.035),
+            SizedBox(height: isSmallScreen ? screenHeight * 0.05 : screenHeight * 0.08),
             _buildLinkedInButton(),
             const SizedBox(height: 14),
             Row(

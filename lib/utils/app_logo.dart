@@ -18,11 +18,14 @@ class AppLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = color ?? const Color(0xFF3E1F11);
 
-    final logoIcon = Image.asset(
-      'assets/images/app_logo.png',
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
+    final logoIcon = Transform.scale(
+      scale: 2.4,
+      child: Image.asset(
+        'assets/images/app_logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+      ),
     );
 
     if (!showText) {
@@ -34,7 +37,7 @@ class AppLogo extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         logoIcon,
-        SizedBox(width: size * 0.3),
+        SizedBox(width: size * 0.1),
         Flexible(
           child: Text(
             'NexMeet',

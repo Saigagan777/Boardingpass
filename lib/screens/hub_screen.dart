@@ -725,30 +725,7 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const AppLogo(size: 22),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'ACTIVITY HUB',
-                              style: TextStyle(
-                                fontFamily: 'PlusJakartaSans',
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2.5,
-                                color: Color(0xFF7A432D),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      const AppLogo(size: 22),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -872,21 +849,12 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${_getGreeting()}, $userName',
+                    '${_getGreeting()}, ${userName.split(' ').first}',
                     style: TextStyle(
                       fontFamily: 'PlayfairDisplay',
                       fontSize: screenHeight < 650 ? 20 : 24,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF3E1F11),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Pick any cell — no order, no funnel.',
-                    style: TextStyle(
-                      fontFamily: 'PlusJakartaSans',
-                      fontSize: 12,
-                      color: Color(0xFF8C736B),
                     ),
                   ),
                 ],
