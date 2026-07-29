@@ -57,7 +57,7 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  int _activeSubTab = 0; // 0 Explore, 1 Joined, 2 Hosting
+  int _activeSubTab = 0; // 0 Explore, 1 Joined, 2 Hosting, 3 Expired
   String _selectedCategory = 'All';
   final Set<String> _bookmarkedEvents = {};
 
@@ -1219,6 +1219,9 @@ class _EventsScreenState extends State<EventsScreen> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final upcomingEvents = _state.events.where((e) {
       if (e.status != 'approved') return false;
+      if (e.isExpired) return false;
+      if (e.isJoined || e.isRegistered) return false;
+      if (e.isHostedBy(_currentUid)) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList()
@@ -1229,14 +1232,22 @@ class _EventsScreenState extends State<EventsScreen> {
       });
 
     final myEvents = _state.events.where((e) {
-      if (e.status != 'approved') return false;
+      if (e.isExpired) return false;
       if (!e.isJoined && !e.isRegistered) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList();
 
     final hostingEvents = _state.events.where((e) {
+      if (e.isExpired) return false;
       if (!e.isHostedBy(_currentUid)) return false;
+      if (_selectedCategory == 'All') return true;
+      return e.category.toLowerCase() == _selectedCategory.toLowerCase();
+    }).toList();
+
+    final expiredEvents = _state.events.where((e) {
+      if (!e.isExpired) return false;
+      if (!e.isJoined && !e.isRegistered && !e.isHostedBy(_currentUid)) return false;
       if (_selectedCategory == 'All') return true;
       return e.category.toLowerCase() == _selectedCategory.toLowerCase();
     }).toList();
@@ -1245,7 +1256,9 @@ class _EventsScreenState extends State<EventsScreen> {
         ? upcomingEvents
         : _activeSubTab == 1
             ? myEvents
-            : hostingEvents;
+            : _activeSubTab == 2
+                ? hostingEvents
+                : expiredEvents;
 
     // Split list into Featured (first 3) and standard grid
     final featuredList = currentList.take(3).toList();
@@ -1316,7 +1329,7 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             Icon(
                               Icons.explore_rounded,
-                              size: 15,
+                              size: 14,
                               color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
                             ),
                             const SizedBox(width: 4),
@@ -1324,17 +1337,18 @@ class _EventsScreenState extends State<EventsScreen> {
                               'Explore',
                               style: TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: _activeSubTab == 0 ? Colors.white : const Color(0xFF8C736B),
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   // Joined By Me
                   Expanded(
                     child: GestureDetector(
@@ -1355,7 +1369,7 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             Icon(
                               Icons.person_outline_rounded,
-                              size: 15,
+                              size: 14,
                               color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
                             ),
                             const SizedBox(width: 4),
@@ -1363,17 +1377,18 @@ class _EventsScreenState extends State<EventsScreen> {
                               'Joined',
                               style: TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: _activeSubTab == 1 ? Colors.white : const Color(0xFF8C736B),
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   // Hosting
                   Expanded(
                     child: GestureDetector(
@@ -1394,7 +1409,7 @@ class _EventsScreenState extends State<EventsScreen> {
                           children: [
                             Icon(
                               Icons.qr_code_scanner_rounded,
-                              size: 15,
+                              size: 14,
                               color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
                             ),
                             const SizedBox(width: 4),
@@ -1402,10 +1417,51 @@ class _EventsScreenState extends State<EventsScreen> {
                               'Hosting',
                               style: TextStyle(
                                 fontFamily: 'PlusJakartaSans',
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: _activeSubTab == 2 ? Colors.white : const Color(0xFF8C736B),
                               ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Expired
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _activeSubTab = 3),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: _activeSubTab == 3 ? const Color(0xFF3E1F11) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: _activeSubTab == 3 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              size: 14,
+                              color: _activeSubTab == 3 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Expired',
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _activeSubTab == 3 ? Colors.white : const Color(0xFF8C736B),
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -1671,9 +1727,13 @@ class _EventsScreenState extends State<EventsScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          const Text(
-                            'No events yet',
-                            style: TextStyle(
+                          Text(
+                            _activeSubTab == 1
+                                ? 'Not joined yet'
+                                : _activeSubTab == 3
+                                    ? 'No expired events'
+                                    : 'No events yet',
+                            style: const TextStyle(
                               fontFamily: 'PlusJakartaSans',
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
@@ -1681,43 +1741,49 @@ class _EventsScreenState extends State<EventsScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          const Text(
-                            'Be the first to create an event!',
-                            style: TextStyle(
+                          Text(
+                            _activeSubTab == 1
+                                ? 'Discover and join upcoming events in the Explore tab.'
+                                : _activeSubTab == 3
+                                    ? 'Past events you have hosted or joined will appear here.'
+                                    : 'Be the first to create an event!',
+                            style: const TextStyle(
                               fontFamily: 'PlusJakartaSans',
                               fontSize: 12,
                               color: Color(0xFF8C736B),
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 18),
-                          GestureDetector(
-                            onTap: _handleCreateEvent,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: const Color(0xFF7A432D), width: 1.5),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.add, size: 16, color: Color(0xFF7A432D)),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Create Event',
-                                    style: TextStyle(
-                                      fontFamily: 'PlusJakartaSans',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF7A432D),
+                          if (_activeSubTab != 1 && _activeSubTab != 3) ...[
+                            const SizedBox(height: 18),
+                            GestureDetector(
+                              onTap: _handleCreateEvent,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: const Color(0xFF7A432D), width: 1.5),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.add, size: 16, color: Color(0xFF7A432D)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Create Event',
+                                      style: TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF7A432D),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),

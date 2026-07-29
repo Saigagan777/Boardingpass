@@ -30,9 +30,9 @@ class _LocationSearchSectionState extends State<LocationSearchSection> {
 
   // Filters
   VenueCategory? _selectedCategory;
-  double _minRating = 4.0;
-  bool _wifiOnly = false;
-  bool _parkingOnly = false;
+  final double _minRating = 4.0;
+  final bool _wifiOnly = false;
+  final bool _parkingOnly = false;
   final bool _accessibleOnly = false;
 
 
