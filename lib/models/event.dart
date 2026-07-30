@@ -25,6 +25,8 @@ class Event {
   final bool createdByAdmin;
   /// Approval workflow status ('pending', 'approved', 'rejected')
   final String status;
+  /// Reason given by admin when rejecting the event
+  final String? rejectionReason;
 
   Event({
     required this.id,
@@ -48,6 +50,7 @@ class Event {
     this.registrationId,
     this.createdByAdmin = false,
     this.status = 'pending',
+    this.rejectionReason,
   });
 
   bool isHostedBy(String? uid) =>

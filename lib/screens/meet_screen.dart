@@ -1668,57 +1668,82 @@ class _MeetScreenState extends State<MeetScreen> {
         children: [
           // Segmented Tabs
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Expanded(
-                  child: InkWell(
+                  child: GestureDetector(
                     onTap: () => setState(() => _activeTab = 0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 44,
                       decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _activeTab == 0 ? const Color(0xFF7A432D) : Colors.transparent,
-                            width: 2.5,
-                          ),
+                        color: _activeTab == 0 ? const Color(0xFF3E1F11) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: _activeTab == 0 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                          width: 1.5,
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'Request Meeting',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontWeight: _activeTab == 0 ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 14,
-                          color: _activeTab == 0 ? const Color(0xFF3E1F11) : const Color(0xFF8C736B),
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.group_add_rounded,
+                            size: 14,
+                            color: _activeTab == 0 ? Colors.white : const Color(0xFF8C736B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Request Meeting',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _activeTab == 0 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: InkWell(
+                  child: GestureDetector(
                     onTap: () => setState(() => _activeTab = 1),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 44,
                       decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _activeTab == 1 ? const Color(0xFF7A432D) : Colors.transparent,
-                            width: 2.5,
-                          ),
+                        color: _activeTab == 1 ? const Color(0xFF3E1F11) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: _activeTab == 1 ? const Color(0xFF3E1F11) : const Color(0xFFD6C9C0),
+                          width: 1.5,
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'My Meetings',
-                        style: TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontWeight: _activeTab == 1 ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 14,
-                          color: _activeTab == 1 ? const Color(0xFF3E1F11) : const Color(0xFF8C736B),
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.event_available_rounded,
+                            size: 14,
+                            color: _activeTab == 1 ? Colors.white : const Color(0xFF8C736B),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'My Meetings',
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: _activeTab == 1 ? Colors.white : const Color(0xFF8C736B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                   ),

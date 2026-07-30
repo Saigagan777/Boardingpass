@@ -463,6 +463,7 @@ class AppStateManager extends ChangeNotifier {
             isJoined: attendeesList.contains(user.uid),
             createdByAdmin: data['createdByAdmin'] == true,
             status: data['status']?.toString() ?? 'approved',
+            rejectionReason: data['rejectionReason']?.toString(),
           ),
         );
       }

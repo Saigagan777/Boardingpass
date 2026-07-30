@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:lottie/lottie.dart';
 import '../state_manager.dart';
 import '../models/candidate.dart';
 import '../utils/card_renderer.dart';
@@ -36,6 +38,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   String? _selectedHomeBase;
   String? _selectedCurrentLocation;
   String? _selectedFilterExpertise;
+  String? _selectedRole;
+  String? _selectedCompany;
   double? _maxDistanceKm;
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
@@ -63,6 +67,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   // Local card index to manage swipe animations independently of global index
   int _cardIndex = 0;
+  bool _introComplete = false;
 
   @override
   void initState() {
@@ -115,71 +120,49 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       }
 
       // 2. Industry filter
-      if (_selectedIndustry != null) {
-        if (c.industry != _selectedIndustry) {
+      if (_selectedIndustry != null && _selectedIndustry!.isNotEmpty) {
+        if (c.industry != _selectedIndustry) return false;
+      }
+
+      // 3. Expertise filter
+      if (_selectedFilterExpertise != null &&
+          _selectedFilterExpertise!.isNotEmpty) {
+        if (!c.skills.contains(_selectedFilterExpertise) &&
+            !c.tags.contains(_selectedFilterExpertise)) {
           return false;
         }
       }
 
-      // 3. Interest filter
-      if (_selectedInterest != null) {
-        bool hasMatchingExpertise =
-            c.skills.any(
-              (s) => doesExpertiseSatisfyInterest(s, _selectedInterest!),
-            ) ||
-            c.tags.any(
-              (t) => doesExpertiseSatisfyInterest(t, _selectedInterest!),
-            );
-        bool hasSharedInterest = c.interests.any(
-          (i) =>
-              i.toLowerCase().trim() == _selectedInterest!.toLowerCase().trim(),
-        );
-        if (!hasMatchingExpertise && !hasSharedInterest) {
-          return false;
-        }
+      // 4. Interest filter
+      if (_selectedInterest != null && _selectedInterest!.isNotEmpty) {
+        if (!c.interests.contains(_selectedInterest)) return false;
       }
 
-      // 4. Home base filter
-      if (_selectedHomeBase != null) {
-        if (!c.homeBase.toLowerCase().contains(
-          _selectedHomeBase!.toLowerCase(),
-        )) {
-          return false;
-        }
+      // 5. Home Base filter
+      if (_selectedHomeBase != null && _selectedHomeBase!.isNotEmpty) {
+        if (c.homeBase != _selectedHomeBase) return false;
       }
 
-      // 5. Current location filter
-      if (_selectedCurrentLocation != null) {
-        if (!c.currentLocationName.toLowerCase().contains(
-          _selectedCurrentLocation!.toLowerCase(),
-        )) {
-          return false;
-        }
+      // 6. Current Location filter
+      if (_selectedCurrentLocation != null &&
+          _selectedCurrentLocation!.isNotEmpty) {
+        if (c.currentLocationName != _selectedCurrentLocation) return false;
       }
 
-      // 6. Expertise filter
-      if (_selectedFilterExpertise != null) {
-        bool hasExpertise =
-            c.skills.any(
-              (s) =>
-                  s.toLowerCase().trim() ==
-                  _selectedFilterExpertise!.toLowerCase().trim(),
-            ) ||
-            c.tags.any(
-              (t) =>
-                  t.toLowerCase().trim() ==
-                  _selectedFilterExpertise!.toLowerCase().trim(),
-            );
-        if (!hasExpertise) {
-          return false;
-        }
+      // 7. Role filter
+      if (_selectedRole != null && _selectedRole!.isNotEmpty) {
+        if (c.role != _selectedRole) return false;
       }
 
-      // 7. Maximum Distance filter
-      if (_maxDistanceKm != null && _maxDistanceKm! > 0) {
-        if (c.displayDistanceKm != null && c.displayDistanceKm! > _maxDistanceKm!) {
-          return false;
-        }
+      // 8. Company filter
+      if (_selectedCompany != null && _selectedCompany!.isNotEmpty) {
+        if (c.org != _selectedCompany) return false;
+      }
+
+      // 9. Distance filter
+      if (_maxDistanceKm != null) {
+        final dist = c.displayDistanceKm ?? 0.0;
+        if (dist > _maxDistanceKm!) return false;
       }
 
       return true;
@@ -1475,6 +1458,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             _selectedHomeBase = null;
                             _selectedCurrentLocation = null;
                             _selectedFilterExpertise = null;
+                            _selectedRole = null;
+                            _selectedCompany = null;
                             _maxDistanceKm = null;
                           });
                           setState(() {});
@@ -1845,6 +1830,56 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                       setState(() {});
                                     },
                                   ),
+                                  const SizedBox(height: 20),
+                                  Builder(
+                                    builder: (context) {
+                                      final roles = _state.candidates
+                                          .where((c) => c.role.isNotEmpty)
+                                          .map((c) => c.role)
+                                          .toSet()
+                                          .toList()
+                                        ..sort();
+                                      final companies = _state.candidates
+                                          .where((c) => c.org.isNotEmpty)
+                                          .map((c) => c.org)
+                                          .toSet()
+                                          .toList()
+                                        ..sort();
+                                      return Column(
+                                        children: [
+                                          _buildSearchableFilterTile(
+                                            context: context,
+                                            setModalState: setModalState,
+                                            label: 'Role',
+                                            placeholder: 'Select role',
+                                            selectedValue: _selectedRole,
+                                            options: roles,
+                                            onChanged: (val) {
+                                              setModalState(() {
+                                                _selectedRole = val;
+                                              });
+                                              setState(() {});
+                                            },
+                                          ),
+                                          const SizedBox(height: 20),
+                                          _buildSearchableFilterTile(
+                                            context: context,
+                                            setModalState: setModalState,
+                                            label: 'Company',
+                                            placeholder: 'Select company',
+                                            selectedValue: _selectedCompany,
+                                            options: companies,
+                                            onChanged: (val) {
+                                              setModalState(() {
+                                                _selectedCompany = val;
+                                              });
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                 ],
                               );
                             },
@@ -1894,17 +1929,12 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8E2DD).withValues(alpha: 0.4),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.people_outline_rounded,
-                size: 48,
-                color: Color(0xFF8C736B),
+            SizedBox(
+              width: 180,
+              height: 180,
+              child: Lottie.asset(
+                'assets/lottie/animation2.json',
+                fit: BoxFit.contain,
               ),
             ),
             const SizedBox(height: 24),
@@ -1939,6 +1969,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     _selectedHomeBase = null;
                     _selectedCurrentLocation = null;
                     _selectedFilterExpertise = null;
+                    _selectedRole = null;
+                    _selectedCompany = null;
                     _maxDistanceKm = null;
                   });
                 },
@@ -1975,6 +2007,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       (_selectedHomeBase != null && _selectedHomeBase!.isNotEmpty) ||
       (_selectedCurrentLocation != null && _selectedCurrentLocation!.isNotEmpty) ||
       (_selectedFilterExpertise != null && _selectedFilterExpertise!.isNotEmpty) ||
+      (_selectedRole != null && _selectedRole!.isNotEmpty) ||
+      (_selectedCompany != null && _selectedCompany!.isNotEmpty) ||
       _maxDistanceKm != null ||
       _searchQuery.text.trim().isNotEmpty;
 
@@ -2084,6 +2118,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     ),
                     child: TextField(
                       controller: _searchQuery,
+                      onChanged: (value) => setState(() {}),
                       decoration: InputDecoration(
                         hintText: 'Search by name, company, skills...',
                         hintStyle: const TextStyle(
@@ -2256,6 +2291,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
                 Expanded(
                   child: (_state.isLoadingCandidates ||
+                          !_introComplete ||
                           (_state.candidates.isEmpty &&
                               _selectedIndustry == null &&
                               _selectedInterest == null &&
@@ -2264,7 +2300,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               _selectedFilterExpertise == null &&
                               _maxDistanceKm == null &&
                               _searchQuery.text.trim().isEmpty))
-                      ? const EngagingDiscoverLoader()
+                      ? EngagingDiscoverLoader(
+                          onIntroComplete: () {
+                            if (mounted) setState(() => _introComplete = true);
+                          },
+                        )
                       : (filteredCount == 0
                           ? _buildEmptyState()
                           : Center(
@@ -2274,7 +2314,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 curve: Curves.easeInOut,
                                 child: SizedBox(
                                   width: double.infinity,
-                                  height: screenHeight * 0.62,
+                                  height: screenHeight * 0.58,
                                   child: Builder(
                                     builder: (context) {
                                       final int index = _cardIndex % filteredCount;
@@ -3495,7 +3535,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     });
   }
 }
-
 class _InterestStyle {
   final IconData icon;
   final Color backgroundColor;
@@ -3504,195 +3543,115 @@ class _InterestStyle {
 }
 
 class EngagingDiscoverLoader extends StatefulWidget {
-  const EngagingDiscoverLoader({super.key});
+  final VoidCallback? onIntroComplete;
+  const EngagingDiscoverLoader({super.key, this.onIntroComplete});
 
   @override
   State<EngagingDiscoverLoader> createState() => _EngagingDiscoverLoaderState();
 }
 
 class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
-    with SingleTickerProviderStateMixin {
-  final List<String> _loadingMessages = const [
-    'Searching for nearby people...',
-    'Finding people with similar interests...',
-    'Discovering nearby skills and expertise...',
-    'Looking for meaningful connections...',
-    'Matching you with like-minded travelers...',
-    'Exploring opportunities around you...',
-    'Finding your next connection...',
-    'Syncing with people nearby...',
-  ];
-
-  int _currentIndex = 0;
-  Timer? _timer;
-  late AnimationController _pulseController;
+    with TickerProviderStateMixin {
+  late final AnimationController _anim1Controller;
+  late final AnimationController _anim2Controller;
+  bool _showSecond = false;
+  bool _fadingOut1 = false;
+  bool _fadingIn2 = false;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
+    _anim1Controller = AnimationController(vsync: this);
+    _anim2Controller = AnimationController(vsync: this);
 
-    _timer = Timer.periodic(const Duration(milliseconds: 2400), (timer) {
-      if (mounted) {
-        setState(() {
-          _currentIndex = (_currentIndex + 1) % _loadingMessages.length;
-        });
+    _anim1Controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) {
+          setState(() {
+            _fadingOut1 = true;
+          });
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              setState(() {
+                _showSecond = true;
+                _fadingIn2 = true;
+              });
+            }
+          });
+        }
+      }
+    });
+
+    _anim2Controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        if (widget.onIntroComplete != null) {
+          widget.onIntroComplete!();
+        }
+      }
+    });
+
+    // Safety fallback in case an animation fails to load
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && widget.onIntroComplete != null) {
+        widget.onIntroComplete!();
       }
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _pulseController.dispose();
+    _anim1Controller.dispose();
+    _anim2Controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: const Color(0xFFE8E2DD), width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF7A432D).withValues(alpha: 0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Pulsing Radar Rings Animation
-              AnimatedBuilder(
-                animation: _pulseController,
-                builder: (context, child) {
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      // Outer Pulse Ring
-                      Container(
-                        width: 110 + (28 * _pulseController.value),
-                        height: 110 + (28 * _pulseController.value),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF7A432D).withValues(
-                            alpha: (1 - _pulseController.value) * 0.25,
-                          ),
-                        ),
-                      ),
-                      // Middle Pulse Ring
-                      Container(
-                        width: 85 + (18 * _pulseController.value),
-                        height: 85 + (18 * _pulseController.value),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF7A432D).withValues(
-                            alpha: (1 - _pulseController.value) * 0.4,
-                          ),
-                        ),
-                      ),
-                      // Center Glowing Icon Badge
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Color(0xFF8C4F35),
-                              Color(0xFF633320),
-                            ],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF7A432D).withValues(alpha: 0.35),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.radar_rounded,
-                          color: Color(0xFFF9EAE1),
-                          size: 34,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 36),
-
-              // Animated Message Switcher
-              SizedBox(
-                height: 48,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.25),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: Text(
-                    _loadingMessages[_currentIndex],
-                    key: ValueKey<int>(_currentIndex),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontFamily: 'PlayfairDisplay',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF3E1F11),
-                      height: 1.3,
-                    ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        child: !_showSecond
+            ? AnimatedOpacity(
+                key: const ValueKey('anim1'),
+                opacity: _fadingOut1 ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: SizedBox(
+                  width: 250,
+                  height: 250,
+                  child: Lottie.asset(
+                    'assets/lottie/animation1.json',
+                    controller: _anim1Controller,
+                    onLoaded: (composition) {
+                      _anim1Controller.duration = composition.duration;
+                      _anim1Controller.forward();
+                    },
+                    fit: BoxFit.contain,
+                    repeat: false,
+                  ),
+                ),
+              )
+            : AnimatedOpacity(
+                key: const ValueKey('anim2'),
+                opacity: _fadingIn2 ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: SizedBox(
+                  width: 250,
+                  height: 250,
+                  child: Lottie.asset(
+                    'assets/lottie/animation2.json',
+                    controller: _anim2Controller,
+                    onLoaded: (composition) {
+                      _anim2Controller.duration = composition.duration;
+                      _anim2Controller.forward();
+                      Future.delayed(const Duration(milliseconds: 150), () {
+                        if (mounted) setState(() => _fadingIn2 = false);
+                      });
+                    },
+                    fit: BoxFit.contain,
+                    repeat: false,
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // Progress Indicator Dots
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_loadingMessages.length, (idx) {
-                  final bool isCurrent = idx == _currentIndex;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    width: isCurrent ? 18 : 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: isCurrent
-                          ? const Color(0xFF7A432D)
-                          : const Color(0xFFE8E2DD),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  );
-                }),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

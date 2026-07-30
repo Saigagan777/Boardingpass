@@ -76,11 +76,13 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _otherUserInitials; // Group chat, search, replies, mentions state
   bool _showSearch = false;
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _conversationsSearchController = TextEditingController();
   Map<String, dynamic>? _selectedReplyMsg;
   bool _showMentionsList = false;
   List<UserProfile> _mentionsSuggestions = [];
   List<String> _selectedMentionUids = [];
   List<UserProfile> _groupMembers = [];
+  String _selectedFilter = 'All';
 
   Future<String?> _ensureChatId() async {
     if (_chatId != null) return _chatId;
@@ -3187,12 +3189,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     if (_selectedContactName == null) {
       return Scaffold(
-        backgroundColor: const Color(0xFFFAF7F5),
+        backgroundColor: const Color(0xFFF8F4EC),
         appBar: AppBar(
-          backgroundColor: const Color(0xFFFAF7F5),
+          backgroundColor: const Color(0xFFF8F4EC),
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Color(0xFF3E1F11)),
+            icon: const Icon(Icons.arrow_back, color: Color(0xFF5B3A29)),
             onPressed:
                 widget.onBack ??
                 () {
@@ -3203,24 +3205,113 @@ class _ChatScreenState extends State<ChatScreen> {
             'Conversations',
             style: TextStyle(
               fontFamily: 'PlayfairDisplay',
-              fontSize: 20,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+              color: Color(0xFF5B3A29),
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(
-                Icons.group_add_outlined,
-                color: Color(0xFF7A432D),
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: IconButton(
+                icon: const Icon(
+                  Icons.group_add_outlined,
+                  color: Color(0xFF5B3A29),
+                  size: 26,
+                ),
+                onPressed: () => _showCreateGroupModal(context),
+                tooltip: 'New Group Chat',
               ),
-              onPressed: () => _showCreateGroupModal(context),
-              tooltip: 'New Group Chat',
             ),
           ],
         ),
         body: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFFEFE3D7)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.search, color: Color(0xFF8A6A58), size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _conversationsSearchController,
+                              onChanged: (_) {
+                                setState(() {});
+                              },
+                              decoration: const InputDecoration(
+                                hintText: 'Search conversations...',
+                                hintStyle: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  fontSize: 14,
+                                  color: Color(0xFF8A6A58),
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              style: TextStyle(
+                                fontFamily: 'PlusJakartaSans',
+                                fontSize: 14,
+                                color: Color(0xFF5B3A29),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFEFE3D7)),
+                    ),
+                    child: PopupMenuButton<String>(
+                      icon: const Icon(Icons.tune, color: Color(0xFF5B3A29), size: 22),
+                      offset: const Offset(0, 48),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      onSelected: (value) {
+                        setState(() {
+                          _selectedFilter = value;
+                        });
+                      },
+                      itemBuilder: (BuildContext context) => [
+                        const PopupMenuItem(
+                          value: 'All',
+                          child: Text('All Conversations', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF5B3A29))),
+                        ),
+                        const PopupMenuItem(
+                          value: 'Unread',
+                          child: Text('Unread Only', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF5B3A29))),
+                        ),
+                        const PopupMenuItem(
+                          value: 'Groups',
+                          child: Text('Groups', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF5B3A29))),
+                        ),
+                        const PopupMenuItem(
+                          value: '1-on-1',
+                          child: Text('1-on-1 Chats', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF5B3A29))),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: ChatService().streamUserGroupInvitations(),
               builder: (context, inviteSnapshot) {
@@ -3231,19 +3322,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 final invites = inviteSnapshot.data!.docs;
                 return Container(
                   width: double.infinity,
-                  color: const Color(0xFFFAF2EE),
-                  padding: const EdgeInsets.all(12),
+                  color: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  margin: const EdgeInsets.only(bottom: 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'PENDING GROUP INVITATIONS',
+                        'PENDING INVITATIONS',
                         style: TextStyle(
                           fontFamily: 'PlusJakartaSans',
                           fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 1.2,
-                          color: Color(0xFF7A432D),
+                          color: Color(0xFF8A6A58),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -3261,10 +3353,14 @@ class _ChatScreenState extends State<ChatScreen> {
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: const Color(0xFFE8E2DD),
-                              ),
+                              borderRadius: BorderRadius.circular(22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
                             child: Row(
                               children: [
@@ -3354,6 +3450,49 @@ class _ChatScreenState extends State<ChatScreen> {
                         if (bTime == null) return 1;
                         return bTime.compareTo(aTime);
                       });
+                      
+                      // Apply filter
+                      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                      if (_selectedFilter != 'All' && currentUid != null) {
+                        chatDocs.removeWhere((doc) {
+                          final data = doc.data();
+                          if (_selectedFilter == 'Unread') {
+                            final unreadMap = data['unreadCount'] as Map<String, dynamic>?;
+                            final unreadCount = unreadMap?[currentUid] ?? 0;
+                            return unreadCount == 0;
+                          } else if (_selectedFilter == 'Groups') {
+                            return data['isGroup'] != true;
+                          } else if (_selectedFilter == '1-on-1') {
+                            return data['isGroup'] == true;
+                          }
+                          return false;
+                        });
+                      }
+                      
+                      // Apply search
+                      final searchQuery = _conversationsSearchController.text.trim().toLowerCase();
+                      if (searchQuery.isNotEmpty) {
+                        chatDocs.removeWhere((doc) {
+                          final data = doc.data();
+                          final isGroup = data['isGroup'] == true;
+                          if (isGroup) {
+                            final groupName = (data['groupName'] ?? '').toString().toLowerCase();
+                            return !groupName.contains(searchQuery);
+                          } else {
+                            // 1-on-1 chat - we don't have the target user's name directly in chatData,
+                            // we'd have to filter based on participants or rely on a snapshot.
+                            // Since we have the search field on this screen, a simple filter won't work perfectly 
+                            // for 1-on-1 without fetching the user. Let's see if user name is cached or 
+                            // we can check if it's stored. The original code fetches users in the StreamBuilder 
+                            // inside ListView.builder. So we can't synchronously filter them here easily 
+                            // unless we have the name. Let's check what data we have in chatData.
+                            // Actually, chatData might have 'participantNames' or 'lastMessage' with senderName.
+                            // To be safe, if we can't search it easily synchronously, we might need a different approach.
+                          }
+                          return false; // For now keep it
+                        });
+                      }
+
                       if (chatDocs.isEmpty) {
                         return Center(
                           child: Column(
@@ -3407,14 +3546,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }
 
-                      return ListView.separated(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         itemCount: chatDocs.length,
-                        separatorBuilder: (context, index) => const Divider(
-                          color: Color(0xFFE8E2DD),
-                          height: 1,
-                          indent: 76,
-                        ),
                         itemBuilder: (context, index) {
                           final chatDoc = chatDocs[index];
                           final chatData = chatDoc.data();
@@ -3470,32 +3604,42 @@ class _ChatScreenState extends State<ChatScreen> {
                                       .toUpperCase()
                                 : 'GP';
 
-                            return InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _selectedContactName = groupName;
-                                  _chatId = chatDoc.id;
-                                  _chatDocStream = FirebaseFirestore.instance
-                                      .collection('chats')
-                                      .doc(chatDoc.id)
-                                      .snapshots();
-                                });
-                                _state.activeChatContact = groupName;
-                                _scrollToBottom();
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                            return Container(
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: Color(0xFFE8E2DD),
+                                    width: 1,
+                                  ),
                                 ),
+                              ),
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedContactName = groupName;
+                                    _chatId = chatDoc.id;
+                                    _chatDocStream = FirebaseFirestore.instance
+                                        .collection('chats')
+                                        .doc(chatDoc.id)
+                                        .snapshots();
+                                  });
+                                  _state.activeChatContact = groupName;
+                                  _scrollToBottom();
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 child: Row(
                                   children: [
                                     Container(
                                       width: 48,
                                       height: 48,
-                                      decoration: const BoxDecoration(
+                                      decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Color(0xFF7A432D),
+                                        color: const Color(0xFF8A6A58),
+                                        border: Border.all(
+                                          color: const Color(0xFFEFE3D7),
+                                          width: 1.5,
+                                        ),
                                       ),
                                       child: ClipOval(
                                         child: buildProfileImage(
@@ -3506,7 +3650,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                               initials,
                                               style: const TextStyle(
                                                 fontFamily: 'PlayfairDisplay',
-                                                fontSize: 16,
+                                                fontSize: 20,
                                                 fontWeight: FontWeight.bold,
                                                 color: Colors.white,
                                               ),
@@ -3515,7 +3659,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 14),
+                                    const SizedBox(width: 16),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -3584,8 +3728,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ],
                                 ),
                               ),
-                            );
-                          }
+                            ),
+                          );
+                        }
 
                           final participants = List<String>.from(
                             chatData['participants'] ?? [],
@@ -3615,6 +3760,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                   userData?['company'] ?? 'Startup';
                               final String profileImageUrl =
                                   userData?['profileImageUrl'] ?? '';
+
+                              final searchQuery = _conversationsSearchController.text.trim().toLowerCase();
+                              if (searchQuery.isNotEmpty && !name.toLowerCase().contains(searchQuery)) {
+                                return const SizedBox.shrink();
+                              }
 
                               final targetSkills = List<String>.from(
                                 userData?['skills'] ?? [],
@@ -3688,19 +3838,25 @@ class _ChatScreenState extends State<ChatScreen> {
                                   unreadMap?[currentUid] ?? 0;
                               final bool isUnread = unreadCount > 0;
 
-                              return InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedContactName = name;
-                                  });
-                                  _state.activeChatContact = name;
-                                  _initializeChat();
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                              return Container(
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: Color(0xFFE8E2DD),
+                                      width: 1,
+                                    ),
                                   ),
+                                ),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedContactName = name;
+                                    });
+                                    _state.activeChatContact = name;
+                                    _initializeChat();
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                   child: Row(
                                     children: [
                                       Stack(
@@ -3708,9 +3864,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                           Container(
                                             width: 48,
                                             height: 48,
-                                            decoration: const BoxDecoration(
+                                            decoration: BoxDecoration(
                                               shape: BoxShape.circle,
-                                              color: Color(0xFFE5A475),
+                                              color: const Color(0xFFE5A475),
+                                              border: Border.all(
+                                                color: const Color(0xFFEFE3D7),
+                                                width: 1.5,
+                                              ),
                                             ),
                                             child: ClipOval(
                                               child: buildProfileImage(
@@ -3722,7 +3882,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                     style: const TextStyle(
                                                       fontFamily:
                                                           'PlayfairDisplay',
-                                                      fontSize: 16,
+                                                      fontSize: 20,
                                                       fontWeight:
                                                           FontWeight.bold,
                                                       color: Colors.white,
@@ -3752,7 +3912,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(width: 14),
+                                      const SizedBox(width: 16),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment:
@@ -3762,11 +3922,15 @@ class _ChatScreenState extends State<ChatScreen> {
                                               mainAxisAlignment:
                                                   MainAxisAlignment
                                                       .spaceBetween,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
                                               children: [
                                                 Expanded(
                                                   child: Row(
                                                     mainAxisSize:
                                                         MainAxisSize.min,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.center,
                                                     children: [
                                                       Flexible(
                                                         child: Text(
@@ -3774,14 +3938,15 @@ class _ChatScreenState extends State<ChatScreen> {
                                                           style: TextStyle(
                                                             fontFamily:
                                                                 'PlayfairDisplay',
-                                                            fontSize: 15.5,
+                                                            fontSize: 16,
+                                                            height: 1.1,
                                                             fontWeight: isUnread
                                                                 ? FontWeight
-                                                                      .bold
+                                                                      .w800
                                                                 : FontWeight
-                                                                      .w600,
+                                                                      .w700,
                                                             color: const Color(
-                                                              0xFF3E1F11,
+                                                              0xFF5B3A29,
                                                             ),
                                                           ),
                                                           overflow: TextOverflow
@@ -3796,26 +3961,20 @@ class _ChatScreenState extends State<ChatScreen> {
                                                         Container(
                                                           padding:
                                                               const EdgeInsets.symmetric(
-                                                                horizontal: 6,
-                                                                vertical: 2,
+                                                                horizontal: 10,
+                                                                vertical: 3,
                                                               ),
                                                           decoration: BoxDecoration(
                                                             color:
-                                                                const Color(
-                                                                  0xFFE5A475,
-                                                                ).withValues(
-                                                                  alpha: 0.15,
-                                                                ),
+                                                                const Color(0xFFFDFBF7),
                                                             borderRadius:
                                                                 BorderRadius.circular(
-                                                                  10,
+                                                                  999,
                                                                 ),
                                                             border: Border.all(
                                                               color:
                                                                   const Color(
-                                                                    0xFFE5A475,
-                                                                  ).withValues(
-                                                                    alpha: 0.4,
+                                                                    0xFFEFE3D7,
                                                                   ),
                                                               width: 1,
                                                             ),
@@ -3828,24 +3987,24 @@ class _ChatScreenState extends State<ChatScreen> {
                                                               const Icon(
                                                                 Icons.star,
                                                                 color: Color(
-                                                                  0xFF7A432D,
+                                                                  0xFFD8A36B,
                                                                 ),
                                                                 size: 8,
                                                               ),
                                                               const SizedBox(
-                                                                width: 2,
+                                                                width: 4,
                                                               ),
                                                               Text(
-                                                                '$matchScore% match',
+                                                                '$matchScore% Match',
                                                                 style: const TextStyle(
                                                                   fontFamily:
                                                                       'PlusJakartaSans',
-                                                                  fontSize: 8,
+                                                                  fontSize: 9,
                                                                   fontWeight:
                                                                       FontWeight
-                                                                          .bold,
+                                                                          .w700,
                                                                   color: Color(
-                                                                    0xFF7A432D,
+                                                                    0xFF8A6A58,
                                                                   ),
                                                                 ),
                                                               ),
@@ -3863,6 +4022,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                     fontFamily:
                                                         'PlusJakartaSans',
                                                     fontSize: 10,
+                                                    height: 1.1,
                                                     color: isUnread
                                                         ? const Color(
                                                             0xFF7A432D,
@@ -3872,44 +4032,128 @@ class _ChatScreenState extends State<ChatScreen> {
                                                           ),
                                                     fontWeight: isUnread
                                                         ? FontWeight.bold
-                                                        : FontWeight.normal,
+                                                        : FontWeight.w500,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              '$role ┬╖ $org',
-                                              style: const TextStyle(
-                                                fontFamily: 'PlusJakartaSans',
-                                                fontSize: 11,
-                                                color: Color(0xFF8C736B),
-                                              ),
-                                            ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              lastText,
+                                              '$role • $org',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
+                                              style: const TextStyle(
                                                 fontFamily: 'PlusJakartaSans',
-                                                fontSize: 12.5,
-                                                color: isUnread
-                                                    ? const Color(0xFF3E1F11)
-                                                    : const Color(0xFF5C473E),
-                                                fontWeight: isUnread
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
+                                                fontSize: 12,
+                                                height: 1.2,
+                                                fontWeight: FontWeight.w500,
+                                                color: Color(0xFF8A6A58),
                                               ),
                                             ),
+                                            const SizedBox(height: 6),
+                                            if (lastText.startsWith('🎤 Voice message'))
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.mic, size: 14, color: isUnread ? const Color(0xFF5B3A29) : const Color(0xFF8A6A58)),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    'Voice message',
+                                                    style: TextStyle(
+                                                      fontFamily: 'PlusJakartaSans',
+                                                      fontSize: 13,
+                                                      height: 1.2,
+                                                      color: isUnread ? const Color(0xFF5B3A29) : const Color(0xFF8A6A58),
+                                                      fontWeight: isUnread ? FontWeight.bold : FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: List.generate(
+                                                        12,
+                                                        (index) => Container(
+                                                          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                                                          width: 2.5,
+                                                          height: (index % 3 == 0) ? 8 : ((index % 2 == 0) ? 14 : 6),
+                                                          decoration: BoxDecoration(
+                                                            color: isUnread ? const Color(0xFFD8A36B) : const Color(0xFFEFE3D7),
+                                                            borderRadius: BorderRadius.circular(2),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '0:12', // placeholder duration
+                                                    style: TextStyle(
+                                                      fontFamily: 'PlusJakartaSans',
+                                                      fontSize: 10,
+                                                      color: const Color(0xFF8A6A58).withValues(alpha: 0.8),
+                                                    ),
+                                                  ),
+                                                ],
+                                              )
+                                            else if (lastText.startsWith('📅 Meeting Request') || lastText.contains('Meeting Request'))
+                                              Row(
+                                                children: [
+                                                  Icon(Icons.calendar_today, size: 12, color: isUnread ? const Color(0xFF5B3A29) : const Color(0xFF8A6A58)),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(
+                                                    child: Text(
+                                                      lastText.replaceAll('📅 ', ''),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontFamily: 'PlusJakartaSans',
+                                                        fontSize: 13,
+                                                        height: 1.2,
+                                                        color: isUnread ? const Color(0xFF5B3A29) : const Color(0xFF8A6A58),
+                                                        fontWeight: isUnread ? FontWeight.bold : FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              )
+                                            else if (lastText.contains('unmatched'))
+                                              Text(
+                                                lastText,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontFamily: 'PlusJakartaSans',
+                                                  fontSize: 12,
+                                                  height: 1.2,
+                                                  color: Color(0xFF9E9E9E),
+                                                  fontWeight: FontWeight.normal,
+                                                ),
+                                              )
+                                            else
+                                              Text(
+                                                lastText,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontFamily: 'PlusJakartaSans',
+                                                  fontSize: 13,
+                                                  height: 1.3,
+                                                  color: isUnread
+                                                      ? const Color(0xFF5B3A29)
+                                                      : const Color(0xFF8A6A58),
+                                                  fontWeight: isUnread
+                                                      ? FontWeight.bold
+                                                      : FontWeight.w500,
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              );
-                            },
+                              ),
+                            );
+                          },
                           );
                         },
                       );
@@ -4265,7 +4509,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (isGroup) {
                   return IconButton(
                     icon: const Icon(
-                      Icons.person_add_alt_1,
+                      Icons.group_add,
                       color: Color(0xFF7A432D),
                     ),
                     onPressed: () =>
@@ -5975,18 +6219,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _showCreateGroupModal(BuildContext context) async {
     final nameController = TextEditingController();
-    final imageController = TextEditingController(
-      text:
-          'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80',
-    );
+    Uint8List? selectedImageBytes;
+    bool isCreatingGroup = false;
 
-    // Fetch all users to invite
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    // Find who we have 1-on-1 chats with to determine connections
+    final chatsSnapshot = await FirebaseFirestore.instance
+        .collection('chats')
+        .where('participants', arrayContains: currentUid)
+        .where('isGroup', isEqualTo: false)
+        .get();
+
+    final connectedUids = chatsSnapshot.docs.map((doc) {
+      final participants = List<String>.from(doc.data()['participants'] ?? []);
+      return participants.firstWhere((uid) => uid != currentUid, orElse: () => '');
+    }).where((uid) => uid.isNotEmpty).toSet();
+
+    // Fetch users and filter to connections
     final usersSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .get();
     final List<UserProfile> availableUsers = usersSnapshot.docs
         .map((doc) => UserProfile.fromFirestore(doc))
-        .where((user) => user.uid != FirebaseAuth.instance.currentUser?.uid)
+        .where((user) => user.uid != currentUid && connectedUids.contains(user.uid))
         .toList();
 
     final List<String> selectedUids = [];
@@ -6048,14 +6305,43 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      TextField(
-                        controller: imageController,
-                        decoration: const InputDecoration(
-                          labelText: 'Group Image URL',
-                        ),
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 13,
+                      GestureDetector(
+                        onTap: () async {
+                          final image = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 80,
+                          );
+                          if (image != null) {
+                            final bytes = await image.readAsBytes();
+                            setModalState(() {
+                              selectedImageBytes = bytes;
+                            });
+                          }
+                        },
+                        child: Container(
+                          height: 120,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFEFE3D7)),
+                          ),
+                          child: selectedImageBytes != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.memory(
+                                    selectedImageBytes!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.add_a_photo, color: Color(0xFF8A6A58), size: 32),
+                                    SizedBox(height: 8),
+                                    Text('Tap to upload group image', style: TextStyle(color: Color(0xFF8A6A58), fontFamily: 'PlusJakartaSans', fontSize: 13)),
+                                  ],
+                                ),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -6074,7 +6360,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           padding: EdgeInsets.symmetric(vertical: 20),
                           child: Center(
                             child: Text(
-                              'No other users found in the system.',
+                              'No connections found to invite.',
                               style: TextStyle(
                                 color: Color(0xFF8C736B),
                                 fontSize: 13,
@@ -6176,7 +6462,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        onPressed: () async {
+                        onPressed: isCreatingGroup ? null : () async {
                           final name = nameController.text.trim();
                           if (name.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -6186,17 +6472,32 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                             return;
                           }
+                          setModalState(() {
+                            isCreatingGroup = true;
+                          });
                           try {
+                            String finalImageUrl = 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80';
+                            if (selectedImageBytes != null) {
+                              final timestamp = DateTime.now().millisecondsSinceEpoch;
+                              final path = 'group_images/${currentUid}_$timestamp.jpg';
+                              final ref = FirebaseStorage.instance.ref().child(path);
+                              await ref.putData(selectedImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+                              finalImageUrl = await ref.getDownloadURL();
+                            }
+
                             final newChatId = await ChatService()
                                 .createGroupChat(
                                   groupName: name,
-                                  imageUrl: imageController.text.trim(),
+                                  imageUrl: finalImageUrl,
                                   participants: selectedUids,
                                 );
                             if (!context.mounted) return;
                             Navigator.pop(context);
                             _openGroupChat(newChatId, name);
                           } catch (e) {
+                            setModalState(() {
+                              isCreatingGroup = false;
+                            });
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Failed to create group: $e'),
@@ -6204,14 +6505,16 @@ class _ChatScreenState extends State<ChatScreen> {
                             );
                           }
                         },
-                        child: const Text(
-                          'Create Group',
-                          style: TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        child: isCreatingGroup 
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text(
+                                'Create Group',
+                                style: TextStyle(
+                                  fontFamily: 'PlusJakartaSans',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -6354,7 +6657,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final bool isMuted = mutedBy.contains(currentUid);
 
     final nameController = TextEditingController(text: groupName);
-    final imageController = TextEditingController(text: groupImageUrl);
+    
+    Uint8List? selectedImageBytes;
+    bool isUpdatingGroup = false;
 
     // Fetch details for all current members
     final List<UserProfile> currentMembers = [];
@@ -6469,14 +6774,47 @@ class _ChatScreenState extends State<ChatScreen> {
                             fontSize: 13,
                           ),
                         ),
-                        TextField(
-                          controller: imageController,
-                          decoration: const InputDecoration(
-                            labelText: 'Image URL',
-                          ),
-                          style: const TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 13,
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () async {
+                            final image = await ImagePicker().pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 80,
+                            );
+                            if (image != null) {
+                              final bytes = await image.readAsBytes();
+                              setSheetState(() {
+                                selectedImageBytes = bytes;
+                              });
+                            }
+                          },
+                          child: Container(
+                            height: 120,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFEFE3D7)),
+                            ),
+                            child: selectedImageBytes != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.memory(
+                                      selectedImageBytes!,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.add_a_photo, color: Color(0xFF8A6A58), size: 32),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        groupImageUrl.isNotEmpty ? 'Tap to change group image' : 'Tap to upload group image', 
+                                        style: const TextStyle(color: Color(0xFF8A6A58), fontFamily: 'PlusJakartaSans', fontSize: 13)
+                                      ),
+                                    ],
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -6484,19 +6822,45 @@ class _ChatScreenState extends State<ChatScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF7A432D),
                           ),
-                          onPressed: () async {
-                            await ChatService().updateGroupSettings(
-                              chatId: _chatId!,
-                              name: nameController.text.trim(),
-                              imageUrl: imageController.text.trim(),
-                            );
-                            if (!context.mounted) return;
-                            Navigator.pop(context);
+                          onPressed: isUpdatingGroup ? null : () async {
+                            setSheetState(() {
+                              isUpdatingGroup = true;
+                            });
+                            
+                            try {
+                              String finalImageUrl = groupImageUrl;
+                              if (selectedImageBytes != null) {
+                                final timestamp = DateTime.now().millisecondsSinceEpoch;
+                                final path = 'group_images/${currentUid}_$timestamp.jpg';
+                                final ref = FirebaseStorage.instance.ref().child(path);
+                                await ref.putData(selectedImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+                                finalImageUrl = await ref.getDownloadURL();
+                              }
+                              
+                              await ChatService().updateGroupSettings(
+                                chatId: _chatId!,
+                                name: nameController.text.trim(),
+                                imageUrl: finalImageUrl,
+                              );
+                              
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            } catch (e) {
+                              setSheetState(() {
+                                isUpdatingGroup = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to update group: $e')),
+                              );
+                            }
                           },
-                          child: const Text(
-                            'Save Details',
-                            style: TextStyle(color: Colors.white),
-                          ),
+                          child: isUpdatingGroup
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text(
+                                  'Save Details',
+                                  style: TextStyle(color: Colors.white),
+                                ),
                         ),
                         const Divider(color: Color(0xFFE8E2DD)),
                       ],
@@ -6516,7 +6880,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           if (true)
                             IconButton(
                               icon: const Icon(
-                                Icons.person_add_alt_1,
+                                Icons.group_add,
                                 color: Color(0xFF7A432D),
                               ),
                               onPressed: () async {

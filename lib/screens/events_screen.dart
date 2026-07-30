@@ -832,16 +832,33 @@ class _EventsScreenState extends State<EventsScreen> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                event.status == 'rejected'
-                                    ? 'This event was rejected by the admin team and is not visible to the community.'
-                                    : 'This event is awaiting admin approval. It will be published to the community once approved.',
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: event.status == 'rejected' ? const Color(0xFF991B1B) : const Color(0xFF92400E),
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    event.status == 'rejected'
+                                        ? 'This event was rejected by the admin team and is not visible to the community.'
+                                        : 'This event is awaiting admin approval. It will be published to the community once approved.',
+                                    style: TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: event.status == 'rejected' ? const Color(0xFF991B1B) : const Color(0xFF92400E),
+                                    ),
+                                  ),
+                                  if (event.status == 'rejected') ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Reason: ${event.rejectionReason ?? "No reason provided (null)"}',
+                                      style: const TextStyle(
+                                        fontFamily: 'PlusJakartaSans',
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF7F1D1D),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ],
@@ -1098,6 +1115,7 @@ class _EventsScreenState extends State<EventsScreen> {
                             height: 48,
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
                                 side: BorderSide(
                                   color: event.isExpired || event.status != 'approved'
                                       ? const Color(0xFFB0A29C)
@@ -1130,19 +1148,23 @@ class _EventsScreenState extends State<EventsScreen> {
                                         ? const Color(0xFF2E7D32)
                                         : const Color(0xFF7A432D)),
                               ),
-                              label: Text(
-                                event.isExpired
-                                    ? 'Ended'
-                                    : (event.status != 'approved' ? 'Locked' : (event.isJoined ? 'Interested' : 'Interested?')),
-                                style: TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: event.isExpired || event.status != 'approved'
-                                      ? const Color(0xFFB0A29C)
-                                      : (event.isJoined
-                                          ? const Color(0xFF2E7D32)
-                                          : const Color(0xFF7A432D)),
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  event.isExpired
+                                      ? 'Ended'
+                                      : (event.status != 'approved' ? 'Locked' : (event.isJoined ? 'Interested' : 'Interested?')),
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: event.isExpired || event.status != 'approved'
+                                        ? const Color(0xFFB0A29C)
+                                        : (event.isJoined
+                                            ? const Color(0xFF2E7D32)
+                                            : const Color(0xFF7A432D)),
+                                  ),
                                 ),
                               ),
                             ),
@@ -1155,6 +1177,7 @@ class _EventsScreenState extends State<EventsScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
                                 backgroundColor: (event.isExpired && !event.isRegistered) || event.status != 'approved'
                                     ? const Color(0xFF616161)
                                     : const Color(0xFF7A432D),
@@ -1184,17 +1207,21 @@ class _EventsScreenState extends State<EventsScreen> {
                                 size: 18,
                                 color: Colors.white,
                               ),
-                              label: Text(
-                                event.status != 'approved'
-                                    ? (event.status == 'rejected' ? 'Rejected' : 'Approval Pending')
-                                    : (event.isExpired
-                                        ? (event.isRegistered ? 'View Your Pass' : 'Registration Closed')
-                                        : (event.isRegistered ? 'View Your Pass' : 'Register Now')),
-                                style: const TextStyle(
-                                  fontFamily: 'PlusJakartaSans',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  event.status != 'approved'
+                                      ? (event.status == 'rejected' ? 'Rejected' : 'Approval Pending')
+                                      : (event.isExpired
+                                          ? (event.isRegistered ? 'View Your Pass' : 'Registration Closed')
+                                          : (event.isRegistered ? 'View Your Pass' : 'Register Now')),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontFamily: 'PlusJakartaSans',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                             ),

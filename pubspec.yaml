@@ -45,6 +45,7 @@ dependencies:
   audioplayers: ^6.7.1
   path_provider: ^2.1.5
   phosphoricons_flutter: ^1.0.0
+  lottie: ^3.1.2
 
   # Event tickets / QR
   qr_flutter: ^4.1.0
@@ -68,6 +69,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/lottie/
   fonts:
     - family: PlayfairDisplay
       fonts:
