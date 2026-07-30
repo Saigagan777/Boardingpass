@@ -325,6 +325,7 @@ class AuthService {
             profileImageUrl: picture.isNotEmpty ? picture : null,
             linkedinProfileUrl: profileUrl.isNotEmpty ? profileUrl : null,
             linkedinSynced: true,
+            onboardingCompleted: false,
             createdAt: DateTime.now(),
             lastSeen: DateTime.now(),
             hasCompletedFeatureTour: false,
@@ -343,6 +344,7 @@ class AuthService {
                 if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
                 'linkedinId': sub, // Keep linkedinId updated
                 'linkedinSynced': true,
+                'onboardingCompleted': false,
                 'linkedinSyncedAt': FieldValue.serverTimestamp(),
               })
               .timeout(const Duration(seconds: 5));
@@ -425,6 +427,7 @@ class AuthService {
           email: email,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
+          onboardingCompleted: false,
           hasCompletedFeatureTour: false,
         );
         await docRef.set(profile.toFirestore());

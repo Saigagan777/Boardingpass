@@ -60,6 +60,7 @@ class UserProfile {
   final List<String> expertise;
   final List<String> intents;
   final bool isDiscoverable;
+  final bool onboardingCompleted;
   final bool isAdmin;
   final DateTime createdAt;
   final DateTime lastSeen;
@@ -129,6 +130,7 @@ class UserProfile {
     this.expertise = const [],
     this.intents = const [],
     this.isDiscoverable = true,
+    this.onboardingCompleted = false,
     this.isAdmin = false,
     required this.createdAt,
     required this.lastSeen,
@@ -196,6 +198,7 @@ class UserProfile {
       expertise: List<String>.from(data['expertise'] ?? []),
       intents: List<String>.from(data['intents'] ?? []),
       isDiscoverable: data['isDiscoverable'] ?? true,
+      onboardingCompleted: data['onboardingCompleted'] ?? true,
       isAdmin: data['isAdmin'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -272,6 +275,7 @@ class UserProfile {
       'expertise': expertise,
       'intents': intents,
       'isDiscoverable': isDiscoverable,
+      'onboardingCompleted': onboardingCompleted,
       'isAdmin': isAdmin,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastSeen': Timestamp.fromDate(lastSeen),
@@ -334,6 +338,7 @@ class UserProfile {
     List<String>? expertise,
     List<String>? intents,
     bool? isDiscoverable,
+    bool? onboardingCompleted,
     bool? isAdmin,
     DateTime? lastSeen,
     String? coverImageUrl,
@@ -388,6 +393,7 @@ class UserProfile {
       expertise: expertise ?? this.expertise,
       intents: intents ?? this.intents,
       isDiscoverable: isDiscoverable ?? this.isDiscoverable,
+      onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       isAdmin: isAdmin ?? this.isAdmin,
       createdAt: createdAt,
       lastSeen: lastSeen ?? this.lastSeen,

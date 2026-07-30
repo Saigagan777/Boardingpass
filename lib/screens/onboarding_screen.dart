@@ -716,6 +716,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ? currentLocationName
               : null,
           travelFrequency: travelFrequency,
+          onboardingCompleted: true,
           expertise: _selectedExpertise,
           intents: _selectedInterests,
           skills: _selectedExpertise,

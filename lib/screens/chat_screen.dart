@@ -6547,7 +6547,10 @@ class _ChatScreenState extends State<ChatScreen> {
         .map((doc) => UserProfile.fromFirestore(doc))
         .where(
           (user) =>
-              !participants.contains(user.uid) && !pending.contains(user.uid),
+              !participants.contains(user.uid) &&
+              !pending.contains(user.uid) &&
+              user.onboardingCompleted &&
+              user.isDiscoverable,
         )
         .toList();
     if (!context.mounted) return;

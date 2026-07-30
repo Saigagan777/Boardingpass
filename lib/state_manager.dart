@@ -686,12 +686,14 @@ class AppStateManager extends ChangeNotifier {
         (doc) {
           final data = doc.data();
           final isDiscoverable = data['isDiscoverable'] ?? true;
+          final onboardingCompleted = data['onboardingCompleted'] ?? true; // Legacy users assumed onboarded
           final pass = doc.id != currentUid &&
               isDiscoverable &&
+              onboardingCompleted &&
               !permanentlyExcludedUids.contains(doc.id) &&
               !pendingReqUids.contains(doc.id) &&
               !connectedUids.contains(doc.id);
-          debugPrint('[DEBUG loadCandidates] User doc: ${doc.id}, name: ${data['name']}, isDiscoverable: $isDiscoverable, pass: $pass');
+          debugPrint('[DEBUG loadCandidates] User doc: ${doc.id}, name: ${data['name']}, isDiscoverable: $isDiscoverable, onboardingCompleted: $onboardingCompleted, pass: $pass');
           return pass;
         },
       ).toList();
