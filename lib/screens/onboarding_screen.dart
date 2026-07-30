@@ -716,6 +716,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ? currentLocationName
               : null,
           travelFrequency: travelFrequency,
+          phone: _phoneController.text.trim(),
+          phoneCountryCode: _selectedCountry.dialCode,
+          dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
+          gender: _selectedGender,
           onboardingCompleted: true,
           expertise: _selectedExpertise,
           intents: _selectedInterests,
@@ -1245,60 +1249,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
           const SizedBox(height: 16),
-          CountryPhoneInput(
-            controller: _phoneController,
-            label: 'Phone Number',
-            isRequired: true,
-            initialCountry: _selectedCountry,
-            onCountryChanged: (c) => setState(() => _selectedCountry = c),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _dobController,
-            labelText: 'Date of Birth',
-            hintText: 'YYYY-MM-DD',
-            readOnly: true,
-            isRequired: true,
-            onTap: () async {
-              final initialDate = _selectedDob ?? DateTime(2000, 1, 1);
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: initialDate,
-                firstDate: DateTime(1940),
-                lastDate: DateTime.now(),
-                builder: (context, child) {
-                  return Theme(
-                    data: Theme.of(context).copyWith(
-                      colorScheme: const ColorScheme.light(
-                        primary: Color(0xFF7A432D),
-                        onPrimary: Colors.white,
-                        onSurface: Color(0xFF3E1F11),
-                      ),
-                    ),
-                    child: child!,
-                  );
-                },
-              );
-              if (picked != null) {
-                setState(() {
-                  _selectedDob = picked;
-                  _dobController.text =
-                      "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-                });
-              }
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildDropdownField(
-            label: 'Gender',
-            currentValue: _selectedGender,
-            items: _genders,
-            hintText: 'Select gender',
-            isRequired: true,
-            onChanged: (val) {
-              setState(() => _selectedGender = val);
-            },
-          ),
           const SizedBox(height: 16),
           _buildTextField(
             controller: _passwordController,
@@ -1382,15 +1332,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               onPressed: () {
                 final name = _nameController.text.trim();
                 final email = _emailController.text.trim();
-                final phone = _phoneController.text.trim();
-                final dob = _dobController.text.trim();
                 final password = _passwordController.text;
                 final confirmPassword = _confirmPasswordController.text;
                 if (name.isEmpty ||
                     email.isEmpty ||
-                    phone.isEmpty ||
-                    dob.isEmpty ||
-                    _selectedGender == null ||
                     password.isEmpty ||
                     confirmPassword.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1405,15 +1350,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Please enter a valid email address'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                if (phone.length < 7) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter a valid phone number'),
                       backgroundColor: Color(0xFF7A432D),
                     ),
                   );
@@ -1505,6 +1441,61 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
+          CountryPhoneInput(
+            controller: _phoneController,
+            label: 'Phone Number',
+            isRequired: true,
+            initialCountry: _selectedCountry,
+            onCountryChanged: (c) => setState(() => _selectedCountry = c),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _dobController,
+            labelText: 'Date of Birth',
+            hintText: 'YYYY-MM-DD',
+            readOnly: true,
+            isRequired: true,
+            onTap: () async {
+              final initialDate = _selectedDob ?? DateTime(2000, 1, 1);
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: initialDate,
+                firstDate: DateTime(1940),
+                lastDate: DateTime.now(),
+                builder: (context, child) {
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: const ColorScheme.light(
+                        primary: Color(0xFF7A432D),
+                        onPrimary: Colors.white,
+                        onSurface: Color(0xFF3E1F11),
+                      ),
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+              if (picked != null) {
+                setState(() {
+                  _selectedDob = picked;
+                  _dobController.text =
+                      "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                });
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildDropdownField(
+            label: 'Gender',
+            currentValue: _selectedGender,
+            items: _genders,
+            hintText: 'Select gender',
+            isRequired: true,
+            onChanged: (val) {
+              setState(() => _selectedGender = val);
+            },
+          ),
+          const SizedBox(height: 16),
           _buildDropdownField(
             label: 'Occupation',
             currentValue: _selectedOccupation,
@@ -1598,6 +1589,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 final company = _companyController.text.trim();
                 final designation = _roleController.text.trim();
                 final experience = _experienceController.text.trim();
+                final phone = _phoneController.text.trim();
+                final dob = _dobController.text.trim();
+                
+                if (phone.isEmpty ||
+                    dob.isEmpty ||
+                    _selectedGender == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please fill in your phone number, date of birth, and gender'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                
+                if (phone.length < 7) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid phone number'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                
                 if (occupation.isEmpty ||
                     profession.isEmpty ||
                     company.isEmpty ||

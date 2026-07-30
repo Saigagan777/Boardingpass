@@ -104,6 +104,10 @@ class UserService {
     List<String>? intents,
     bool? isDiscoverable,
     bool? onboardingCompleted,
+    String? phone,
+    String? phoneCountryCode,
+    String? dob,
+    String? gender,
     String? coverImageUrl,
     String? linkedinProfileUrl,
     int? connectionCount,
@@ -150,6 +154,10 @@ class UserService {
       if (intents != null) updates['intents'] = intents;
       if (isDiscoverable != null) updates['isDiscoverable'] = isDiscoverable;
       if (onboardingCompleted != null) updates['onboardingCompleted'] = onboardingCompleted;
+      if (phone != null) updates['phone'] = phone;
+      if (phoneCountryCode != null) updates['phoneCountryCode'] = phoneCountryCode;
+      if (dob != null) updates['dob'] = dob;
+      if (gender != null) updates['gender'] = gender;
       
       // New LinkedIn and Notification Fields
       if (coverImageUrl != null) updates['coverImageUrl'] = coverImageUrl;
