@@ -1916,6 +1916,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   isRequired: true,
                 ),
                 const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workCompanyController,
+                  labelText: 'Company / Organization',
+                  hintText: 'e.g. Acme Corp',
+                  isRequired: true,
+                ),
+                const SizedBox(height: 8),
                 // Employment Type Dropdown
                 DropdownButtonFormField<String>(
                   initialValue: _workEmploymentType,
