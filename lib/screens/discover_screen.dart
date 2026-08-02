@@ -36,8 +36,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   String? _selectedHomeBase;
   String? _selectedCurrentLocation;
   String? _selectedFilterExpertise;
-  String? _selectedRole;
-  String? _selectedCompany;
   double? _maxDistanceKm;
   final TextEditingController _industryController = TextEditingController();
   final List<String> _customIndustries = [];
@@ -145,16 +143,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       if (_selectedCurrentLocation != null &&
           _selectedCurrentLocation!.isNotEmpty) {
         if (c.currentLocationName != _selectedCurrentLocation) return false;
-      }
-
-      // 7. Role filter
-      if (_selectedRole != null && _selectedRole!.isNotEmpty) {
-        if (c.role != _selectedRole) return false;
-      }
-
-      // 8. Company filter
-      if (_selectedCompany != null && _selectedCompany!.isNotEmpty) {
-        if (c.org != _selectedCompany) return false;
       }
 
       // 9. Distance filter
@@ -1456,8 +1444,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             _selectedHomeBase = null;
                             _selectedCurrentLocation = null;
                             _selectedFilterExpertise = null;
-                            _selectedRole = null;
-                            _selectedCompany = null;
                             _maxDistanceKm = null;
                           });
                           setState(() {});
@@ -1828,56 +1814,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                       setState(() {});
                                     },
                                   ),
-                                  const SizedBox(height: 20),
-                                  Builder(
-                                    builder: (context) {
-                                      final roles = _state.candidates
-                                          .where((c) => c.role.isNotEmpty)
-                                          .map((c) => c.role)
-                                          .toSet()
-                                          .toList()
-                                        ..sort();
-                                      final companies = _state.candidates
-                                          .where((c) => c.org.isNotEmpty)
-                                          .map((c) => c.org)
-                                          .toSet()
-                                          .toList()
-                                        ..sort();
-                                      return Column(
-                                        children: [
-                                          _buildSearchableFilterTile(
-                                            context: context,
-                                            setModalState: setModalState,
-                                            label: 'Role',
-                                            placeholder: 'Select role',
-                                            selectedValue: _selectedRole,
-                                            options: roles,
-                                            onChanged: (val) {
-                                              setModalState(() {
-                                                _selectedRole = val;
-                                              });
-                                              setState(() {});
-                                            },
-                                          ),
-                                          const SizedBox(height: 20),
-                                          _buildSearchableFilterTile(
-                                            context: context,
-                                            setModalState: setModalState,
-                                            label: 'Company',
-                                            placeholder: 'Select company',
-                                            selectedValue: _selectedCompany,
-                                            options: companies,
-                                            onChanged: (val) {
-                                              setModalState(() {
-                                                _selectedCompany = val;
-                                              });
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  ),
                                 ],
                               );
                             },
@@ -1967,8 +1903,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                     _selectedHomeBase = null;
                     _selectedCurrentLocation = null;
                     _selectedFilterExpertise = null;
-                    _selectedRole = null;
-                    _selectedCompany = null;
                     _maxDistanceKm = null;
                   });
                 },
@@ -2005,8 +1939,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       (_selectedHomeBase != null && _selectedHomeBase!.isNotEmpty) ||
       (_selectedCurrentLocation != null && _selectedCurrentLocation!.isNotEmpty) ||
       (_selectedFilterExpertise != null && _selectedFilterExpertise!.isNotEmpty) ||
-      (_selectedRole != null && _selectedRole!.isNotEmpty) ||
-      (_selectedCompany != null && _selectedCompany!.isNotEmpty) ||
       _maxDistanceKm != null ||
       _searchQuery.text.trim().isNotEmpty;
 

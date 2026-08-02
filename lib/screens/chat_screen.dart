@@ -2087,6 +2087,31 @@ class _ChatScreenState extends State<ChatScreen> {
                       onPressed: (isValidating || isSubmittingMeeting)
                           ? null
                           : () async {
+                              final onlineLink = onlineLinkController.text.trim();
+                              final locationText = selectedLocation.isNotEmpty 
+                                  ? selectedLocation 
+                                  : searchController.text.trim();
+
+                              if (sheetMeetingType == 'in_person' && locationText.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please select or specify a venue.'),
+                                    backgroundColor: Color(0xFFC62828),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              if (sheetMeetingType == 'online' && onlineLink.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please provide an online meeting link.'),
+                                    backgroundColor: Color(0xFFC62828),
+                                  ),
+                                );
+                                return;
+                              }
+
                               if (conflictWarning != null) {
                                 showDialog(
                                   context: context,
@@ -2143,10 +2168,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                   selectedTime.minute,
                                 );
 
-                                final onlineLink = onlineLinkController.text.trim();
                                 final finalLocation = sheetMeetingType == 'online'
-                                    ? (onlineLink.isNotEmpty ? onlineLink : 'Online Meeting (Virtual)')
-                                    : selectedLocation;
+                                    ? onlineLink
+                                    : locationText;
 
                                 final timeStr =
                                     '${selectedDate.day}/${selectedDate.month}/${selectedDate.year} at ${selectedTime.format(context)}';
