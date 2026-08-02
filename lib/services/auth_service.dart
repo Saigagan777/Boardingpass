@@ -151,6 +151,15 @@ class AuthService {
           .set(profile.toFirestore())
           .timeout(const Duration(seconds: 8));
 
+      // Send email verification link
+      if (!user.emailVerified) {
+        try {
+          await user.sendEmailVerification();
+        } catch (e) {
+          debugPrint('Failed to send email verification: $e');
+        }
+      }
+
       return user;
     } on FirebaseAuthException {
       rethrow;
@@ -357,6 +366,27 @@ class AuthService {
     } catch (e) {
       throw Exception('LinkedIn authentication failed: $e');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phone Verification
+  // ---------------------------------------------------------------------------
+
+  /// Initiates phone number verification using Firebase.
+  Future<void> verifyPhoneNumber({
+    required String phoneNumber,
+    required Function(PhoneAuthCredential) verificationCompleted,
+    required Function(FirebaseAuthException) verificationFailed,
+    required Function(String, int?) codeSent,
+    required Function(String) codeAutoRetrievalTimeout,
+  }) async {
+    await _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: verificationCompleted,
+      verificationFailed: verificationFailed,
+      codeSent: codeSent,
+      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
+    );
   }
 
   // ---------------------------------------------------------------------------

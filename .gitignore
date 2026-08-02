@@ -49,3 +49,7 @@ app.*.map.json
 
 # JVM / Android Profiling
 *.hprof
+
+# Node.js
+node_modules/
+

@@ -647,7 +647,6 @@ class AppStateManager extends ChangeNotifier {
       // 2. Query users collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('users')
-          .limit(100)
           .get();
       debugPrint('[DEBUG loadCandidates] users collection fetched count: ${querySnapshot.docs.length}');
 
@@ -843,10 +842,11 @@ class AppStateManager extends ChangeNotifier {
           careerTimeline: careerTimeline,
           educationTimeline: educationTimeline,
           bio: data['bio'] ?? '',
-          initials: (data['name'] as String?)?.isNotEmpty == true
-              ? data['name']
+          initials: (data['name'] as String?)?.trim().isNotEmpty == true
+              ? (data['name'] as String)
                     .trim()
-                    .split(' ')
+                    .split(RegExp(r'\s+'))
+                    .where((e) => e.isNotEmpty)
                     .map((e) => e[0])
                     .take(2)
                     .join()

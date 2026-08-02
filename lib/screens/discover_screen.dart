@@ -5,14 +5,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:lottie/lottie.dart';
 import '../state_manager.dart';
 import '../models/candidate.dart';
 import '../utils/card_renderer.dart';
 import '../utils/image_helper.dart';
 import '../utils/app_logo.dart';
-import '../utils/match_calculator.dart';
 import 'candidate_profile_sheet.dart';
 import '../widgets/searchable_multi_select.dart';
 
@@ -1932,8 +1930,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             SizedBox(
               width: 180,
               height: 180,
-              child: Lottie.asset(
-                'assets/lottie/animation2.json',
+              child: Image.asset(
+                'assets/images/boarding_pass_illustration_2.png',
                 fit: BoxFit.contain,
               ),
             ),
@@ -3561,8 +3559,8 @@ class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
   @override
   void initState() {
     super.initState();
-    _anim1Controller = AnimationController(vsync: this);
-    _anim2Controller = AnimationController(vsync: this);
+    _anim1Controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+    _anim2Controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
 
     _anim1Controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -3576,6 +3574,7 @@ class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
                 _showSecond = true;
                 _fadingIn2 = true;
               });
+              _anim2Controller.forward();
             }
           });
         }
@@ -3590,8 +3589,11 @@ class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
       }
     });
 
-    // Safety fallback in case an animation fails to load
-    Future.delayed(const Duration(seconds: 10), () {
+    // Start the first animation timer
+    _anim1Controller.forward();
+
+    // Safety fallback in case an animation fails
+    Future.delayed(const Duration(seconds: 5), () {
       if (mounted && widget.onIntroComplete != null) {
         widget.onIntroComplete!();
       }
@@ -3618,15 +3620,9 @@ class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
                 child: SizedBox(
                   width: 250,
                   height: 250,
-                  child: Lottie.asset(
-                    'assets/lottie/animation1.json',
-                    controller: _anim1Controller,
-                    onLoaded: (composition) {
-                      _anim1Controller.duration = composition.duration;
-                      _anim1Controller.forward();
-                    },
+                  child: Image.asset(
+                    'assets/images/boarding_pass_illustration_6.png',
                     fit: BoxFit.contain,
-                    repeat: false,
                   ),
                 ),
               )
@@ -3637,18 +3633,9 @@ class _EngagingDiscoverLoaderState extends State<EngagingDiscoverLoader>
                 child: SizedBox(
                   width: 250,
                   height: 250,
-                  child: Lottie.asset(
-                    'assets/lottie/animation2.json',
-                    controller: _anim2Controller,
-                    onLoaded: (composition) {
-                      _anim2Controller.duration = composition.duration;
-                      _anim2Controller.forward();
-                      Future.delayed(const Duration(milliseconds: 150), () {
-                        if (mounted) setState(() => _fadingIn2 = false);
-                      });
-                    },
+                  child: Image.asset(
+                    'assets/images/boarding_pass_illustration_2.png',
                     fit: BoxFit.contain,
-                    repeat: false,
                   ),
                 ),
               ),

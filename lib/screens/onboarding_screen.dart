@@ -15,12 +15,14 @@ import '../services/location_service.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
 import '../widgets/searchable_multi_select.dart';
-
+import '../widgets/phone_verification_dialog.dart';
+import '../widgets/email_verification_dialog.dart';
 
 enum OnboardingView {
   slides,
   signIn,
   signUpStep1, // Basic Information: Name, Email, Phone, DOB, Gender, Password, Confirm Password, Photo
+  verifyEmail,
   signUpStep2, // Professional Details: Occupation, Profession, Company, Designation, Industry, Experience
   signUpStep3, // Networking Profile: Bio, Expertise, Interests
   signUpStep4, // Location & Work Experience: Location, Work Experience, Education
@@ -199,10 +201,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final hasName = (profile?.name.isNotEmpty == true && profile?.name != 'User') || (user?.displayName?.isNotEmpty == true);
     final hasImage = (profile?.profileImageUrl?.isNotEmpty == true) || (user?.photoURL?.isNotEmpty == true);
+    final isEmailVerified = user?.emailVerified ?? false;
 
-    _currentView = (widget.completionMode && hasName && hasImage)
-        ? OnboardingView.signUpStep2
-        : (widget.completionMode ? OnboardingView.signUpStep1 : OnboardingView.slides);
+    if (widget.completionMode) {
+      if (user != null && !isEmailVerified) {
+        _currentView = OnboardingView.verifyEmail;
+      } else if (hasName && hasImage) {
+        _currentView = OnboardingView.signUpStep2;
+      } else {
+        _currentView = OnboardingView.signUpStep1;
+      }
+    } else {
+      _currentView = OnboardingView.slides;
+    }
 
     if (widget.completionMode) {
       final profile = AppStateManager().currentUserProfile;
@@ -501,8 +512,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _handleEmailSignUp() async {
+  void _createAccountStep1() async {
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill in all basic information fields'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -513,7 +538,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    final password = _passwordController.text;
     if (!_isPasswordValid(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -524,40 +548,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    final name = _nameController.text.trim();
-    final headline = _headlineController.text.trim();
-    final company = _companyController.text.trim();
-    final role = _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : (_selectedOccupation ?? '');
-    final bio = _bioController.text.trim();
-
-    final industry = _selectedIndustry == 'Other'
-        ? _industryController.text.trim()
-        : _selectedIndustry;
-    final experience = _experienceController.text.trim();
-    final homeBase = _homeBaseController.text.trim();
-
-    final currentLocSegments = [
-      if (_currentLocationCity.isNotEmpty) _currentLocationCity,
-      if (_currentLocationState.isNotEmpty) _currentLocationState,
-      if (_currentLocationCountry.isNotEmpty) _currentLocationCountry,
-    ];
-    final currentLocationName = currentLocSegments.join(', ');
-    final travelFrequency = _selectedTravelFrequency;
-    final profileImageUrl = _profileImageUrlController.text.trim();
-
-    // Validate fields before sign up
-    if (role.isEmpty ||
-        company.isEmpty ||
-        experience.isEmpty ||
-        bio.isEmpty ||
-        _selectedExpertise.isEmpty ||
-        _selectedIndustry == null ||
-        _selectedInterests.isEmpty) {
+    if (password != confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
-          ),
+          content: Text('Passwords do not match'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
+    final profileImageUrl = _profileImageUrlController.text.trim();
+    if (profileImageUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please upload a profile photo'),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -570,65 +575,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     try {
       AppStateManager().isRegistering = true;
+      final phoneStr = _phoneController.text.trim();
+      
       await AuthService().signUpWithEmail(
         email: email,
         password: password,
         name: name,
-        phone: _phoneController.text.trim(),
+        phone: phoneStr,
         phoneCountryCode: _selectedCountry.dialCode,
         dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
         gender: _selectedGender,
-        occupation: _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : _selectedOccupation,
-        profession: _professionController.text.trim().isNotEmpty ? _professionController.text.trim() : null,
-        headline: headline.isNotEmpty ? headline : '$role at $company',
-        company: company.isNotEmpty ? company : null,
-        role: role.isNotEmpty ? role : null,
-        bio: bio.isNotEmpty ? bio : null,
-        industry: industry != null && industry.isNotEmpty
-            ? industry
-            : 'Technology',
-        experience: experience.isNotEmpty ? experience : null,
-        homeBase: homeBase.isNotEmpty ? homeBase : null,
-        currentLocationName: currentLocationName.isNotEmpty
-            ? currentLocationName
-            : null,
-        travelFrequency: travelFrequency,
-        profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
-        expertise: _selectedExpertise,
-        intents: _selectedInterests,
-        skills: _selectedExpertise,
-        interests: _selectedInterests,
-        expertiseWithLevel: _selectedExpertise.map((e) => {
-          'name': e,
-          'level': _expertiseLevels[e] ?? 'Intermediate',
-          'endorsements': 0,
-        }).toList(),
-        interestsWithPriority: _selectedInterests.map((i) => {
-          'name': i,
-          'priority': _interestsPriorities[i] ?? 'Medium',
-        }).toList(),
-        careerTimeline: _careerTimeline,
-        educationTimeline: _educationTimeline,
-        linkedinProfileUrl: _linkedinUrlController.text.trim().isNotEmpty
-            ? _linkedinUrlController.text.trim()
-            : null,
+        profileImageUrl: profileImageUrl,
       );
+      
       final user = FirebaseAuth.instance.currentUser;
-      AppStateManager().isRegistering = false;
       if (user != null) {
         await AppStateManager().syncSignedInUser(user);
-      }
+        
+        if (phoneStr.isNotEmpty) {
+           final fullPhone = '${_selectedCountry.dialCode}$phoneStr';
+           await showDialog<bool>(
+             context: context,
+             barrierDismissible: false,
+             builder: (ctx) => PhoneVerificationDialog(phoneNumber: fullPhone),
+           );
+        }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully! Welcome!'),
-            backgroundColor: Color(0xFF2E7D32),
-          ),
-        );
+        // After sign up, prompt email verification
+        if (mounted) {
+           setState(() {
+              _currentView = OnboardingView.verifyEmail;
+           });
+        }
       }
     } on FirebaseAuthException catch (e) {
-      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -638,7 +618,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         );
       }
     } catch (e) {
-      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -648,12 +627,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         );
       }
     } finally {
+      AppStateManager().isRegistering = false;
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
     }
+  }
+
+  Widget _buildVerifyEmail(double screenHeight, double screenWidth) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.mark_email_unread_outlined, size: 80, color: Color(0xFF7A432D)),
+        const SizedBox(height: 24),
+        const Text(
+          'Verify your email',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'A verification link has been sent to ${_emailController.text.trim()}. Please verify your email to continue.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 16, color: Color(0xFF8C736B)),
+        ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
+            onPressed: () async {
+              await FirebaseAuth.instance.currentUser?.reload();
+              if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
+                setState(() => _currentView = OnboardingView.signUpStep2);
+              } else {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email not yet verified.')));
+              }
+            },
+            child: const Text('I have verified my email', style: TextStyle(color: Colors.white)),
+          ),
+        )
+      ],
+    );
   }
 
   void _handleProfileCompletion() async {
@@ -741,7 +758,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               : null,
         );
         await AppStateManager().syncSignedInUser(user);
-        AppStateManager().currentScreen = AppScreen.hub;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -750,6 +766,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           );
         }
+
+        AppStateManager().currentScreen = AppScreen.hub;
       }
     } catch (e) {
       if (mounted) {
@@ -1329,65 +1347,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () {
-                final name = _nameController.text.trim();
-                final email = _emailController.text.trim();
-                final password = _passwordController.text;
-                final confirmPassword = _confirmPasswordController.text;
-                if (name.isEmpty ||
-                    email.isEmpty ||
-                    password.isEmpty ||
-                    confirmPassword.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please fill in all basic information fields'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                if (!_isValidEmail(email)) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter a valid email address'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                if (!_isPasswordValid(password)) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                if (password != confirmPassword) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Passwords do not match'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                if (_profileImageUrlController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please upload a profile photo'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                setState(() {
-                  _currentView = OnboardingView.signUpStep2;
-                });
-              },
-              child: const Text(
-                'Next: Professional Details ->',
+              onPressed: _isLoading ? null : _createAccountStep1,
+              child: _isLoading 
+                  ? const SizedBox(
+                      width: 24, 
+                      height: 24, 
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+                    )
+                  : const Text(
+                'Next: Verify Email ->',
                 style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
@@ -2184,14 +2152,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: widget.completionMode
-                  ? _handleProfileCompletion
-                  : _handleEmailSignUp,
-              child: Text(
-                widget.completionMode
-                    ? 'Complete Profile'
-                    : 'Complete & Create Account',
-                style: const TextStyle(
+              onPressed: _isLoading ? null : _handleProfileCompletion,
+              child: _isLoading 
+                  ? const SizedBox(
+                      width: 24, 
+                      height: 24, 
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+                    )
+                  : const Text(
+                'Complete Profile',
+                style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -2374,8 +2344,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-
-
   Widget _buildDropdownField({
     required String label,
     String? currentValue,
@@ -2542,20 +2510,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildFormView(double screenHeight, double screenWidth) {
-    switch (_currentView) {
-      case OnboardingView.signIn:
-        return _buildSignInScreen(screenHeight, screenWidth);
-      case OnboardingView.signUpStep1:
-        return _buildSignUpStep1(screenHeight, screenWidth);
-      case OnboardingView.signUpStep2:
-        return _buildSignUpStep2(screenHeight, screenWidth);
-      case OnboardingView.signUpStep3:
-        return _buildSignUpStep3(screenHeight, screenWidth);
-      case OnboardingView.signUpStep4:
-        return _buildSignUpStep4(screenHeight, screenWidth);
-      default:
-        return const SizedBox();
-    }
+    if (_currentView == OnboardingView.signIn) return _buildSignInScreen(screenHeight, screenWidth);
+    if (_currentView == OnboardingView.signUpStep1) return _buildSignUpStep1(screenHeight, screenWidth);
+    if (_currentView == OnboardingView.verifyEmail) return _buildVerifyEmail(screenHeight, screenWidth);
+    if (_currentView == OnboardingView.signUpStep2) return _buildSignUpStep2(screenHeight, screenWidth);
+    if (_currentView == OnboardingView.signUpStep3) return _buildSignUpStep3(screenHeight, screenWidth);
+    if (_currentView == OnboardingView.signUpStep4) return _buildSignUpStep4(screenHeight, screenWidth);
+    return const SizedBox();
   }
 
   @override
