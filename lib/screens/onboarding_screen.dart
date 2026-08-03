@@ -16,7 +16,6 @@ import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
 import '../widgets/searchable_multi_select.dart';
 import '../widgets/phone_verification_dialog.dart';
-import '../widgets/email_verification_dialog.dart';
 
 enum OnboardingView {
   slides,
