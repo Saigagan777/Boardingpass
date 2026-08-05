@@ -4,6 +4,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+/// Top-level background message handler for Firebase Cloud Messaging.
+/// Must be annotated with @pragma('vm:entry-point') so it can be called in a background isolate.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('Handling background message: ${message.messageId}');
+}
+
 /// Singleton service for Firebase Cloud Messaging push notifications.
 ///
 /// Handles FCM initialisation, permission requests, token storage,
@@ -104,6 +114,9 @@ class NotificationService {
   /// level.
   Future<NotificationSettings> requestPermission() async {
     try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await Permission.notification.request();
+      }
       final settings = await _messaging.requestPermission(
         alert: true,
         announcement: false,
@@ -123,19 +136,28 @@ class NotificationService {
   // FCM token
   // ---------------------------------------------------------------------------
 
-  /// Retrieves the current FCM token and stores it in the user's Firestore
-  /// document.
+  /// Retrieves the current FCM token and stores it in the user's Firestore document.
   ///
-  /// Returns the token string, or `null` on failure.
-  Future<String?> getAndStoreFcmToken() async {
+  /// Pass [vapidKey] for Web push setup.
+  Future<String?> getAndStoreFcmToken({String? vapidKey}) async {
     try {
-      final token = await _messaging.getToken();
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final apnsToken = await _messaging.getAPNSToken();
+        if (apnsToken == null) {
+          debugPrint('APNS token not yet available on iOS.');
+        }
+      }
+      final token = await _messaging.getToken(vapidKey: vapidKey);
       if (token != null) {
+        debugPrint('\n=================== FCM REGISTRATION TOKEN ===================');
+        debugPrint(token);
+        debugPrint('==============================================================\n');
         await _storeFcmToken(token);
       }
       return token;
     } catch (e) {
-      throw Exception('Failed to get FCM token: $e');
+      debugPrint('Failed to get FCM token: $e');
+      return null;
     }
   }
 

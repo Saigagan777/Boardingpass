@@ -2036,56 +2036,7 @@ class _MeetScreenState extends State<MeetScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Builder(
-                            builder: (context) {
-                              final currentUid = FirebaseAuth.instance.currentUser?.uid;
-                              if (currentUid == null || _currentUserProfile == null) return const SizedBox.shrink();
-                              final computedScore = calculateMatchScore(
-                                currentUid: currentUid,
-                                targetUid: conn.uid,
-                                currentSkills: _currentUserProfile!.skills,
-                                currentInterests: _currentUserProfile!.interests,
-                                currentExpertise: _currentUserProfile!.expertise,
-                                currentIntents: _currentUserProfile!.intents,
-                                targetSkills: conn.skills,
-                                targetInterests: conn.interests,
-                                targetExpertise: conn.expertise,
-                                targetIntents: conn.intents,
-                              );
-                              return Container(
-                                margin: const EdgeInsets.only(left: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE5A475).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: const Color(0xFFE5A475).withValues(alpha: 0.4),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.star,
-                                      color: Color(0xFF7A432D),
-                                      size: 10,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '$computedScore% match',
-                                      style: const TextStyle(
-                                        fontFamily: 'PlusJakartaSans',
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF7A432D),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
+                          const SizedBox.shrink(),
                         ],
                       ),
                       subtitle: Text(

@@ -50,6 +50,7 @@ class PremiumCustomCard extends StatelessWidget {
                     ? DecorationImage(
                         image: NetworkImage(wrapCorsUrl(card.imageUrl)),
                         fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
                       )
                     : null,
                 color: const Color(0xFFE8E2DD),
@@ -112,6 +113,7 @@ class PremiumCustomCard extends StatelessWidget {
                     ? DecorationImage(
                         image: NetworkImage(wrapCorsUrl(card.imageUrl)),
                         fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
                       )
                     : null,
                 color: const Color(0xFFE8E2DD),
@@ -171,6 +173,7 @@ class PremiumCustomCard extends StatelessWidget {
                   ? Image.network(
                       wrapCorsUrl(card.imageUrl),
                       fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
                     )
                   : Container(color: const Color(0xFFE8E2DD)),
             ),

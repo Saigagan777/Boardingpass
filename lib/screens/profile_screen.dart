@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
@@ -16,6 +17,12 @@ import '../models/user_profile.dart';
 import '../utils/image_helper.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/searchable_multi_select.dart';
+import '../widgets/profile_image_cropper.dart';
+import '../widgets/bio_validation_label.dart';
+import '../widgets/country_phone_input.dart';
+import '../widgets/phone_verification_dialog.dart';
+import '../utils/bio_validation.dart';
+import 'help_support_sheet.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -28,6 +35,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final AppStateManager _state = AppStateManager();
   final bool _isLoading = false;
   int _activeProfileTab = 0;
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   void _showEditProfileModal(BuildContext context, UserProfile profile) {
     showModalBottomSheet(
@@ -63,7 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     total++;
     if ((profile.experience ?? '').trim().isNotEmpty) completed++;
     total++;
-    if ((profile.bio ?? '').trim().isNotEmpty) completed++;
+    if (validateBio(profile.bio) == null) completed++;
     total++;
     if (profile.intents.isNotEmpty) completed++;
     total++;
@@ -141,6 +161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )
               : SafeArea(
                   child: SingleChildScrollView(
+                    controller: _scrollController,
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,6 +220,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 _buildSectionLabel('Interests & Looking For', Icons.explore_outlined),
                                 const SizedBox(height: 10),
                                 _buildInterestsCard(interests, profile),
+                                if (profile.businessConnect.isNotEmpty) ...[
+                                  const SizedBox(height: 20),
+                                  _buildSectionLabel('Business Connect', Icons.business_center_outlined),
+                                  const SizedBox(height: 10),
+                                  _buildBusinessConnectCard(profile.businessConnect),
+                                ],
                                 const SizedBox(height: 30),
                               ],
                             ),
@@ -512,6 +539,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Formats a stored phone number with its country dial code, e.g.
+  /// `+91 9876543210`. The stored phone may or may not already include the
+  /// `+` prefix, so it is only prefixed when missing.
+  String _formatPhone(String? phone, String? countryCode) {
+    final p = (phone ?? '').trim();
+    if (p.isEmpty) return '';
+    if (p.startsWith('+')) return p;
+    final code = (countryCode ?? '').trim();
+    if (code.isEmpty) return p;
+    return '$code $p';
+  }
+
+  /// Phone row shown under the email. If no number is saved yet, shows a
+  /// tappable "Add phone number" placeholder that opens the edit sheet.
+  Widget _buildPhoneInfoRow(UserProfile profile, BuildContext context) {
+    final hasPhone = (profile.phone ?? '').trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: hasPhone ? null : () => _showEditProfileModal(context, profile),
+        child: Row(
+          children: [
+            const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF7A432D)),
+            const SizedBox(width: 8),
+            Text(
+              hasPhone
+                  ? _formatPhone(profile.phone, profile.phoneCountryCode)
+                  : 'Add phone number',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                color: hasPhone
+                    ? const Color(0xFF8C736B)
+                    : const Color(0xFF7A432D),
+                fontWeight: hasPhone ? FontWeight.w400 : FontWeight.w600,
+                decoration: hasPhone ? null : TextDecoration.underline,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInfoSection(
     String name,
     String headline,
@@ -602,6 +674,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+          // Always show the phone row; when no number is saved yet, show a
+          // tappable placeholder that opens the edit sheet.
+          _buildPhoneInfoRow(profile, context),
           if (workingLocation.isNotEmpty) ...[
             Row(
               children: [
@@ -869,8 +944,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: GestureDetector(
                         onTap: () {
                           if (_activeProfileTab != index) {
+                            final currentOffset = _scrollController.hasClients
+                                ? _scrollController.offset
+                                : 0.0;
                             setState(() {
                               _activeProfileTab = index;
+                            });
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (_scrollController.hasClients) {
+                                final maxScroll =
+                                    _scrollController.position.maxScrollExtent;
+                                final targetOffset =
+                                    currentOffset.clamp(0.0, maxScroll);
+                                _scrollController.jumpTo(targetOffset);
+                              }
                             });
                           }
                         },
@@ -1308,6 +1395,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildBusinessConnectCard(List<String> items) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: _buildCardContainer(
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: items.map((tag) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF7A432D).withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.handshake_outlined, size: 14, color: Color(0xFF7A432D)),
+                  const SizedBox(width: 6),
+                  Text(
+                    tag,
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF3E1F11),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTravelCard(String homeBase, String currentLocation, String travelFrequency) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1334,7 +1461,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             _buildMenuItem(Icons.settings_outlined, 'Settings', 'Account preferences', () {}),
             _buildMenuItem(Icons.security_outlined, 'Privacy', 'Data & security controls', () {}),
-            _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', 'FAQs & contact', () {}),
+            _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', 'FAQs & contact', () => HelpSupportSheet.show(context)),
             Builder(builder: (_) {
               final fbEmail = FirebaseAuth.instance.currentUser?.email ?? '';
               final isLinkedInSynthetic = fbEmail.startsWith('linkedin_') && fbEmail.contains('@boardingpass.com');
@@ -1805,6 +1932,11 @@ class _EditProfileSheet extends StatefulWidget {
 class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _headlineController;
+  late final TextEditingController _phoneController;
+  CountryCode _selectedCountry = defaultCountries.first;
+  /// True when the phone number shown has been verified via OTP. Drives the
+  /// green "Verified" badge next to the phone field.
+  bool _phoneVerifiedInEdit = false;
   late final TextEditingController _bioController;
   late final TextEditingController _companyController;
   late final TextEditingController _roleController;
@@ -1835,6 +1967,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late List<Map<String, dynamic>> _localEducationTimeline;
   late List<String> _localSkills;
   late List<String> _localInterests;
+  late List<String> _localBusinessConnect;
   String _selectedOccupation = 'Software Engineer';
   final TextEditingController _customOccupationController = TextEditingController();
   final List<String> _occupations = [
@@ -1870,6 +2003,23 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     super.initState();
     _nameController = TextEditingController(text: widget.profile.name);
     _headlineController = TextEditingController(text: widget.profile.headline);
+    _phoneController = TextEditingController(text: widget.profile.phone ?? '');
+    final storedDial = (widget.profile.phoneCountryCode ?? '').trim();
+    if (storedDial.isNotEmpty) {
+      _selectedCountry = defaultCountries.firstWhere(
+        (c) => c.dialCode == storedDial,
+        orElse: () => defaultCountries.first,
+      );
+    }
+    // Mark the phone as verified if it already matches the number linked to
+    // the Firebase account (e.g. verified at signup or in a previous edit).
+    final linkedPhone =
+        (FirebaseAuth.instance.currentUser?.phoneNumber ?? '')
+            .replaceAll(RegExp(r'[^0-9]'), '');
+    final storedPhone = (widget.profile.phone ?? '')
+        .replaceAll(RegExp(r'[^0-9]'), '');
+    _phoneVerifiedInEdit = storedPhone.isNotEmpty && storedPhone == linkedPhone;
+    _phoneController.addListener(_onPhoneChangedInEdit);
     _bioController = TextEditingController(text: widget.profile.bio);
     _companyController = TextEditingController(text: widget.profile.company);
     _roleController = TextEditingController(text: widget.profile.role);
@@ -1892,6 +2042,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _selectedTravelFrequency = _travelFrequencies.contains(initialTravel) ? initialTravel : 'Occasional';
 
     _localInterests = List<String>.from(widget.profile.interests.isNotEmpty ? widget.profile.interests : widget.profile.intents);
+    _localBusinessConnect = List<String>.from(widget.profile.businessConnect);
 
     _localExpertiseLevels.clear();
     for (final exp in widget.profile.expertiseWithLevel) {
@@ -1933,6 +2084,42 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     if (mounted) setState(() {});
   }
 
+  /// Resets the phone "Verified" badge when the number is edited.
+  void _onPhoneChangedInEdit() {
+    if (_phoneVerifiedInEdit && mounted) {
+      setState(() => _phoneVerifiedInEdit = false);
+    }
+  }
+
+  /// Verifies the phone number shown in the edit sheet via the OTP dialog.
+  Future<void> _verifyPhoneInEdit() async {
+    if (_isLoading) return;
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.length < 7) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid phone number first'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+    final fullPhone = '${_selectedCountry.dialCode}$phone';
+    final verified = await ensurePhoneVerified(context, fullPhone);
+    if (!mounted) return;
+    setState(() {
+      _phoneVerifiedInEdit = verified;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          verified ? 'Phone number verified' : 'Phone number not verified',
+        ),
+        backgroundColor: const Color(0xFF7A432D),
+      ),
+    );
+  }
+
   double _calculateLocalCompleteness() {
     int total = 0;
     int completed = 0;
@@ -1962,7 +2149,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     total++;
     if (_experienceController.text.trim().isNotEmpty) completed++;
     total++;
-    if (_bioController.text.trim().isNotEmpty) completed++;
+    if (validateBio(_bioController.text) == null) completed++;
     total++;
     if (_localInterests.isNotEmpty) completed++;
 
@@ -2021,9 +2208,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _experienceController.removeListener(_onFieldChanged);
     _homeBaseController.removeListener(_onFieldChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
+    _phoneController.removeListener(_onPhoneChangedInEdit);
 
     _nameController.dispose();
     _headlineController.dispose();
+    _phoneController.dispose();
     _bioController.dispose();
     _companyController.dispose();
     _roleController.dispose();
@@ -2052,6 +2241,39 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Future<void> _saveProfile() async {
+    final bioError = validateBio(_bioController.text);
+    if (bioError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(bioError),
+          backgroundColor: const Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+
+    // If the phone number changed, require OTP verification before saving.
+    // Comparison is digit-based so formatting differences don't re-trigger it.
+    final newPhone = _phoneController.text.trim();
+    final newFullPhone = '${_selectedCountry.dialCode}$newPhone';
+    final newPhoneDigits = newPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    final oldPhoneDigits =
+        (widget.profile.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    final phoneChanged = newPhone.isNotEmpty && newPhoneDigits != oldPhoneDigits;
+    if (phoneChanged) {
+      final verified = await ensurePhoneVerified(context, newFullPhone);
+      if (!verified) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Phone number not verified. Changes were not saved.'),
+            backgroundColor: Color(0xFF7A432D),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     if (_newCompanyController.text.trim().isNotEmpty && _newRoleController.text.trim().isNotEmpty) {
@@ -2101,6 +2323,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
             : null,
         currentLocationName: finalCurrentLocation,
         travelFrequency: _selectedTravelFrequency,
+        phone: newPhone.isNotEmpty ? newPhone : null,
+        phoneCountryCode: _selectedCountry.dialCode,
         profileImageUrl: _profileImageUrlController.text.trim(),
         coverImageUrl: _coverImageUrlController.text.trim(),
         linkedinProfileUrl: _linkedinUrlController.text.trim(),
@@ -2110,6 +2334,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         educationTimeline: _localEducationTimeline,
         interests: _localInterests,
         intents: _localInterests,
+        businessConnect: _localBusinessConnect,
         expertiseWithLevel: _localSkills.map((e) => {
           'name': e,
           'level': _localExpertiseLevels[e] ?? 'Intermediate',
@@ -2239,7 +2464,28 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     const SizedBox(height: 12),
                     _buildTextField('Name', _nameController, hintText: 'Enter your full name'),
                     _buildTextField('Headline', _headlineController, hintText: 'e.g. VP Engineering at Stripe'),
-                    _buildTextField('Bio / Description', _bioController, maxLines: 3, hintText: 'Tell us about yourself'),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: CountryPhoneInput(
+                            controller: _phoneController,
+                            label: 'Phone Number',
+                            initialCountry: _selectedCountry,
+                            onCountryChanged: (c) => setState(() => _selectedCountry = c),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        PhoneVerifyButton(
+                          verified: _phoneVerifiedInEdit,
+                          isLoading: _isLoading,
+                          onPressed: _verifyPhoneInEdit,
+                        ),
+                      ],
+                    ),
+                    _buildTextField('Bio / Description', _bioController, maxLines: 3, hintText: 'Tell us about yourself', maxLength: kBioMaxChars),
+                    const SizedBox(height: 4),
+                    BioValidationLabel(text: _bioController.text),
                     const SizedBox(height: 12),
                     _buildTextField('Company', _companyController, hintText: 'e.g. Google, Stripe'),
                     const SizedBox(height: 12),
@@ -2448,6 +2694,21 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       },
                     ),
                     const SizedBox(height: 20),
+                    _buildSectionHeader('Business Connect'),
+                    const SizedBox(height: 12),
+                    SearchableMultiSelectField(
+                      label: 'Business Connect',
+                      placeholder: 'Select business connect goals (searchable)',
+                      options: kBusinessConnectOptions,
+                      selectedValues: _localBusinessConnect,
+                      onChanged: (newList) {
+                        setState(() {
+                          _localBusinessConnect = newList;
+                        });
+                        _onFieldChanged();
+                      },
+                    ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -2549,11 +2810,22 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   width: double.infinity,
                   child: _buildUploadButton('Upload Photo', _isProfileLoading, () => _pickImage(isProfile: true)),
                 ),
+                if (_profileImageUrlController.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: double.infinity,
+                    child: _buildOutlineUploadButton(
+                      'Re-crop Photo',
+                      _isProfileLoading,
+                      _recropProfileImage,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 16),
-          Container(width: 1, height: 100, color: const Color(0xFFE8E2DD)),
+          Container(width: 1, height: 140, color: const Color(0xFFE8E2DD)),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -2619,70 +2891,61 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     );
   }
 
+  Widget _buildOutlineUploadButton(String label, bool isLoading, VoidCallback onPressed) {
+    return SizedBox(
+      height: 36,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF7A432D),
+          side: const BorderSide(color: Color(0xFF7A432D), width: 1.2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+        onPressed: isLoading ? null : onPressed,
+        child: isLoading
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7A432D)))
+            : Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
   Future<void> _pickImage({required bool isProfile}) async {
+    if (isProfile) {
+      // Profile photo: pick from the gallery and let the user crop / adjust
+      // the photo before it is uploaded.
+      final bytes = await pickAndCropProfileImage(context);
+      if (bytes == null) return;
+      await _uploadProfileImage(bytes);
+      return;
+    }
+
+    // Cover photo: pick and upload directly (no cropping).
     XFile? pickedFile;
     Uint8List? bytes;
     try {
       final ImagePicker picker = ImagePicker();
       pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 60,
-        maxWidth: isProfile ? 300 : 800,
-        maxHeight: isProfile ? 300 : 400,
+        imageQuality: 92,
+        maxWidth: 2560,
+        maxHeight: 2560,
       );
       if (pickedFile == null) return;
-      if (isProfile) {
-        setState(() => _isProfileLoading = true);
-      } else {
-        setState(() => _isCoverLoading = true);
-      }
+      setState(() => _isCoverLoading = true);
       bytes = await pickedFile.readAsBytes();
-      if (isProfile) {
-        final isValidFace = await FaceDetectionService.isValidProfilePicture(bytes);
-        if (!isValidFace) {
-          setState(() => _isProfileLoading = false);
-          if (mounted) {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Row(
-                  children: [
-                    Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
-                    SizedBox(width: 10),
-                    Text('Invalid Profile Photo'),
-                  ],
-                ),
-                content: const Text(
-                  'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
-                  style: TextStyle(fontFamily: 'PlusJakartaSans'),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('OK', style: TextStyle(color: Color(0xFF7A432D))),
-                  ),
-                ],
-              ),
-            );
-          }
-          return;
-        }
-      }
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('profile_images')
           .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-      final uploadTask = storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final uploadTask = storageRef.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
       setState(() {
-        if (isProfile) {
-          _profileImageUrlController.text = downloadUrl;
-          _isProfileLoading = false;
-        } else {
-          _coverImageUrlController.text = downloadUrl;
-          _isCoverLoading = false;
-        }
+        _coverImageUrlController.text = downloadUrl;
+        _isCoverLoading = false;
       });
     } catch (e) {
       debugPrint('Firebase Storage upload failed: $e');
@@ -2691,13 +2954,8 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         final base64Str = base64Encode(fallbackBytes);
         final dataUrl = 'data:image/jpeg;base64,$base64Str';
         setState(() {
-          if (isProfile) {
-            _profileImageUrlController.text = dataUrl;
-            _isProfileLoading = false;
-          } else {
-            _coverImageUrlController.text = dataUrl;
-            _isCoverLoading = false;
-          }
+          _coverImageUrlController.text = dataUrl;
+          _isCoverLoading = false;
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2705,13 +2963,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           );
         }
       } catch (fallbackError) {
-        setState(() {
-          if (isProfile) {
-            _isProfileLoading = false;
-          } else {
-            _isCoverLoading = false;
-          }
-        });
+        setState(() => _isCoverLoading = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Failed to upload image: $e')),
@@ -2719,6 +2971,131 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         }
       }
     }
+  }
+
+  /// Validates and uploads the given profile photo bytes, then updates the
+  /// profile photo field. Shared by the "upload new" and "re-crop" flows.
+  Future<void> _uploadProfileImage(Uint8List bytes) async {
+    setState(() => _isProfileLoading = true);
+
+    final isValidFace = await FaceDetectionService.isValidProfilePicture(bytes);
+    if (!isValidFace) {
+      setState(() => _isProfileLoading = false);
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
+                SizedBox(width: 10),
+                Text('Invalid Profile Photo'),
+              ],
+            ),
+            content: const Text(
+              'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
+              style: TextStyle(fontFamily: 'PlusJakartaSans'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = storageRef.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      if (!mounted) return;
+      setState(() {
+        _profileImageUrlController.text = downloadUrl;
+        _isProfileLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Firebase Storage upload failed: $e');
+      try {
+        // Keep the fallback small enough to fit in the Firestore profile
+        // document (1MB limit) — a full-res JPEG as base64 would exceed it.
+        final fallbackBytes = downscaleForFirestore(bytes);
+        final base64Str = base64Encode(fallbackBytes);
+        final dataUrl = 'data:image/jpeg;base64,$base64Str';
+        if (!mounted) return;
+        setState(() {
+          _profileImageUrlController.text = dataUrl;
+          _isProfileLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Storage upload failed. Image saved locally as base64 fallback.')),
+          );
+        }
+      } catch (fallbackError) {
+        if (!mounted) return;
+        setState(() => _isProfileLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload image: $e')),
+        );
+      }
+    }
+  }
+
+  /// Re-opens the cropper with the currently saved profile photo so the user
+  /// can re-frame / re-adjust it without picking a new image from the gallery.
+  Future<void> _recropProfileImage() async {
+    final currentUrl = _profileImageUrlController.text.trim();
+    if (currentUrl.isEmpty) return;
+
+    setState(() => _isProfileLoading = true);
+    Uint8List? sourceBytes;
+    try {
+      if (currentUrl.startsWith('data:image') &&
+          currentUrl.contains('base64,')) {
+        sourceBytes = base64Decode(currentUrl.split('base64,').last);
+      } else {
+        final response = await http
+            .get(Uri.parse(wrapCorsUrl(currentUrl)))
+            .timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          sourceBytes = response.bodyBytes;
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to load current profile photo: $e');
+    }
+
+    if (!mounted) return;
+    if (sourceBytes == null || sourceBytes.isEmpty) {
+      setState(() => _isProfileLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFF7A432D),
+          content: Text('Could not load your current photo. Please upload a new one.'),
+        ),
+      );
+      return;
+    }
+
+    // Download finished - hide the spinner while the crop screen is open.
+    setState(() => _isProfileLoading = false);
+    final croppedBytes = await recropProfileImage(context, sourceBytes);
+    if (croppedBytes == null) return;
+    await _uploadProfileImage(croppedBytes);
   }
 
   Widget _buildAddCareerCard() {
@@ -2842,6 +3219,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     int maxLines = 1,
     String? hintText,
     bool dense = false,
+    int? maxLength,
   }) {
     return Padding(
       padding: EdgeInsets.only(bottom: dense ? 10 : 12),
@@ -2861,8 +3239,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
           TextField(
             controller: controller,
             maxLines: maxLines,
+            maxLength: maxLength,
             style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Color(0xFF3E1F11)),
             decoration: InputDecoration(
+              // Hide Flutter's built-in counter - our validation label shows it.
+              counterText: maxLength == null ? null : '',
               hintText: hintText,
               hintStyle: TextStyle(
                 fontFamily: 'PlusJakartaSans',

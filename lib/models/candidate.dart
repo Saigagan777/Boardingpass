@@ -17,6 +17,7 @@ class Candidate {
   final Color primaryColor;
   final List<CustomCard> customCards;
   final List<String> interests;
+  final List<String> businessConnect;
   final List<String> skills;
   final String homeBase;
   final String currentLocationName;
@@ -51,6 +52,7 @@ class Candidate {
     required this.primaryColor,
     this.customCards = const [],
     this.interests = const [],
+    this.businessConnect = const [],
     this.skills = const [],
     this.homeBase = '',
     this.currentLocationName = '',

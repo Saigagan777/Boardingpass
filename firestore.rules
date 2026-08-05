@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// NOTE: This file only exists to protect the `email_otps` collection used by
+// the Resend email-OTP flow. Everything else below intentionally mirrors
+// Firestore's default TEST MODE (allow all reads/writes) so nothing else
+// breaks when you deploy these rules.
+//
+// IMPORTANT: If your Firebase console already has custom rules for other
+// collections (users, chats, swipes, ...), MERGE this email_otps rule into
+// those existing rules instead of deploying this file as-is.
+//
+// Deploy with: firebase deploy --only firestore:rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Resend email-OTP records ---------------------------------------
+    // The verifyEmailOtp Cloud Function reads these (via the admin SDK, which
+    // bypasses rules). Clients must NEVER read or write them — otherwise a
+    // forged record could bypass email verification.
+    match /email_otps/{docId} {
+      allow read, write: if false;
+    }
+
+    // ---- Everything else: test-mode equivalent (open) --------------------
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

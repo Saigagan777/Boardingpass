@@ -3790,33 +3790,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                 return const SizedBox.shrink();
                               }
 
-                              final targetSkills = List<String>.from(
-                                userData?['skills'] ?? [],
-                              );
-                              final targetInterests = List<String>.from(
-                                userData?['interests'] ?? [],
-                              );
-                              final targetExpertise = List<String>.from(
-                                userData?['expertise'] ?? [],
-                              );
-                              final targetIntents = List<String>.from(
-                                userData?['intents'] ?? [],
-                              );
-
-                              final int? matchScore = currentUser != null
-                                  ? calculateMatchScore(
-                                      currentUid: currentUser.uid,
-                                      targetUid: otherUid,
-                                      currentSkills: currentUser.skills,
-                                      currentInterests: currentUser.interests,
-                                      currentExpertise: currentUser.expertise,
-                                      currentIntents: currentUser.intents,
-                                      targetSkills: targetSkills,
-                                      targetInterests: targetInterests,
-                                      targetExpertise: targetExpertise,
-                                      targetIntents: targetIntents,
-                                    )
-                                  : (userData?['matchScore'] as int?);
                               final String initials = name.isNotEmpty
                                   ? name
                                         .trim()
@@ -3977,65 +3950,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                                               .ellipsis,
                                                         ),
                                                       ),
-                                                      if (matchScore != null &&
-                                                          matchScore > 0) ...[
-                                                        const SizedBox(
-                                                          width: 6,
-                                                        ),
-                                                        Container(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 10,
-                                                                vertical: 3,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            color:
-                                                                const Color(0xFFFDFBF7),
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                            border: Border.all(
-                                                              color:
-                                                                  const Color(
-                                                                    0xFFEFE3D7,
-                                                                  ),
-                                                              width: 1,
-                                                            ),
-                                                          ),
-                                                          child: Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              const Icon(
-                                                                Icons.star,
-                                                                color: Color(
-                                                                  0xFFD8A36B,
-                                                                ),
-                                                                size: 8,
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 4,
-                                                              ),
-                                                              Text(
-                                                                '$matchScore% Match',
-                                                                style: const TextStyle(
-                                                                  fontFamily:
-                                                                      'PlusJakartaSans',
-                                                                  fontSize: 9,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                  color: Color(
-                                                                    0xFF8A6A58,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
                                                     ],
                                                   ),
                                                 ),

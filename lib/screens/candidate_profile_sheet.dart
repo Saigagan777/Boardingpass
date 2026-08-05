@@ -316,6 +316,73 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                       ),
                       const SizedBox(height: 20),
                     ],
+                    if (expertise.isNotEmpty) ...[
+                      _buildDetailSectionHeader('Expertise'),
+                      const SizedBox(height: 8),
+                      _buildDetailCard(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: expertise
+                              .map(_buildExpertiseChipWithLevel)
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (interests.isNotEmpty) ...[
+                      _buildDetailSectionHeader('Interests'),
+                      const SizedBox(height: 8),
+                      _buildDetailCard(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: interests
+                              .map(_buildInterestChipWithPriority)
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (c.businessConnect.isNotEmpty) ...[
+                      _buildDetailSectionHeader('Business Connect'),
+                      const SizedBox(height: 8),
+                      _buildDetailCard(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: c.businessConnect.map((tag) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFF7A432D).withValues(alpha: 0.2),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.handshake_outlined, size: 14, color: Color(0xFF7A432D)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    tag,
+                                    style: const TextStyle(
+                                      fontFamily: 'PlusJakartaSans',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF3E1F11),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     if (careerEntries.isNotEmpty ||
                         experienceSummary.isNotEmpty) ...[
                       _buildDetailSectionHeader('Work Experience'),
@@ -381,33 +448,6 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                    ],
-                    if (expertise.isNotEmpty) ...[
-                      _buildDetailSectionHeader('Expertise'),
-                      const SizedBox(height: 8),
-                      _buildDetailCard(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: expertise
-                              .map(_buildExpertiseChipWithLevel)
-                              .toList(),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (interests.isNotEmpty) ...[
-                      _buildDetailSectionHeader('Interests'),
-                      const SizedBox(height: 8),
-                      _buildDetailCard(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: interests
-                              .map(_buildInterestChipWithPriority)
-                              .toList(),
-                        ),
-                      ),
                     ],
                   ],
                 ),
@@ -563,24 +603,28 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
 
   Widget _buildProfilePill(IconData icon, String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE8E2DD)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, size: 14, color: const Color(0xFF7A432D)),
           const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF5C473E),
+          Flexible(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF5C473E),
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -594,20 +638,24 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: style.backgroundColor,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(style.icon, size: 13, color: style.foregroundColor),
           const SizedBox(width: 4),
-          Text(
-            interest,
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: style.foregroundColor,
+          Flexible(
+            child: Text(
+              interest,
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: style.foregroundColor,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -707,7 +755,7 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFFFAF1EC),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: const Color(0xFF7A432D).withAlpha((0.2 * 255).round()),
           width: 1,
@@ -715,6 +763,7 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Icon(
             Icons.verified_outlined,
@@ -722,13 +771,16 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
             color: Color(0xFF7A432D),
           ),
           const SizedBox(width: 4),
-          Text(
-            exp,
-            style: const TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF7A432D),
+          Flexible(
+            child: Text(
+              exp,
+              style: const TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF7A432D),
+                height: 1.3,
+              ),
             ),
           ),
         ],

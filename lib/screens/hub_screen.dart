@@ -323,16 +323,9 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
   }
 
   String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour >= 5 && hour < 12) {
-      return 'Good morning';
-    } else if (hour >= 12 && hour < 17) {
-      return 'Good afternoon';
-    } else if (hour >= 17 && hour < 22) {
-      return 'Good evening';
-    } else {
-      return 'Good night';
-    }
+    // Alternate between a friendly "Hi" and "Hello" (changes daily) instead
+    // of a time-based greeting.
+    return DateTime.now().day.isEven ? 'Hi' : 'Hello';
   }
 
   String _timeAgo(DateTime dateTime) {
@@ -725,7 +718,7 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const AppLogo(size: 22),
+                      const AppLogo(size: 30),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'state_manager.dart';
 import 'services/auth_service.dart';
@@ -18,6 +19,7 @@ import 'screens/checkin_screen.dart';
 import 'screens/events_screen.dart';
 import 'screens/discover_screen.dart';
 import 'screens/chat_screen.dart';
+import 'utils/app_logo.dart';
 import 'screens/meet_screen.dart';
 import 'screens/admin_panel.dart';
 import 'screens/feature_tour_screen.dart';
@@ -44,6 +46,7 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   } catch (e) {
     debugPrint('Firebase initialization failed: $e');
   }
@@ -115,6 +118,9 @@ void main() async {
       if (kIsWeb) {
         const storage = FlutterSecureStorage();
         await storage.delete(key: 'linkedin_sync_pending_uid');
+      }
+      if (e is LinkedInAccountConflictException) {
+        appState.setAuthErrorMessage(e.message);
       }
       appState.endAuthCallback();
     }
@@ -387,6 +393,25 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
 
   @override
   Widget build(BuildContext context) {
+    // Surface errors from background OAuth flows (e.g. a LinkedIn account
+    // conflict) to the user once, via a snackbar, then clear them.
+    final authErrorMessage = _state.authErrorMessage;
+    if (authErrorMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Two notifies (setAuthErrorMessage + endAuthCallback) can schedule
+        // this callback twice in one frame - only the first one shows it.
+        if (_state.authErrorMessage == null) return;
+        _state.clearAuthErrorMessage();
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text(authErrorMessage),
+            backgroundColor: const Color(0xFF7A432D),
+          ),
+        );
+      });
+    }
+
     // Determine if banner should show
     final showBanner =
         _latestUnreadNotificationId != null &&
@@ -631,9 +656,20 @@ class _MainNavigationShellState extends State<MainNavigationShell> with WidgetsB
   }
 
   Widget _buildMobileAppShell() {
-    return RadialMorphSwitcher(
-      currentScreen: _state.currentScreen,
-      child: _buildAppNavigation(),
+    return PopScope(
+      canPop: _state.currentScreen == AppScreen.hub,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) return;
+        if (_state.currentScreen == AppScreen.chat && _state.activeChatContact != null) {
+          _state.activeChatContact = null;
+        } else if (_state.currentScreen != AppScreen.hub) {
+          _state.currentScreen = AppScreen.hub;
+        }
+      },
+      child: RadialMorphSwitcher(
+        currentScreen: _state.currentScreen,
+        child: _buildAppNavigation(),
+      ),
     );
   }
 
@@ -811,8 +847,16 @@ class AuthCallbackScreen extends StatelessWidget {
     return const ColoredBox(
       color: Color(0xFFFAF7F5),
       child: Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Large brand logo while the app / OAuth callback loads.
+            AppLogo(size: 48),
+            SizedBox(height: 28),
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+            ),
+          ],
         ),
       ),
     );

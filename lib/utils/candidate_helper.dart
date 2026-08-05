@@ -114,6 +114,14 @@ class CandidateHelper {
       targetSessions: targetSessions,
     );
 
+    final businessConnect = List<String>.from(
+      data['businessConnect'] is List
+          ? data['businessConnect']
+          : (data['businessConnect'] != null && data['businessConnect'].toString().isNotEmpty
+              ? [data['businessConnect'].toString()]
+              : []),
+    );
+
     return Candidate(
       uid: targetUid,
       name: data['name'] ?? '',
@@ -124,6 +132,7 @@ class CandidateHelper {
       intent: intents.isNotEmpty ? intents.join(', ') : '',
       tags: expertise,
       interests: interests,
+      businessConnect: businessConnect,
       skills: skills,
       homeBase: data['homeBase'] ?? '',
       currentLocationName: data['currentLocationName'] ?? '',

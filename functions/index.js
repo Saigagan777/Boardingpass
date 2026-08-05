@@ -41,3 +41,9 @@ exports.syncAccountRestriction = onDocumentWritten(
     }
   },
 );
+
+// Resend-powered email OTP verification (signup email validation).
+// Set the secret once: firebase functions:secrets:set RESEND_API_KEY
+const emailOtp = require('./email-otp');
+exports.sendEmailOtp = emailOtp.sendEmailOtp;
+exports.verifyEmailOtp = emailOtp.verifyEmailOtp;

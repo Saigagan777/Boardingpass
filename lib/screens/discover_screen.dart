@@ -32,6 +32,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   final TextEditingController _searchQuery = TextEditingController();
   String? _selectedIndustry;
   String? _selectedInterest;
+  String? _selectedBusinessConnect;
   String? _selectedHomeBase;
   String? _selectedCurrentLocation;
   String? _selectedFilterExpertise;
@@ -42,6 +43,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   final List<String> _industryOptions = kIndustryOptions;
 
   final List<String> _interestOptions = kInterestOptions;
+
+  final List<String> _businessConnectOptions = kBusinessConnectOptions;
 
   final List<String> _expertiseOptions = kExpertiseOptions;
 
@@ -131,6 +134,12 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       // 4. Interest filter
       if (_selectedInterest != null && _selectedInterest!.isNotEmpty) {
         if (!c.interests.contains(_selectedInterest)) return false;
+      }
+
+      // 4b. Business Connect filter
+      if (_selectedBusinessConnect != null &&
+          _selectedBusinessConnect!.isNotEmpty) {
+        if (!c.businessConnect.contains(_selectedBusinessConnect)) return false;
       }
 
       // 5. Home Base filter
@@ -417,23 +426,18 @@ class _DiscoverScreenState extends State<DiscoverScreen>
           ),
           child: Row(
             children: [
-              CircleAvatar(
+              buildNetworkAvatar(
+                url: imageUrl,
                 radius: 22,
-                backgroundColor: const Color(0xFFE8E2DD),
-                backgroundImage: imageUrl.isNotEmpty
-                    ? NetworkImage(wrapCorsUrl(imageUrl))
-                    : null,
-                child: imageUrl.isEmpty
-                    ? Text(
-                        initials.isNotEmpty ? initials : '?',
-                        style: const TextStyle(
-                          fontFamily: 'PlusJakartaSans',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF7A432D),
-                        ),
-                      )
-                    : null,
+                fallback: Text(
+                  initials.isNotEmpty ? initials : '?',
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF7A432D),
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1440,6 +1444,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           setModalState(() {
                             _selectedIndustry = null;
                             _selectedInterest = null;
+                            _selectedBusinessConnect = null;
                             _selectedHomeBase = null;
                             _selectedCurrentLocation = null;
                             _selectedFilterExpertise = null;
@@ -1767,6 +1772,37 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                           const SizedBox(height: 20),
 
+                          // Business Connect Searchable Dropdown
+                          Builder(
+                            builder: (context) {
+                              final candidateBC = _state.candidates
+                                  .where((c) => c.businessConnect.isNotEmpty)
+                                  .expand((c) => c.businessConnect)
+                                  .toSet();
+                              final allBC = <String>{
+                                ..._businessConnectOptions,
+                                ...candidateBC.where(
+                                  (b) => !_businessConnectOptions.contains(b),
+                                ),
+                              }.toList()..sort();
+                              return _buildSearchableFilterTile(
+                                context: context,
+                                setModalState: setModalState,
+                                label: 'Business Connect',
+                                placeholder: 'Select business connect goal',
+                                selectedValue: _selectedBusinessConnect,
+                                options: allBC,
+                                onChanged: (val) {
+                                  setModalState(() {
+                                    _selectedBusinessConnect = val;
+                                  });
+                                  setState(() {});
+                                },
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 20),
+
                           // Home Base & Current Location Searchable Dropdowns
                           Builder(
                             builder: (context) {
@@ -1968,7 +2004,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const AppLogo(size: 20, showText: false),
+            const AppLogo(size: 24, showText: false),
             const SizedBox(height: 2),
             Text(
               '$filteredCount professionals nearby',
@@ -2153,6 +2189,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               onClear: () {
                                 setState(() {
                                   _selectedInterest = null;
+                                });
+                              },
+                            ),
+                          if (_selectedBusinessConnect != null)
+                            _buildFilterChip(
+                              label: 'Business Connect: $_selectedBusinessConnect',
+                              onClear: () {
+                                setState(() {
+                                  _selectedBusinessConnect = null;
                                 });
                               },
                             ),
@@ -3295,21 +3340,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                   horizontal: 16,
                                   vertical: 8,
                                 ),
-                                leading: CircleAvatar(
+                                leading: buildNetworkAvatar(
+                                  url: imageUrl,
                                   radius: 24,
-                                  backgroundColor: const Color(0xFFFAF0E6),
-                                  backgroundImage: imageUrl.isNotEmpty
-                                      ? NetworkImage(wrapCorsUrl(imageUrl))
-                                      : null,
-                                  child: imageUrl.isEmpty
-                                      ? Text(
-                                          initials,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF7A432D),
-                                          ),
-                                        )
-                                      : null,
+                                  fallback: Text(
+                                    initials,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF7A432D),
+                                    ),
+                                  ),
                                 ),
                                 title: Text(
                                   name,

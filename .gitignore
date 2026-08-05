@@ -53,3 +53,9 @@ app.*.map.json
 # Node.js
 node_modules/
 
+# Secrets — never commit API keys
+# Keep .env.example, ignore everything else
+.env
+.env.*
+!.env.example
+

@@ -78,6 +78,7 @@ class UserProfile {
   final int followerCount;
   final List<String> skills;
   final List<String> interests;
+  final List<String> businessConnect;
   final List<String> followedTopics;
   final List<String> professionalInterests;
   final List<Map<String, dynamic>> careerTimeline;
@@ -146,6 +147,7 @@ class UserProfile {
     this.followerCount = 0,
     this.skills = const [],
     this.interests = const [],
+    this.businessConnect = const [],
     this.followedTopics = const [],
     this.professionalInterests = const [],
     this.careerTimeline = const [],
@@ -198,7 +200,10 @@ class UserProfile {
       expertise: List<String>.from(data['expertise'] ?? []),
       intents: List<String>.from(data['intents'] ?? []),
       isDiscoverable: data['isDiscoverable'] ?? true,
-      onboardingCompleted: data['onboardingCompleted'] ?? true,
+      // Strict: only profiles explicitly marked complete (via the signup's
+      // "Complete Profile" button) count as onboarded. Missing/false means
+      // not onboarded — no legacy "assume onboarded" fallback.
+      onboardingCompleted: data['onboardingCompleted'] == true,
       isAdmin: data['isAdmin'] ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastSeen: (data['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -214,6 +219,11 @@ class UserProfile {
       followerCount: data['followerCount'] ?? 0,
       skills: List<String>.from(data['skills'] ?? []),
       interests: List<String>.from(data['interests'] ?? []),
+      businessConnect: data['businessConnect'] is List
+          ? List<String>.from(data['businessConnect'])
+          : (data['businessConnect'] != null && data['businessConnect'].toString().isNotEmpty
+              ? [data['businessConnect'].toString()]
+              : []),
       followedTopics: List<String>.from(data['followedTopics'] ?? []),
       professionalInterests: List<String>.from(data['professionalInterests'] ?? []),
       careerTimeline: (data['careerTimeline'] as List?)
@@ -291,6 +301,7 @@ class UserProfile {
       'followerCount': followerCount,
       'skills': skills,
       'interests': interests,
+      'businessConnect': businessConnect,
       'followedTopics': followedTopics,
       'professionalInterests': professionalInterests,
       'careerTimeline': careerTimeline,
@@ -347,6 +358,7 @@ class UserProfile {
     int? followerCount,
     List<String>? skills,
     List<String>? interests,
+    List<String>? businessConnect,
     List<String>? followedTopics,
     List<String>? professionalInterests,
     List<Map<String, dynamic>>? careerTimeline,
@@ -403,6 +415,7 @@ class UserProfile {
       followerCount: followerCount ?? this.followerCount,
       skills: skills ?? this.skills,
       interests: interests ?? this.interests,
+      businessConnect: businessConnect ?? this.businessConnect,
       followedTopics: followedTopics ?? this.followedTopics,
       professionalInterests: professionalInterests ?? this.professionalInterests,
       careerTimeline: careerTimeline ?? this.careerTimeline,

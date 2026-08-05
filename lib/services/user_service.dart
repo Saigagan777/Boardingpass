@@ -114,6 +114,7 @@ class UserService {
     int? followerCount,
     List<String>? skills,
     List<String>? interests,
+    List<String>? businessConnect,
     List<String>? followedTopics,
     List<String>? professionalInterests,
     List<Map<String, dynamic>>? careerTimeline,
@@ -166,6 +167,7 @@ class UserService {
       if (followerCount != null) updates['followerCount'] = followerCount;
       if (skills != null) updates['skills'] = skills;
       if (interests != null) updates['interests'] = interests;
+      if (businessConnect != null) updates['businessConnect'] = businessConnect;
       if (followedTopics != null) updates['followedTopics'] = followedTopics;
       if (professionalInterests != null) updates['professionalInterests'] = professionalInterests;
       if (careerTimeline != null) updates['careerTimeline'] = careerTimeline;

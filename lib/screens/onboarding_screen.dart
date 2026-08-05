@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../services/auth_service.dart';
 import '../services/linkedin_oauth_config.dart';
 import 'linkedin_webview.dart';
@@ -11,11 +13,15 @@ import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/face_detection_service.dart';
 import '../utils/app_logo.dart';
+import '../utils/bio_validation.dart';
+import '../widgets/bio_validation_label.dart';
 import '../services/location_service.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
 import '../widgets/searchable_multi_select.dart';
 import '../widgets/phone_verification_dialog.dart';
+import '../widgets/email_otp_dialog.dart';
+import '../widgets/profile_image_cropper.dart';
 
 enum OnboardingView {
   slides,
@@ -83,7 +89,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _profileImageUrlController =
       TextEditingController();
   final TextEditingController _linkedinUrlController = TextEditingController();
-  String _emailErrorText = '';
+  // Kept final: email validation is disabled, so the inline error is never
+  // repopulated. The display blocks below simply never render.
+  final String _emailErrorText = '';
+  /// True once the Step-1 phone number has been verified via OTP. Drives the
+  /// green "Verified" badge next to the phone field.
+  bool _phoneVerified = false;
+  /// True once the Step-1 email address has been verified via the Resend OTP
+  /// flow. Drives the green "Verified" badge next to the email field.
+  bool _emailVerified = false;
   List<({String label, bool met})> _passwordReqs = [];
 
 
@@ -125,6 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   List<String> _selectedExpertise = [];
   List<String> _selectedIndustries = [];
   List<String> _selectedInterests = [];
+  List<String> _selectedBusinessConnect = [];
   final Map<String, String> _expertiseLevels = {};
   final Map<String, String> _interestsPriorities = {};
 
@@ -200,12 +215,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final hasName = (profile?.name.isNotEmpty == true && profile?.name != 'User') || (user?.displayName?.isNotEmpty == true);
     final hasImage = (profile?.profileImageUrl?.isNotEmpty == true) || (user?.photoURL?.isNotEmpty == true);
-    final isEmailVerified = user?.emailVerified ?? false;
-
     if (widget.completionMode) {
-      if (user != null && !isEmailVerified) {
-        _currentView = OnboardingView.verifyEmail;
-      } else if (hasName && hasImage) {
+      // Email verification is disabled (product decision) — route straight to
+      // the appropriate sign-up step.
+      if (hasName && hasImage) {
         _currentView = OnboardingView.signUpStep2;
       } else {
         _currentView = OnboardingView.signUpStep1;
@@ -219,7 +232,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (profile != null) {
         _nameController.text = profile.name;
         _emailController.text = profile.email;
+        // A signed-in user already proved ownership of this email (they logged
+        // in with it), so it counts as verified in the completion flow.
+        _emailVerified =
+            user?.email?.toLowerCase() == profile.email.toLowerCase();
         _profileImageUrlController.text = profile.profileImageUrl ?? '';
+        _phoneController.text = profile.phone ?? '';
+        final storedDial = (profile.phoneCountryCode ?? '').trim();
+        if (storedDial.isNotEmpty) {
+          _selectedCountry = defaultCountries.firstWhere(
+            (c) => c.dialCode == storedDial,
+            orElse: () => defaultCountries.first,
+          );
+        }
+        final linkedPhone =
+            (user?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+        final storedPhone =
+            (profile.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+        _phoneVerified = storedPhone.isNotEmpty && storedPhone == linkedPhone;
         _roleController.text = profile.role ?? '';
         final roleVal = profile.role ?? '';
         if (_occupations.contains(roleVal)) {
@@ -236,6 +266,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _linkedinUrlController.text = profile.linkedinProfileUrl ?? '';
         _selectedExpertise = List<String>.from(profile.skills.isNotEmpty ? profile.skills : profile.expertise);
         _selectedInterests = List<String>.from(profile.interests.isNotEmpty ? profile.interests : profile.intents);
+        _selectedBusinessConnect = List<String>.from(profile.businessConnect);
         for (final exp in profile.expertiseWithLevel) {
           final name = exp['name']?.toString() ?? '';
           final lvl = exp['level']?.toString() ?? 'Intermediate';
@@ -265,6 +296,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
     _emailController.addListener(_onEmailChanged);
+    _phoneController.addListener(_onPhoneChanged);
     _passwordController.addListener(_onPasswordChanged);
     _profileImageUrlController.addListener(_onFieldChanged);
     _linkedinUrlController.addListener(_onFieldChanged);
@@ -285,6 +317,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onEmailChanged);
+    _phoneController.removeListener(_onPhoneChanged);
     _passwordController.removeListener(_onPasswordChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
     _linkedinUrlController.removeListener(_onFieldChanged);
@@ -369,6 +402,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (user != null) {
         await AppStateManager().syncSignedInUser(user);
       }
+    } on LinkedInAccountConflictException catch (e) {
+      // The synthetic account for this LinkedIn profile already exists under a
+      // different profile - warn clearly instead of showing a raw Firebase error.
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFC62828)),
+                SizedBox(width: 10),
+                Text('LinkedIn Account Already Linked'),
+              ],
+            ),
+            content: Text(
+              e.message,
+              style: const TextStyle(fontFamily: 'PlusJakartaSans'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: Color(0xFF7A432D)),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -397,7 +460,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   bool _isValidEmail(String email) {
-    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+    return RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    ).hasMatch(email);
   }
 
   void _handleEmailSignIn() async {
@@ -511,11 +576,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  void _createAccountStep1() async {
+  Future<bool> _createAccountStep1({bool navigateToNextStep = true}) async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
+    final phoneStr = _phoneController.text.trim();
+    final profileImageUrl = _profileImageUrlController.text.trim();
 
     if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -524,7 +591,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return;
+      return false;
     }
 
     if (!_isValidEmail(email)) {
@@ -534,8 +601,38 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return;
+      return false;
     }
+
+    if (phoneStr.isEmpty || phoneStr.length < 7) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid phone number'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return false;
+    }
+
+    // Block progression until the phone number is verified — either via the
+    // Step-1 "Verify" button (badge state) or because it is already linked to
+    // this signed-in account. Comparison is digit-based so formatting
+    // differences don't bypass the check.
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final linkedPhone =
+        (currentUser?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    final enteredPhone = phoneStr.replaceAll(RegExp(r'[^0-9]'), '');
+    if (!_phoneVerified && linkedPhone != enteredPhone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please verify your phone number to continue.'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return false;
+    }
+
+
 
     if (!_isPasswordValid(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -544,7 +641,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return;
+      return false;
     }
 
     if (password != confirmPassword) {
@@ -554,10 +651,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return;
+      return false;
     }
 
-    final profileImageUrl = _profileImageUrlController.text.trim();
     if (profileImageUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -565,7 +661,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return;
+      return false;
     }
 
     setState(() {
@@ -574,9 +670,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     try {
       AppStateManager().isRegistering = true;
-      final phoneStr = _phoneController.text.trim();
-      
-      await AuthService().signUpWithEmail(
+
+      // A full account is already signed in (e.g. a returning completionMode
+      // user) with a different email — never create a second account, just
+      // sync and continue.
+      final signedInUser = FirebaseAuth.instance.currentUser;
+      final isSameAccount =
+          signedInUser?.email?.toLowerCase() == email.toLowerCase();
+      if (signedInUser != null &&
+          (signedInUser.email?.isNotEmpty ?? false) &&
+          !isSameAccount) {
+        await AppStateManager().syncSignedInUser(signedInUser);
+        if (navigateToNextStep && mounted) {
+          setState(() {
+            _currentView = OnboardingView.signUpStep2;
+          });
+        }
+        return true;
+      }
+
+      // Creates the account, or upgrades the phone-only account created
+      // during phone verification by attaching email + password.
+      final user = await AuthService().signUpWithEmail(
         email: email,
         password: password,
         name: name,
@@ -586,27 +701,27 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         gender: _selectedGender,
         profileImageUrl: profileImageUrl,
       );
-      
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await AppStateManager().syncSignedInUser(user);
-        
-        if (phoneStr.isNotEmpty) {
-           final fullPhone = '${_selectedCountry.dialCode}$phoneStr';
-           await showDialog<bool>(
-             context: context,
-             barrierDismissible: false,
-             builder: (ctx) => PhoneVerificationDialog(phoneNumber: fullPhone),
-           );
-        }
 
-        // After sign up, prompt email verification
-        if (mounted) {
-           setState(() {
-              _currentView = OnboardingView.verifyEmail;
-           });
+      await AppStateManager().syncSignedInUser(user);
+
+      if (user.emailVerified != true) {
+        try {
+          await user.sendEmailVerification();
+        } catch (e) {
+          debugPrint('Error sending email verification link: $e');
         }
       }
+
+      if (navigateToNextStep && mounted) {
+        setState(() {
+          if (user.emailVerified == true) {
+            _currentView = OnboardingView.signUpStep2;
+          } else {
+            _currentView = OnboardingView.verifyEmail;
+          }
+        });
+      }
+      return true;
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -616,6 +731,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         );
       }
+      return false;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -625,6 +741,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         );
       }
+      return false;
     } finally {
       AppStateManager().isRegistering = false;
       if (mounted) {
@@ -635,40 +752,195 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  Widget _buildVerifyEmail(double screenHeight, double screenWidth) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.mark_email_unread_outlined, size: 80, color: Color(0xFF7A432D)),
-        const SizedBox(height: 24),
-        const Text(
-          'Verify your email',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF3E1F11)),
+  /// Verifies the phone number entered in Step 1 via the OTP dialog.
+  ///
+  /// Verification is completely independent of the rest of the form — only a
+  /// valid phone number is needed; no other fields are required. If no user is
+  /// signed in yet, the OTP dialog signs in with the phone credential (creating
+  /// a phone-only account) which is upgraded with email/password when the user
+  /// taps "Next". The verified state persists for the rest of the sign-up.
+  Future<void> _verifyPhoneInStep1() async {
+    if (_isLoading) return;
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.length < 7) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid phone number first'),
+          backgroundColor: Color(0xFF7A432D),
         ),
-        const SizedBox(height: 16),
-        Text(
-          'A verification link has been sent to ${_emailController.text.trim()}. Please verify your email to continue.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 16, color: Color(0xFF8C736B)),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7A432D)),
-            onPressed: () async {
-              await FirebaseAuth.instance.currentUser?.reload();
-              if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-                setState(() => _currentView = OnboardingView.signUpStep2);
-              } else {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email not yet verified.')));
-              }
-            },
-            child: const Text('I have verified my email', style: TextStyle(color: Colors.white)),
+      );
+      return;
+    }
+
+    final fullPhone = '${_selectedCountry.dialCode}$phone';
+    // Keep the app on the onboarding flow while the OTP sign-in completes.
+    AppStateManager().isRegistering = true;
+    try {
+      final verified = await ensurePhoneVerified(context, fullPhone);
+      if (!mounted) return;
+      // Only mark the badge verified when the number is actually linked to a
+      // signed-in account. (If the OTP belongs to another account Firebase
+      // reports credential-already-in-use and no user is signed in.)
+      final linkedToAccount = FirebaseAuth.instance.currentUser != null;
+      setState(() {
+        _phoneVerified = verified && linkedToAccount;
+      });
+      if (!verified) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Phone number not verified. Please try again.'),
+            backgroundColor: Color(0xFF7A432D),
           ),
-        )
-      ],
+        );
+      }
+    } finally {
+      AppStateManager().isRegistering = false;
+    }
+  }
+
+  Future<void> _verifyEmailInStep1() async {
+    if (_isLoading) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !_isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid email address first'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+      return;
+    }
+    final verified = await ensureEmailVerified(context, email);
+    if (!mounted) return;
+    setState(() => _emailVerified = verified);
+    if (!verified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email not verified. Please try again.'),
+          backgroundColor: Color(0xFF7A432D),
+        ),
+      );
+    }
+  }
+
+  Widget _buildVerifyEmail(double screenHeight, double screenWidth) {
+    final userEmail = _emailController.text.trim().isNotEmpty
+        ? _emailController.text.trim()
+        : (FirebaseAuth.instance.currentUser?.email ?? '');
+
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.mark_email_unread_outlined,
+              size: 80,
+              color: Color(0xFF7A432D),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Verify your email',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'A verification link has been sent to $userEmail.\n\nPlease open your email app, tap the verification link from Firebase, and then click below to continue.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Color(0xFF8C736B),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7A432D),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                ),
+                onPressed: () async {
+                  setState(() => _isLoading = true);
+                  await FirebaseAuth.instance.currentUser?.reload();
+                  final user = FirebaseAuth.instance.currentUser;
+                  setState(() => _isLoading = false);
+
+                  if (user?.emailVerified == true) {
+                    if (mounted) {
+                      setState(() => _currentView = OnboardingView.signUpStep2);
+                    }
+                  } else {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Email not yet verified. Please open Gmail/Mail and tap the verification link.',
+                          ),
+                          backgroundColor: Color(0xFF7A432D),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'I have verified my email',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () async {
+                try {
+                  await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Verification link resent to your email!'),
+                        backgroundColor: Color(0xFF2E7D32),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to resend link: $e'),
+                        backgroundColor: const Color(0xFF7A432D),
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                'Resend Verification Link',
+                style: TextStyle(
+                  color: Color(0xFF7A432D),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -692,22 +964,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final travelFrequency = _selectedTravelFrequency;
 
     // Validate fields before complete
+    final bioError = validateBio(bio);
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
-        bio.isEmpty ||
+        bioError != null ||
         _selectedExpertise.isEmpty ||
         _selectedIndustry == null ||
         _selectedInterests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
+            bioError ??
+                'Please complete all professional details, experience, select a sector, and choose at least one expertise area and interest.',
           ),
-          backgroundColor: Color(0xFF7A432D),
+          backgroundColor: const Color(0xFF7A432D),
         ),
       );
       return;
+    }
+
+    // Verify the phone number via OTP before completing the profile, unless it
+    // has already been verified on this Firebase account.
+    final phone = _phoneController.text.trim();
+    if (phone.isNotEmpty) {
+      final fullPhone = '${_selectedCountry.dialCode}$phone';
+      final verified = await ensurePhoneVerified(context, fullPhone);
+      if (!verified) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Please verify your phone number to complete your profile.',
+              ),
+              backgroundColor: Color(0xFF7A432D),
+            ),
+          );
+        }
+        return;
+      }
     }
 
     setState(() {
@@ -741,6 +1036,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           intents: _selectedInterests,
           skills: _selectedExpertise,
           interests: _selectedInterests,
+          businessConnect: _selectedBusinessConnect,
           expertiseWithLevel: _selectedExpertise.map((e) => {
             'name': e,
             'level': _expertiseLevels[e] ?? 'Intermediate',
@@ -792,16 +1088,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  /// Resets the Step-1 email "Verified" badge whenever the address changes.
   void _onEmailChanged() {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      _emailErrorText = '';
-    } else if (!_isValidEmail(email)) {
-      _emailErrorText = 'Please enter a valid email address';
-    } else {
-      _emailErrorText = '';
+    if (_emailVerified && mounted) {
+      setState(() => _emailVerified = false);
     }
-    if (mounted) setState(() {});
+  }
+
+  /// Resets the Step-1 phone "Verified" badge whenever the number changes.
+  void _onPhoneChanged() {
+    if (_phoneVerified && mounted) {
+      setState(() => _phoneVerified = false);
+    }
   }
 
   bool _isPasswordValid(String p) {
@@ -891,15 +1189,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     VoidCallback? onTap,
     bool isPassword = false,
     bool isRequired = false,
+    int? maxLength,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      maxLength: maxLength,
       readOnly: readOnly,
       onTap: onTap,
       decoration: InputDecoration(
+        // Hide Flutter's built-in counter - our validation label shows it.
+        counterText: maxLength == null ? null : '',
         label: isRequired
             ? Text.rich(
                 TextSpan(
@@ -1246,12 +1548,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             isRequired: true,
           ),
           const SizedBox(height: 16),
-          _buildTextField(
-            controller: _emailController,
-            labelText: 'Email Address',
-            hintText: 'e.g. rohan@example.com',
-            keyboardType: TextInputType.emailAddress,
-            isRequired: true,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _emailController,
+                  labelText: 'Email Address',
+                  hintText: 'e.g. rohan@example.com',
+                  keyboardType: TextInputType.emailAddress,
+                  isRequired: true,
+                ),
+              ),
+              const SizedBox(width: 10),
+              EmailVerifyButton(
+                verified: _emailVerified,
+                isLoading: _isLoading,
+                onPressed: _verifyEmailInStep1,
+              ),
+            ],
           ),
           if (_emailErrorText.isNotEmpty)
             Padding(
@@ -1266,6 +1581,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
           const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: CountryPhoneInput(
+                  controller: _phoneController,
+                  label: 'Phone Number',
+                  isRequired: true,
+                  initialCountry: _selectedCountry,
+                  onCountryChanged: (c) => setState(() => _selectedCountry = c),
+                ),
+              ),
+              const SizedBox(width: 10),
+              PhoneVerifyButton(
+                verified: _phoneVerified,
+                isLoading: _isLoading,
+                onPressed: _verifyPhoneInStep1,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           _buildTextField(
             controller: _passwordController,
@@ -1354,7 +1689,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
                     )
                   : const Text(
-                'Next: Verify Email ->',
+                'Next: Professional Details ->',
                 style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
@@ -1408,14 +1743,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          CountryPhoneInput(
-            controller: _phoneController,
-            label: 'Phone Number',
-            isRequired: true,
-            initialCountry: _selectedCountry,
-            onCountryChanged: (c) => setState(() => _selectedCountry = c),
-          ),
-          const SizedBox(height: 16),
           _buildTextField(
             controller: _dobController,
             labelText: 'Date of Birth',
@@ -1556,25 +1883,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 final company = _companyController.text.trim();
                 final designation = _roleController.text.trim();
                 final experience = _experienceController.text.trim();
-                final phone = _phoneController.text.trim();
                 final dob = _dobController.text.trim();
-                
-                if (phone.isEmpty ||
-                    dob.isEmpty ||
-                    _selectedGender == null) {
+
+                if (dob.isEmpty || _selectedGender == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Please fill in your phone number, date of birth, and gender'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                
-                if (phone.length < 7) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter a valid phone number'),
+                      content: Text('Please fill in your date of birth and gender'),
                       backgroundColor: Color(0xFF7A432D),
                     ),
                   );
@@ -1660,7 +1974,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             hintText: 'Describe what you do and who you want to meet...',
             maxLines: 3,
             isRequired: true,
+            maxLength: kBioMaxChars,
           ),
+          const SizedBox(height: 6),
+          BioValidationLabel(text: _bioController.text),
           const SizedBox(height: 20),
           SearchableMultiSelectField(
             label: 'Expertise Areas (What can you share?)',
@@ -1694,6 +2011,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               _onFieldChanged();
             },
           ),
+          const SizedBox(height: 20),
+          SearchableMultiSelectField(
+            label: 'Business Connect',
+            placeholder: 'Select business connect goals (searchable)',
+            options: kBusinessConnectOptions,
+            selectedValues: _selectedBusinessConnect,
+            onChanged: (newList) {
+              setState(() {
+                _selectedBusinessConnect = newList;
+              });
+              _onFieldChanged();
+            },
+          ),
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
@@ -1707,13 +2037,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
               onPressed: () {
                 final bio = _bioController.text.trim();
-                if (bio.isEmpty ||
+                final bioError = validateBio(bio);
+                if (bioError != null ||
                     _selectedExpertise.isEmpty ||
                     _selectedInterests.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter your bio and select at least one expertise area and interest'),
-                      backgroundColor: Color(0xFF7A432D),
+                    SnackBar(
+                      content: Text(
+                        bioError ??
+                            'Please select at least one expertise area and interest',
+                      ),
+                      backgroundColor: const Color(0xFF7A432D),
                     ),
                   );
                   return;
@@ -2442,23 +2776,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _pickProfileImage() async {
+    // Pick a photo from the gallery and let the user crop / adjust it first.
+    final Uint8List? bytes = await pickAndCropProfileImage(context);
+    if (bytes == null) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? pickedFile = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 200,
-        maxHeight: 200,
-        imageQuality: 60,
-      );
-
-      if (pickedFile == null) return;
-
-      setState(() {
-        _isLoading = true;
-      });
-
-      final bytes = await pickedFile.readAsBytes();
-      final isValidFace = await FaceDetectionService.isValidProfilePicture(bytes);
+      final isValidFace =
+          await FaceDetectionService.isValidProfilePicture(bytes);
       if (!isValidFace) {
         setState(() {
           _isLoading = false;
@@ -2481,7 +2809,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('OK', style: TextStyle(color: Color(0xFF7A432D))),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: Color(0xFF7A432D)),
+                  ),
                 ),
               ],
             ),
@@ -2490,13 +2821,60 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         return;
       }
 
-      final base64String = base64Encode(bytes);
-      final dataUri = 'data:image/jpeg;base64,$base64String';
-
+      // Show the cropped photo instantly so the user sees it right away.
+      // The base64 preview renders without any network / CORS dependency, so
+      // it is also the final stored image on web. On native platforms the
+      // full-resolution Firebase Storage URL swaps in once the upload
+      // finishes. The image state is always maintained while the form is
+      // filled in.
+      final previewBytes = downscaleForFirestore(bytes);
+      final previewDataUri =
+          'data:image/jpeg;base64,${base64Encode(previewBytes)}';
       setState(() {
-        _profileImageUrlController.text = dataUri;
-        _isLoading = false;
+        _profileImageUrlController.text = previewDataUri;
       });
+
+      if (kIsWeb) {
+        // Web: Firebase Storage URLs only render when the bucket has CORS
+        // configured, and third-party proxies are unreliable — the base64
+        // preview is guaranteed to display everywhere.
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      } else {
+        // Upload the full-resolution crop to Firebase Storage so the original
+        // sharpness is preserved. (Storing the image as base64 inside the
+        // Firestore profile doc would force a ~512px cap to stay under the
+        // document size limit — the very reason Discovery photos looked
+        // blurry.)
+        try {
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('profile_images')
+              .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+          final uploadTask = storageRef.putData(
+            bytes,
+            SettableMetadata(contentType: 'image/jpeg'),
+          );
+          final snapshot = await uploadTask;
+          final downloadUrl = await snapshot.ref.getDownloadURL();
+          if (!mounted) return;
+          setState(() {
+            _profileImageUrlController.text = downloadUrl;
+            _isLoading = false;
+          });
+        } catch (e) {
+          debugPrint('Storage upload failed, keeping base64 preview: $e');
+          // The preview data URI is already in the field — just clear the
+          // loading state.
+          if (!mounted) return;
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2547,7 +2925,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Header logo
-                        const AppLogo(size: 26),
+                        const AppLogo(size: 44),
                         SizedBox(height: isSmallScreen ? screenHeight * 0.01 : screenHeight * 0.015),
 
                         // PageView for onboarding slides

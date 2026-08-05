@@ -154,6 +154,21 @@ class AppStateManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Error message from a background OAuth flow (e.g. LinkedIn) that the UI
+  // should surface to the user once, then clear.
+  String? _authErrorMessage;
+
+  String? get authErrorMessage => _authErrorMessage;
+
+  void setAuthErrorMessage(String? message) {
+    _authErrorMessage = message;
+    notifyListeners();
+  }
+
+  void clearAuthErrorMessage() {
+    _authErrorMessage = null;
+  }
+
   void logIn(Map<String, String> data, {bool isAdmin = false}) {
     _isLoggedIn = true;
     _isAuthCallbackInProgress = false;
@@ -329,6 +344,10 @@ class AppStateManager extends ChangeNotifier {
         return;
       }
       if (user != null) {
+        try {
+          // Attempt silent session refresh if returning after a long time
+          await user.reload().catchError((_) => null);
+        } catch (_) {}
         await syncSignedInUser(user);
       } else if (!_isAuthCallbackInProgress) {
         _clearSignedOutState();
@@ -684,11 +703,20 @@ class AppStateManager extends ChangeNotifier {
       final docsToProcess = querySnapshot.docs.where(
         (doc) {
           final data = doc.data();
-          final isDiscoverable = data['isDiscoverable'] ?? true;
-          final onboardingCompleted = data['onboardingCompleted'] ?? true; // Legacy users assumed onboarded
+          final isDiscoverable = data['isDiscoverable'] != false;
+          // Allow profiles that have not explicitly opted out/abandoned onboarding
+          final onboardingCompleted = data['onboardingCompleted'] != false;
+          // Has any basic identifier (name, headline, role, profession, or email)
+          final hasProfileContent =
+              (data['name'] ?? '').toString().trim().isNotEmpty ||
+              (data['headline'] ?? '').toString().trim().isNotEmpty ||
+              (data['role'] ?? '').toString().trim().isNotEmpty ||
+              (data['profession'] ?? '').toString().trim().isNotEmpty ||
+              (data['email'] ?? '').toString().trim().isNotEmpty;
           final pass = doc.id != currentUid &&
               isDiscoverable &&
               onboardingCompleted &&
+              hasProfileContent &&
               !permanentlyExcludedUids.contains(doc.id) &&
               !pendingReqUids.contains(doc.id) &&
               !connectedUids.contains(doc.id);
@@ -823,17 +851,40 @@ class AppStateManager extends ChangeNotifier {
           }
         }
 
+        final businessConnect = List<String>.from(
+          data['businessConnect'] is List
+              ? data['businessConnect']
+              : (data['businessConnect'] != null && data['businessConnect'].toString().isNotEmpty
+                  ? [data['businessConnect'].toString()]
+                  : []),
+        );
+
+        final rawName = (data['name'] ?? '').toString().trim();
+        final rawRole = (data['role'] ?? '').toString().trim();
+        final rawCompany = (data['company'] ?? '').toString().trim();
+
+        final displayName = rawName.isNotEmpty
+            ? rawName
+            : (data['email']?.toString().split('@').first ?? 'Member');
+        final displayRole = rawRole.isNotEmpty
+            ? rawRole
+            : (data['profession'] ?? data['headline'] ?? 'Professional');
+        final displayOrg = rawCompany.isNotEmpty
+            ? rawCompany
+            : (data['industry'] ?? 'NexMeet');
+
         allProfiles.add(Candidate(
           uid: doc.id,
-          name: data['name'] ?? '',
+          name: displayName,
           headline: data['headline'] ?? '',
-          role: data['role'] ?? '',
-          org: data['company'] ?? '',
+          role: displayRole,
+          org: displayOrg,
           loc: data['currentLocationName'] ?? data['homeBase'] ?? '',
           match: detailedMatch.score,
           intent: intents.isNotEmpty ? intents.join(', ') : '',
           tags: expertise,
           interests: interests,
+          businessConnect: businessConnect,
           skills: skills,
           homeBase: data['homeBase'] ?? '',
           currentLocationName: data['currentLocationName'] ?? '',
