@@ -44,6 +44,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Freebuff local state (conversation DB) — must never be committed
+.freebuff/
+
 # Secrets
 /lib/services/linkedin_secret.dart
 
