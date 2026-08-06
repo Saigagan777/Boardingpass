@@ -21,7 +21,6 @@ import '../services/moderation_service.dart';
 import '../services/meeting_service.dart';
 import '../utils/image_helper.dart';
 import '../services/user_service.dart';
-import '../utils/match_calculator.dart';
 import 'candidate_profile_sheet.dart';
 import '../models/venue.dart';
 import '../services/venue_repository.dart';

@@ -8,7 +8,6 @@ import '../services/meeting_service.dart';
 import '../services/chat_service.dart';
 import '../services/user_service.dart';
 import '../utils/image_helper.dart';
-import '../utils/match_calculator.dart';
 import '../models/enums.dart';
 import '../models/venue.dart';
 import '../services/recommendation_engine.dart';
