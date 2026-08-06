@@ -43,28 +43,54 @@ class UserService {
   Future<bool> isEmailTaken(String email, {String? excludeUid}) async {
     final cleanEmail = email.trim().toLowerCase();
     if (cleanEmail.isEmpty) return false;
-    final query = await _usersRef
-        .where('email', isEqualTo: cleanEmail)
-        .limit(2)
-        .get();
-    for (final doc in query.docs) {
-      if (doc.id != excludeUid) return true;
+    try {
+      final query = await _usersRef
+          .where('email', isEqualTo: cleanEmail)
+          .limit(2)
+          .get();
+      for (final doc in query.docs) {
+        if (doc.id != excludeUid) return true;
+      }
+      return false;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        // Under strict production rules, unauthenticated users cannot read/query
+        // the users collection. We default to false and let the auth process
+        // or backend handle duplicate validation.
+        debugPrint('isEmailTaken: permission-denied encountered. Proceeding.');
+        return false;
+      }
+      rethrow;
+    } catch (e) {
+      rethrow;
     }
-    return false;
   }
 
   /// Checks if a phone number is already registered to another user account.
   Future<bool> isPhoneTaken(String phone, {String? excludeUid}) async {
     final cleanPhone = phone.trim();
     if (cleanPhone.isEmpty) return false;
-    final query = await _usersRef
-        .where('phone', isEqualTo: cleanPhone)
-        .limit(2)
-        .get();
-    for (final doc in query.docs) {
-      if (doc.id != excludeUid) return true;
+    try {
+      final query = await _usersRef
+          .where('phone', isEqualTo: cleanPhone)
+          .limit(2)
+          .get();
+      for (final doc in query.docs) {
+        if (doc.id != excludeUid) return true;
+      }
+      return false;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        // Under strict production rules, unauthenticated users cannot read/query
+        // the users collection. We default to false and let the auth process
+        // or backend handle duplicate validation.
+        debugPrint('isPhoneTaken: permission-denied encountered. Proceeding.');
+        return false;
+      }
+      rethrow;
+    } catch (e) {
+      rethrow;
     }
-    return false;
   }
 
   // ---------------------------------------------------------------------------

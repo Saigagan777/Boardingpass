@@ -307,20 +307,23 @@ class _PhoneVerificationDialogState extends State<PhoneVerificationDialog> {
           'URL and http://localhost.\n\n'
           'Then tap Resend OTP.';
     }
+    final isAppIdentifierFailure =
+        lower.contains('app identifier') ||
+        lower.contains('play integrity') ||
+        lower.contains('safetynet') ||
+        lower.contains('device verification');
     final smsBlocked =
         msg.contains('region enabled') ||
         msg.contains('SMS unable') ||
         e.code == 'invalid-app-credential' ||
         e.code == 'internal-error';
-    if (smsBlocked) {
-      return 'SMS could not be sent. Firebase phone auth is not fully set up '
-          'for this app yet.\n\n'
-          '• Android: add this app\'s SHA-1 / SHA-256 fingerprint to Firebase '
-          'Console → Project settings → Your apps, and enable the Phone '
-          'sign-in method.\n'
-          '• Web: authorize this site domain and set up reCAPTCHA Enterprise '
-          'for the web app (Authentication → Sign-in method → Phone).\n\n'
-          'Then tap Resend OTP.';
+    if (isAppIdentifierFailure || smsBlocked) {
+      return 'SMS could not be sent. Firebase phone auth is not fully configured for this build.\n\n'
+          'To fix this, please verify the following:\n'
+          '1. Add your SHA-1 and SHA-256 fingerprints to your Firebase Console under Project Settings → Your apps → Android app.\n'
+          '2. Make sure the Play Integrity API is enabled in your Google Cloud Console for this project.\n'
+          '3. Make sure the Phone sign-in method is enabled under Authentication → Sign-in method in Firebase Console.\n'
+          '4. If testing on a simulator or device without Play Store, use a Firebase App Check debug token or temporary test phone numbers in the Firebase Console (Authentication → Sign-in method → Phone → Phone numbers for testing).';
     }
     return e.message ?? 'Verification failed';
   }

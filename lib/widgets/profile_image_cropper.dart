@@ -261,6 +261,8 @@ class _ProfileImageCropperScreenState extends State<ProfileImageCropperScreen> {
           width: outW,
           height: outH,
           bytes: byteData.buffer,
+          numChannels: 4,
+          order: img.ChannelOrder.rgba,
         ),
         quality: 92,
       );
