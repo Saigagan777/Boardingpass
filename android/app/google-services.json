@@ -130,6 +130,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "514349178076-1vcl2h779bap2dhnutkrlpv3amg0ua1o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nexmeet.app1",
+            "certificate_hash": "736800d441c5b4c10baccc2fe2ff03fe214a6aa8"
+          }
+        },
+        {
+          "client_id": "514349178076-hpn3cuivrp75c74ibodtu2fa7kd65ouc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nexmeet.app1",
+            "certificate_hash": "986aa2c37f46e751976769ce0141b1d380ca50e4"
+          }
+        },
+        {
           "client_id": "514349178076-va82khk7nnpsuovc2do8pk5v38ibf09b.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
