@@ -12,7 +12,6 @@ import '../state_manager.dart';
 import '../services/user_service.dart';
 import '../services/chat_service.dart';
 import '../services/event_service.dart';
-import '../services/face_detection_service.dart';
 import '../models/user_profile.dart';
 import '../utils/image_helper.dart';
 import 'google_location_dropdown.dart';

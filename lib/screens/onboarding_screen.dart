@@ -11,7 +11,6 @@ import 'linkedin_webview.dart';
 import '../utils/image_helper.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
-import '../services/face_detection_service.dart';
 import '../utils/app_logo.dart';
 import '../utils/bio_validation.dart';
 import '../widgets/bio_validation_label.dart';

@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:path_provider/path_provider.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class FaceDetectionService {
   /// Validates if the provided image bytes contain a selfie or clear face photo.
