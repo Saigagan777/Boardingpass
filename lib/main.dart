@@ -87,7 +87,7 @@ void main() async {
           pendingSyncUid,
           webOAuthCode,
           redirectUri: LinkedInOAuthConfig.redirectUri,
-        );
+        ).timeout(const Duration(seconds: 30));
         if (kIsWeb) {
           const storage = FlutterSecureStorage();
           await storage.delete(key: 'linkedin_sync_pending_uid');
@@ -104,7 +104,7 @@ void main() async {
         final credential = await AuthService().signInWithLinkedIn(
           webOAuthCode,
           redirectUri: LinkedInOAuthConfig.redirectUri,
-        );
+        ).timeout(const Duration(seconds: 30));
         final user = credential?.user ?? AuthService().currentUser;
         if (user != null) {
           await appState.syncSignedInUser(user);
@@ -116,11 +116,15 @@ void main() async {
     } catch (e) {
       debugPrint('LinkedIn web OAuth error: $e');
       if (kIsWeb) {
-        const storage = FlutterSecureStorage();
-        await storage.delete(key: 'linkedin_sync_pending_uid');
+        try {
+          const storage = FlutterSecureStorage();
+          await storage.delete(key: 'linkedin_sync_pending_uid');
+        } catch (_) {}
       }
       if (e is LinkedInAccountConflictException) {
         appState.setAuthErrorMessage(e.message);
+      } else {
+        appState.setAuthErrorMessage('LinkedIn authentication failed: $e');
       }
       appState.endAuthCallback();
     }

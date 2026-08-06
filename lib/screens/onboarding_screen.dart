@@ -2764,42 +2764,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
-      final isValidFace =
-          await FaceDetectionService.isValidProfilePicture(bytes);
-      if (!isValidFace) {
-        setState(() {
-          _isLoading = false;
-        });
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
-                  SizedBox(width: 10),
-                  Text('Invalid Profile Photo'),
-                ],
-              ),
-              content: const Text(
-                'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
-                style: TextStyle(fontFamily: 'PlusJakartaSans'),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'OK',
-                    style: TextStyle(color: Color(0xFF7A432D)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
-
       // Show the cropped photo instantly so the user sees it right away.
       // The base64 preview renders without any network / CORS dependency, so
       // it is also the final stored image on web. On native platforms the

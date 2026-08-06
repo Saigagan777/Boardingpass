@@ -2025,6 +2025,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               try {
                 final firebaseUser = FirebaseAuth.instance.currentUser;
                 if (firebaseUser == null) throw Exception('Not logged in.');
+                final isTaken = await UserService().isEmailTaken(newEmail, excludeUid: firebaseUser.uid);
+                if (isTaken) {
+                  messenger.showSnackBar(const SnackBar(
+                    content: Text('This email address is already registered with another account.'),
+                    backgroundColor: Color(0xFFC62828),
+                  ));
+                  return;
+                }
                 await firebaseUser.verifyBeforeUpdateEmail(newEmail);
                 await FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).update({'email': newEmail});
                 messenger.showSnackBar(const SnackBar(
@@ -3297,39 +3305,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   /// profile photo field. Shared by the "upload new" and "re-crop" flows.
   Future<void> _uploadProfileImage(Uint8List bytes) async {
     setState(() => _isProfileLoading = true);
-
-    final isValidFace = await FaceDetectionService.isValidProfilePicture(bytes);
-    if (!isValidFace) {
-      setState(() => _isProfileLoading = false);
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
-                SizedBox(width: 10),
-                Text('Invalid Profile Photo'),
-              ],
-            ),
-            content: const Text(
-              'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
-              style: TextStyle(fontFamily: 'PlusJakartaSans'),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-      return;
-    }
 
     try {
       final storageRef = FirebaseStorage.instance

@@ -248,9 +248,7 @@ class AuthService {
 
     try {
       // 1. Exchange authorization code for access token
-      final String tokenUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
-          : 'https://www.linkedin.com/oauth/v2/accessToken';
+      const targetTokenUrl = 'https://www.linkedin.com/oauth/v2/accessToken';
       final tokenRequestBody = <String, String>{
         'grant_type': 'authorization_code',
         'code': code,
@@ -261,13 +259,12 @@ class AuthService {
       }.entries.map((entry) {
         return '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}';
       }).join('&');
-      final tokenResponse = await http
-          .post(
-            Uri.parse(tokenUri),
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: tokenRequestBody,
-          )
-          .timeout(const Duration(seconds: 10));
+
+      final tokenResponse = await _httpPostProxy(
+        targetTokenUrl,
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: tokenRequestBody,
+      );
 
       if (tokenResponse.statusCode != 200) {
         throw Exception(
@@ -279,15 +276,11 @@ class AuthService {
       final String accessToken = tokenData['access_token'];
 
       // 2. Fetch userinfo using OpenID Connect
-      final String userInfoUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
-          : 'https://api.linkedin.com/v2/userinfo';
-      final userInfoResponse = await http
-          .get(
-            Uri.parse(userInfoUri),
-            headers: {'Authorization': 'Bearer $accessToken'},
-          )
-          .timeout(const Duration(seconds: 10));
+      const targetUserInfoUrl = 'https://api.linkedin.com/v2/userinfo';
+      final userInfoResponse = await _httpGetProxy(
+        targetUserInfoUrl,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
 
       if (userInfoResponse.statusCode != 200) {
         throw Exception(
@@ -552,6 +545,58 @@ class AuthService {
     } catch (e) {
       throw Exception('Failed to send password reset email: $e');
     }
+  }
+
+  /// Sends an HTTP POST with CORS proxy fallback handling on Web to prevent timeouts.
+  Future<http.Response> _httpPostProxy(String targetUrl, {Map<String, String>? headers, Object? body}) async {
+    if (!kIsWeb) {
+      return await http.post(Uri.parse(targetUrl), headers: headers, body: body).timeout(const Duration(seconds: 15));
+    }
+    final proxies = [
+      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
+      targetUrl,
+    ];
+    Object? lastErr;
+    for (final proxy in proxies) {
+      try {
+        final res = await http
+            .post(Uri.parse(proxy), headers: headers, body: body)
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) return res;
+        debugPrint('[Auth Proxy POST] $proxy status ${res.statusCode}');
+      } catch (e) {
+        debugPrint('[Auth Proxy POST] $proxy failed: $e');
+        lastErr = e;
+      }
+    }
+    throw Exception(lastErr ?? 'Failed to complete POST to $targetUrl via proxies');
+  }
+
+  /// Sends an HTTP GET with CORS proxy fallback handling on Web to prevent timeouts.
+  Future<http.Response> _httpGetProxy(String targetUrl, {Map<String, String>? headers}) async {
+    if (!kIsWeb) {
+      return await http.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 15));
+    }
+    final proxies = [
+      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
+      targetUrl,
+    ];
+    Object? lastErr;
+    for (final proxy in proxies) {
+      try {
+        final res = await http
+            .get(Uri.parse(proxy), headers: headers)
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) return res;
+        debugPrint('[Auth Proxy GET] $proxy status ${res.statusCode}');
+      } catch (e) {
+        debugPrint('[Auth Proxy GET] $proxy failed: $e');
+        lastErr = e;
+      }
+    }
+    throw Exception(lastErr ?? 'Failed to complete GET to $targetUrl via proxies');
   }
 }
 

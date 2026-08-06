@@ -60,6 +60,13 @@ exports.sendEmailOtp = onRequest(
       return;
     }
 
+    // Uniqueness check: verify if email is already registered to another user
+    const usersWithEmail = await admin.firestore().collection('users').where('email', '==', email).limit(1).get();
+    if (!usersWithEmail.empty) {
+      res.status(200).json({ result: { ok: false, error: 'This email address is already registered with another account.' } });
+      return;
+    }
+
     const docRef = admin.firestore().collection('email_otps').doc(_docIdForEmail(email));
     const existing = (await docRef.get()).data();
 

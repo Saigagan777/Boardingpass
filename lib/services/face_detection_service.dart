@@ -10,47 +10,9 @@ class FaceDetectionService {
   ///
   /// Works across Native (Android/iOS) via ML Kit Face Detection and
   /// Web/Fallback via image pixel & face structure analysis.
+  /// Always returns true to allow uploading any photo without face restriction.
   static Future<bool> isValidProfilePicture(Uint8List imageBytes) async {
-    if (imageBytes.isEmpty) return false;
-
-    // 1. On Native platforms, try ML Kit Face Detection first
-    if (!kIsWeb) {
-      try {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/temp_face_${DateTime.now().millisecondsSinceEpoch}.jpg');
-        await tempFile.writeAsBytes(imageBytes);
-
-        final inputImage = InputImage.fromFilePath(tempFile.path);
-        final faceDetector = FaceDetector(
-          options: FaceDetectorOptions(
-            performanceMode: FaceDetectorMode.accurate,
-            minFaceSize: 0.15,
-          ),
-        );
-
-        final List<Face> faces = await faceDetector.processImage(inputImage);
-        await faceDetector.close();
-
-        // Cleanup
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        } catch (_) {}
-
-        if (faces.isNotEmpty) {
-          debugPrint('ML Kit Face Detection: Found ${faces.length} face(s). Approved.');
-          return true;
-        } else {
-          debugPrint('ML Kit Face Detection: No faces detected. Falling back to pixel analysis.');
-        }
-      } catch (e) {
-        debugPrint('ML Kit Face Detection error/unavailable: $e. Falling back to pixel analysis.');
-      }
-    }
-
-    // 2. Web & Fallback: Perform Canvas/Pixel-level face & skin verification
-    return await _analyzeImagePixels(imageBytes);
+    return true;
   }
 
   static Future<bool> _analyzeImagePixels(Uint8List imageBytes) async {

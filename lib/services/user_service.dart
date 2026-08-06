@@ -39,6 +39,34 @@ class UserService {
     }
   }
 
+  /// Checks if an email address is already registered to another user account.
+  Future<bool> isEmailTaken(String email, {String? excludeUid}) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty) return false;
+    final query = await _usersRef
+        .where('email', isEqualTo: cleanEmail)
+        .limit(2)
+        .get();
+    for (final doc in query.docs) {
+      if (doc.id != excludeUid) return true;
+    }
+    return false;
+  }
+
+  /// Checks if a phone number is already registered to another user account.
+  Future<bool> isPhoneTaken(String phone, {String? excludeUid}) async {
+    final cleanPhone = phone.trim();
+    if (cleanPhone.isEmpty) return false;
+    final query = await _usersRef
+        .where('phone', isEqualTo: cleanPhone)
+        .limit(2)
+        .get();
+    for (final doc in query.docs) {
+      if (doc.id != excludeUid) return true;
+    }
+    return false;
+  }
+
   // ---------------------------------------------------------------------------
   // Read
   // ---------------------------------------------------------------------------
@@ -326,21 +354,18 @@ class UserService {
       final String finalRedirectUri = redirectUri ?? LinkedInOAuthConfig.redirectUri;
 
       // 1. Exchange authorization code for access token
-      final String tokenUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
-          : 'https://www.linkedin.com/oauth/v2/accessToken';
+      const targetTokenUrl = 'https://www.linkedin.com/oauth/v2/accessToken';
+      final tokenResponseBody = 'grant_type=authorization_code'
+          '&code=${Uri.encodeComponent(authCode)}'
+          '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
+          '&client_id=${Uri.encodeComponent(clientId)}'
+          '&client_secret=${Uri.encodeComponent(clientSecret)}';
 
-      final tokenResponse = await http
-          .post(
-            Uri.parse(tokenUri),
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-            body: 'grant_type=authorization_code'
-                '&code=${Uri.encodeComponent(authCode)}'
-                '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
-                '&client_id=${Uri.encodeComponent(clientId)}'
-                '&client_secret=${Uri.encodeComponent(clientSecret)}',
-          )
-          .timeout(const Duration(seconds: 10));
+      final tokenResponse = await _httpPostProxy(
+        targetTokenUrl,
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: tokenResponseBody,
+      );
 
       if (tokenResponse.statusCode != 200) {
         throw Exception(
@@ -352,16 +377,11 @@ class UserService {
       final String accessToken = tokenData['access_token'];
 
       // 2. Fetch real user info from LinkedIn OpenID Connect endpoint
-      final String userInfoUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
-          : 'https://api.linkedin.com/v2/userinfo';
-
-      final userInfoResponse = await http
-          .get(
-            Uri.parse(userInfoUri),
-            headers: {'Authorization': 'Bearer $accessToken'},
-          )
-          .timeout(const Duration(seconds: 10));
+      const targetUserInfoUrl = 'https://api.linkedin.com/v2/userinfo';
+      final userInfoResponse = await _httpGetProxy(
+        targetUserInfoUrl,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
 
       if (userInfoResponse.statusCode != 200) {
         throw Exception(
@@ -399,5 +419,51 @@ class UserService {
     } catch (e) {
       throw Exception('Failed to sync LinkedIn profile: $e');
     }
+  }
+
+  Future<http.Response> _httpPostProxy(String targetUrl, {Map<String, String>? headers, Object? body}) async {
+    if (!kIsWeb) {
+      return await http.post(Uri.parse(targetUrl), headers: headers, body: body).timeout(const Duration(seconds: 15));
+    }
+    final proxies = [
+      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
+      targetUrl,
+    ];
+    Object? lastErr;
+    for (final proxy in proxies) {
+      try {
+        final res = await http
+            .post(Uri.parse(proxy), headers: headers, body: body)
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) return res;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw Exception(lastErr ?? 'Failed to complete POST to $targetUrl via proxies');
+  }
+
+  Future<http.Response> _httpGetProxy(String targetUrl, {Map<String, String>? headers}) async {
+    if (!kIsWeb) {
+      return await http.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 15));
+    }
+    final proxies = [
+      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
+      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
+      targetUrl,
+    ];
+    Object? lastErr;
+    for (final proxy in proxies) {
+      try {
+        final res = await http
+            .get(Uri.parse(proxy), headers: headers)
+            .timeout(const Duration(seconds: 10));
+        if (res.statusCode == 200) return res;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw Exception(lastErr ?? 'Failed to complete GET to $targetUrl via proxies');
   }
 }

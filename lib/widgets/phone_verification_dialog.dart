@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
 
 /// Master switch for phone-number OTP verification.
 ///
@@ -157,6 +158,18 @@ class _PhoneVerificationDialogState extends State<PhoneVerificationDialog> {
     });
 
     try {
+      // Check phone number uniqueness across all users first
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      final isTaken = await UserService().isPhoneTaken(widget.phoneNumber, excludeUid: currentUid);
+      if (isTaken) {
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'This phone number is already registered with another account.';
+        });
+        return;
+      }
+
       await AuthService().verifyPhoneNumber(
         phoneNumber: widget.phoneNumber,
         forceResendingToken: resendToken,
