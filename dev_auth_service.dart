@@ -1,4 +1,4 @@
-import 'package:firebase_auth/firebase_auth.dart';
+﻿import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -20,7 +20,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Dev-mode admin emails – bypasses custom-claims check.
+  /// Dev-mode admin emails ΓÇô bypasses custom-claims check.
   static const List<String> _devAdminEmails = [
     'gagan123@gmail.com',
     'gagan90@gmail.com',
@@ -64,10 +64,6 @@ class AuthService {
     String? profileImageUrl,
     String? phone,
     String? phoneCountryCode,
-    String? dob,
-    String? gender,
-    String? occupation,
-    String? profession,
     List<String> expertise = const [],
     List<String> intents = const [],
     List<String> skills = const [],
@@ -87,22 +83,6 @@ class AuthService {
 
       if (isSameAccount) {
         user = signedInUser!;
-        // The user might have been created with a temporary password during
-        // the email verification step. Update it to the real password they chose.
-        try {
-          await user.updatePassword(password);
-        } catch (e) {
-          debugPrint('Could not update password (might already be correct): $e');
-        }
-      } else if (signedInUser != null &&
-          (signedInUser.isAnonymous || (signedInUser.email?.isEmpty ?? true))) {
-        // The current user is a phone-only (or anonymous) account created
-        // during phone verification — attach email + password to the same
-        // account instead of creating a second one.
-        await signedInUser.linkWithCredential(
-          EmailAuthProvider.credential(email: email, password: password),
-        );
-        user = signedInUser;
       } else {
         final credential = await _auth.createUserWithEmailAndPassword(
           email: email,
@@ -133,10 +113,6 @@ class AuthService {
           email: email,
           phone: phone,
           phoneCountryCode: phoneCountryCode,
-          dob: dob,
-          gender: gender,
-          occupation: occupation,
-          profession: profession,
           headline: headline,
           company: company,
           role: role,
@@ -166,16 +142,6 @@ class AuthService {
           .doc(user.uid)
           .set(profile.toFirestore())
           .timeout(const Duration(seconds: 8));
-
-      // Email verification is disabled (product decision) — the verification
-      // email is no longer sent. Uncomment to re-enable:
-      // if (!user.emailVerified) {
-      //   try {
-      //     await user.sendEmailVerification();
-      //   } catch (e) {
-      //     debugPrint('Failed to send email verification: $e');
-      //   }
-      // }
 
       return user;
     } on FirebaseAuthException {
@@ -249,7 +215,7 @@ class AuthService {
     try {
       // 1. Exchange authorization code for access token
       final String tokenUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
+          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://www.linkedin.com/oauth/v2/accessToken')}'
           : 'https://www.linkedin.com/oauth/v2/accessToken';
       final tokenRequestBody = <String, String>{
         'grant_type': 'authorization_code',
@@ -280,7 +246,7 @@ class AuthService {
 
       // 2. Fetch userinfo using OpenID Connect
       final String userInfoUri = kIsWeb
-          ? 'https://api.allorigins.win/raw?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
+          ? 'https://corsproxy.io/?url=${Uri.encodeComponent('https://api.linkedin.com/v2/userinfo')}'
           : 'https://api.linkedin.com/v2/userinfo';
       final userInfoResponse = await http
           .get(
@@ -325,27 +291,12 @@ class AuthService {
         if (e.code == 'user-not-found' ||
             e.code == 'invalid-credential' ||
             e.code == 'wrong-password') {
-          try {
-            // Create Firebase User
-            credential = await _auth.createUserWithEmailAndPassword(
-              email: firebaseEmail,
-              password: securePassword,
-            );
-            await credential.user?.updateDisplayName(name);
-          } on FirebaseAuthException catch (createError) {
-            if (createError.code == 'email-already-in-use') {
-              // The synthetic account for this LinkedIn profile already exists
-              // but the derived password did not match - it was created by a
-              // different flow/profile. Creating it again would hijack that
-              // account, so fail with a clear, user-facing message instead.
-              throw const LinkedInAccountConflictException(
-                'This LinkedIn account is already linked to an existing '
-                'NexMeet profile. Please sign in with that account\'s email '
-                'and password instead.',
-              );
-            }
-            rethrow;
-          }
+          // Create Firebase User
+          credential = await _auth.createUserWithEmailAndPassword(
+            email: firebaseEmail,
+            password: securePassword,
+          );
+          await credential.user?.updateDisplayName(name);
         } else {
           rethrow;
         }
@@ -355,7 +306,7 @@ class AuthService {
       if (credential.user != null) {
         await _ensureAccessAllowed(credential.user!);
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
-        final snapshot = await docRef.get().timeout(const Duration(seconds: 10), onTimeout: () => docRef.get(const GetOptions(source: Source.cache)));
+        final snapshot = await docRef.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 5));
 
         if (!snapshot.exists) {
           final profile = UserProfile(
@@ -366,7 +317,6 @@ class AuthService {
             profileImageUrl: picture.isNotEmpty ? picture : null,
             linkedinProfileUrl: profileUrl.isNotEmpty ? profileUrl : null,
             linkedinSynced: true,
-            onboardingCompleted: false,
             createdAt: DateTime.now(),
             lastSeen: DateTime.now(),
             hasCompletedFeatureTour: false,
@@ -375,12 +325,7 @@ class AuthService {
               .set(profile.toFirestore())
               .timeout(const Duration(seconds: 8));
         } else {
-          // Touch profile.
-          // Note: 'onboardingCompleted' is intentionally NOT reset here. For an
-          // existing, already-completed user this would silently mark them as
-          // incomplete again on every LinkedIn login and drop them from
-          // discoverable results (loadCandidates filters on this flag). New
-          // profiles are initialized with onboardingCompleted: false above.
+          // Touch profile
           await docRef
               .update({
                 'lastSeen': FieldValue.serverTimestamp(),
@@ -402,29 +347,6 @@ class AuthService {
     } catch (e) {
       throw Exception('LinkedIn authentication failed: $e');
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Phone Verification
-  // ---------------------------------------------------------------------------
-
-  /// Initiates phone number verification using Firebase.
-  Future<void> verifyPhoneNumber({
-    required String phoneNumber,
-    required Function(PhoneAuthCredential) verificationCompleted,
-    required Function(FirebaseAuthException) verificationFailed,
-    required Function(String, int?) codeSent,
-    required Function(String) codeAutoRetrievalTimeout,
-    int? forceResendingToken,
-  }) async {
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: verificationCompleted,
-      verificationFailed: verificationFailed,
-      codeSent: codeSent,
-      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
-      forceResendingToken: forceResendingToken,
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -454,8 +376,8 @@ class AuthService {
     if (user == null) return false;
 
     try {
-      // Check custom claims first (reading from cache if offline/slow)
-      final idTokenResult = await user.getIdTokenResult(false);
+      // Check custom claims first
+      final idTokenResult = await user.getIdTokenResult(true);
       final claims = idTokenResult.claims;
       if (claims != null && claims['admin'] == true) {
         return true;
@@ -486,7 +408,7 @@ class AuthService {
   }) async {
     try {
       final docRef = _firestore.collection('users').doc(uid);
-      final snapshot = await docRef.get();
+      final snapshot = await docRef.get(const GetOptions(source: Source.server));
 
       if (!snapshot.exists) {
         final profile = UserProfile(
@@ -495,7 +417,6 @@ class AuthService {
           email: email,
           createdAt: DateTime.now(),
           lastSeen: DateTime.now(),
-          onboardingCompleted: false,
           hasCompletedFeatureTour: false,
         );
         await docRef.set(profile.toFirestore());
@@ -553,16 +474,4 @@ class AuthService {
       throw Exception('Failed to send password reset email: $e');
     }
   }
-}
-
-/// Thrown when a LinkedIn sign-in cannot proceed because the synthetic Firebase
-/// account for that LinkedIn profile already exists but was created by a
-/// different flow/profile, so it must not be silently re-created.
-class LinkedInAccountConflictException implements Exception {
-  const LinkedInAccountConflictException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
 }

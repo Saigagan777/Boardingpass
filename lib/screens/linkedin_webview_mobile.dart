@@ -58,8 +58,11 @@ class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> {
           onNavigationRequest: (NavigationRequest request) {
             final uri = Uri.parse(request.url);
             // Check if it's the redirect URL (contains google.com) and has code or error params
-            if ((uri.host.contains('google.com') || request.url.contains('google.com')) &&
+            if (uri.queryParameters.containsKey('state') && 
                 (uri.queryParameters.containsKey('code') || uri.queryParameters.containsKey('error'))) {
+              // We intercept any redirect containing a 'code' or 'error' parameter.
+              // This ensures we catch the callback regardless of which redirect URI
+              // is configured in the LinkedIn Developer Console.
               final code = uri.queryParameters['code'];
               final error = uri.queryParameters['error'];
               Navigator.pop(context, code ?? 'error:$error');

@@ -1,36 +1,29 @@
-import 'dart:convert';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
 import '../services/linkedin_oauth_config.dart';
+import '../services/linkedin_mobile_auth.dart';
 import 'linkedin_webview.dart';
 import '../utils/image_helper.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
-import '../services/face_detection_service.dart';
 import '../utils/app_logo.dart';
-import '../utils/bio_validation.dart';
-import '../widgets/bio_validation_label.dart';
 import '../services/location_service.dart';
+import 'package:geocoding/geocoding.dart';
+import '../utils/google_search_helper.dart';
 import 'google_location_dropdown.dart';
 import '../widgets/country_phone_input.dart';
-import '../widgets/searchable_multi_select.dart';
-import '../widgets/phone_verification_dialog.dart';
-import '../widgets/email_verification_section.dart';
-import '../widgets/profile_image_cropper.dart';
+
 
 enum OnboardingView {
   slides,
   signIn,
-  signUpStep1, // Basic Information: Name, Email, Phone, DOB, Gender, Password, Confirm Password, Photo
-  verifyEmail,
-  signUpStep2, // Professional Details: Occupation, Profession, Company, Designation, Industry, Experience
-  signUpStep3, // Networking Profile: Bio, Expertise, Interests
-  signUpStep4, // Location & Work Experience: Location, Work Experience, Education
+  signUpStep1, // Name, Email, Password, Profile Photo
+  signUpStep2, // Job Title, Company, Skills, Experience, Bio, Interests, Locations, Travel preferences
 }
 
 class OnboardingScreen extends StatefulWidget {
@@ -47,29 +40,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _isLoading = false;
   late OnboardingView _currentView;
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
 
   // Form Controllers
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _dobController = TextEditingController();
-  DateTime? _selectedDob;
-  String? _selectedGender;
-  final List<String> _genders = [
-    'Male',
-    'Female',
-    'Non-binary',
-    'Prefer not to say',
-    'Other',
-  ];
   CountryCode _selectedCountry = defaultCountries.first;
   final TextEditingController _headlineController = TextEditingController();
   final TextEditingController _companyController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
-  final TextEditingController _professionController = TextEditingController();
   String? _selectedOccupation;
   final TextEditingController _customOccupationController = TextEditingController();
   final List<String> _occupations = [
@@ -89,15 +69,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _profileImageUrlController =
       TextEditingController();
   final TextEditingController _linkedinUrlController = TextEditingController();
-  // Kept final: email validation is disabled, so the inline error is never
-  // repopulated. The display blocks below simply never render.
-  final String _emailErrorText = '';
-  /// True once the Step-1 phone number has been verified via OTP. Drives the
-  /// green "Verified" badge next to the phone field.
-  bool _phoneVerified = false;
-  /// True once the Step-1 email address has been verified via the Resend OTP
-  /// flow. Drives the green "Verified" badge next to the email field.
-  bool _emailVerified = false;
+  String _emailErrorText = '';
+  String _passwordErrorText = '';
   List<({String label, bool met})> _passwordReqs = [];
 
 
@@ -129,6 +102,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String _currentLocationState = '';
   String _currentLocationCity = '';
 
+  final List<String> _industries = [
+    'Technology',
+    'Finance',
+    'Healthcare',
+    'Education',
+    'Consulting',
+    'Real Estate',
+    'Automotive',
+    'Entertainment',
+    'Other',
+  ];
+
   final List<String> _travelFrequencies = [
     'Rarely',
     'Occasional',
@@ -136,10 +121,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     'Never',
   ];
 
+  final List<String> _expertiseOptions = [
+    'React',
+    'Flutter',
+    'Spring Boot',
+    'AI/ML',
+    'Data Science',
+    'Stock Market',
+    'Investing',
+    'Leadership',
+    'Product Strategy',
+    'UI/UX',
+    'Marketing',
+    'Sales',
+    'Public Speaking',
+    'Other',
+  ];
+
+  final List<String> _interestOptions = [
+    'Stock Market',
+    'Artificial Intelligence',
+    'Startups',
+    'Investing',
+    'Public Speaking',
+    'Fitness',
+    'Personal Finance',
+    'Entrepreneurship',
+    'Design',
+    'Content Creation',
+    'Other',
+  ];
+
   List<String> _selectedExpertise = [];
-  List<String> _selectedIndustries = [];
   List<String> _selectedInterests = [];
-  List<String> _selectedBusinessConnect = [];
   final Map<String, String> _expertiseLevels = {};
   final Map<String, String> _interestsPriorities = {};
 
@@ -215,41 +229,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final hasName = (profile?.name.isNotEmpty == true && profile?.name != 'User') || (user?.displayName?.isNotEmpty == true);
     final hasImage = (profile?.profileImageUrl?.isNotEmpty == true) || (user?.photoURL?.isNotEmpty == true);
-    if (widget.completionMode) {
-      // Email verification is disabled (product decision) — route straight to
-      // the appropriate sign-up step.
-      if (hasName && hasImage) {
-        _currentView = OnboardingView.signUpStep2;
-      } else {
-        _currentView = OnboardingView.signUpStep1;
-      }
-    } else {
-      _currentView = OnboardingView.slides;
-    }
+
+    _currentView = (widget.completionMode && hasName && hasImage)
+        ? OnboardingView.signUpStep2
+        : (widget.completionMode ? OnboardingView.signUpStep1 : OnboardingView.slides);
 
     if (widget.completionMode) {
       final profile = AppStateManager().currentUserProfile;
       if (profile != null) {
         _nameController.text = profile.name;
         _emailController.text = profile.email;
-        // A signed-in user already proved ownership of this email (they logged
-        // in with it), so it counts as verified in the completion flow.
-        _emailVerified =
-            user?.email?.toLowerCase() == profile.email.toLowerCase();
         _profileImageUrlController.text = profile.profileImageUrl ?? '';
-        _phoneController.text = profile.phone ?? '';
-        final storedDial = (profile.phoneCountryCode ?? '').trim();
-        if (storedDial.isNotEmpty) {
-          _selectedCountry = defaultCountries.firstWhere(
-            (c) => c.dialCode == storedDial,
-            orElse: () => defaultCountries.first,
-          );
-        }
-        final linkedPhone =
-            (user?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-        final storedPhone =
-            (profile.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-        _phoneVerified = storedPhone.isNotEmpty && storedPhone == linkedPhone;
         _roleController.text = profile.role ?? '';
         final roleVal = profile.role ?? '';
         if (_occupations.contains(roleVal)) {
@@ -266,7 +256,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _linkedinUrlController.text = profile.linkedinProfileUrl ?? '';
         _selectedExpertise = List<String>.from(profile.skills.isNotEmpty ? profile.skills : profile.expertise);
         _selectedInterests = List<String>.from(profile.interests.isNotEmpty ? profile.interests : profile.intents);
-        _selectedBusinessConnect = List<String>.from(profile.businessConnect);
         for (final exp in profile.expertiseWithLevel) {
           final name = exp['name']?.toString() ?? '';
           final lvl = exp['level']?.toString() ?? 'Intermediate';
@@ -279,11 +268,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         }
         if (profile.industry != null && profile.industry!.isNotEmpty) {
           _selectedIndustry = profile.industry;
-          _selectedIndustries = profile.industry!
-              .split(', ')
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList();
         }
         if (profile.travelFrequency != null &&
             profile.travelFrequency!.isNotEmpty) {
@@ -296,7 +280,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.addListener(_onFieldChanged);
     _emailController.addListener(_onFieldChanged);
     _emailController.addListener(_onEmailChanged);
-    _phoneController.addListener(_onPhoneChanged);
     _passwordController.addListener(_onPasswordChanged);
     _profileImageUrlController.addListener(_onFieldChanged);
     _linkedinUrlController.addListener(_onFieldChanged);
@@ -317,7 +300,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onFieldChanged);
     _emailController.removeListener(_onEmailChanged);
-    _phoneController.removeListener(_onPhoneChanged);
     _passwordController.removeListener(_onPasswordChanged);
     _profileImageUrlController.removeListener(_onFieldChanged);
     _linkedinUrlController.removeListener(_onFieldChanged);
@@ -357,6 +339,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _handleLinkedInSignIn() async {
+    if (!kIsWeb) {
+      setState(() => _isLoading = true);
+      try {
+        final result = await startLinkedInMobileOAuth();
+        if (result == null) return;
+
+        final credential = await AuthService().signInWithLinkedIn(
+          result.code,
+          redirectUri: result.redirectUri,
+          codeVerifier: result.codeVerifier,
+        );
+        final user = credential?.user ?? FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await AppStateManager().syncSignedInUser(user);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('LinkedIn login failed: $e'),
+              backgroundColor: const Color(0xFF7A432D),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+      return;
+    }
+
     final String redirectUri = LinkedInOAuthConfig.redirectUri;
     final String authUrl = LinkedInOAuthConfig.authorizationUrl(
       redirectUri: redirectUri,
@@ -368,7 +380,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     debugPrint('Full authorizationUrl: $authUrl');
     debugPrint('---------------------------------');
 
-    if (!mounted) return;
     final String? authCode = await showLinkedInWebView(context, authUrl);
 
     if (authCode == null) {
@@ -394,44 +405,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
-      final credential = await AuthService().signInWithLinkedIn(
+      await AuthService().signInWithLinkedIn(
         authCode,
         redirectUri: redirectUri,
       );
-      final user = credential?.user ?? FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await AppStateManager().syncSignedInUser(user);
-      }
-    } on LinkedInAccountConflictException catch (e) {
-      // The synthetic account for this LinkedIn profile already exists under a
-      // different profile - warn clearly instead of showing a raw Firebase error.
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: Color(0xFFC62828)),
-                SizedBox(width: 10),
-                Text('LinkedIn Account Already Linked'),
-              ],
-            ),
-            content: Text(
-              e.message,
-              style: const TextStyle(fontFamily: 'PlusJakartaSans'),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(color: Color(0xFF7A432D)),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -460,9 +437,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   bool _isValidEmail(String email) {
-    return RegExp(
-      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-    ).hasMatch(email);
+    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
   }
 
   void _handleEmailSignIn() async {
@@ -514,18 +489,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             final data = snapshot.docs.first.data();
             final linkedinId = data['linkedinId'] as String?;
             if (linkedinId != null && linkedinId.isNotEmpty) {
-              // This is a LinkedIn user — retry with synthetic Firebase email
+              // This is a LinkedIn user ΓÇö retry with synthetic Firebase email
               final syntheticEmail = 'linkedin_$linkedinId@boardingpass.com';
               await AuthService().signInWithEmail(
                 email: syntheticEmail,
                 password: password,
               );
-              // Success — exit without showing any error
+              // Success ΓÇö exit without showing any error
               return;
             }
           }
         } on FirebaseAuthException catch (retryError) {
-          // Synthetic email retry also failed — show a clear message
+          // Synthetic email retry also failed ΓÇö show a clear message
           if (mounted) {
             String msg = 'Incorrect password. Please try again.';
             if (retryError.code == 'wrong-password' ||
@@ -576,24 +551,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  Future<bool> _createAccountStep1({bool navigateToNextStep = true}) async {
-    final name = _nameController.text.trim();
+  void _handleEmailSignUp() async {
     final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    final confirmPassword = _confirmPasswordController.text;
-    final phoneStr = _phoneController.text.trim();
-    final profileImageUrl = _profileImageUrlController.text.trim();
-
-    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill in all basic information fields'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
     if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -601,49 +560,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return false;
+      return;
     }
 
-    if (phoneStr.isEmpty || phoneStr.length < 7) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid phone number'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
-    if (!_emailVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please verify your email address to continue.'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
-    // Block progression until the phone number is verified — either via the
-    // Step-1 "Verify" button (badge state) or because it is already linked to
-    // this signed-in account. Comparison is digit-based so formatting
-    // differences don't bypass the check.
-    final currentUser = FirebaseAuth.instance.currentUser;
-    final linkedPhone =
-        (currentUser?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-    final enteredPhone = phoneStr.replaceAll(RegExp(r'[^0-9]'), '');
-    if (!_phoneVerified && linkedPhone != enteredPhone) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please verify your phone number to continue.'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
-
-
+    final password = _passwordController.text;
     if (!_isPasswordValid(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -651,27 +571,47 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return false;
+      return;
     }
 
-    if (password != confirmPassword) {
+    final name = _nameController.text.trim();
+    final headline = _headlineController.text.trim();
+    final company = _companyController.text.trim();
+    final role = _selectedOccupation == 'Other' ? _customOccupationController.text.trim() : (_selectedOccupation ?? '');
+    final bio = _bioController.text.trim();
+
+    final industry = _selectedIndustry == 'Other'
+        ? _industryController.text.trim()
+        : _selectedIndustry;
+    final experience = _experienceController.text.trim();
+    final homeBase = _homeBaseController.text.trim();
+
+    final currentLocSegments = [
+      if (_currentLocationCity.isNotEmpty) _currentLocationCity,
+      if (_currentLocationState.isNotEmpty) _currentLocationState,
+      if (_currentLocationCountry.isNotEmpty) _currentLocationCountry,
+    ];
+    final currentLocationName = currentLocSegments.join(', ');
+    final travelFrequency = _selectedTravelFrequency;
+    final profileImageUrl = _profileImageUrlController.text.trim();
+
+    // Validate fields before sign up
+    if (role.isEmpty ||
+        company.isEmpty ||
+        experience.isEmpty ||
+        bio.isEmpty ||
+        _selectedExpertise.isEmpty ||
+        _selectedIndustry == null ||
+        _selectedInterests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Passwords do not match'),
+          content: Text(
+            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
+          ),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
-      return false;
-    }
-
-    if (profileImageUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload a profile photo'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
+      return;
     }
 
     setState(() {
@@ -680,59 +620,61 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     try {
       AppStateManager().isRegistering = true;
-
-      // A full account is already signed in (e.g. a returning completionMode
-      // user) with a different email — never create a second account, just
-      // sync and continue.
-      final signedInUser = FirebaseAuth.instance.currentUser;
-      final isSameAccount =
-          signedInUser?.email?.toLowerCase() == email.toLowerCase();
-      if (signedInUser != null &&
-          (signedInUser.email?.isNotEmpty ?? false) &&
-          !isSameAccount) {
-        await AppStateManager().syncSignedInUser(signedInUser);
-        if (navigateToNextStep && mounted) {
-          setState(() {
-            _currentView = OnboardingView.signUpStep2;
-          });
-        }
-        return true;
-      }
-
-      // Creates the account, or upgrades the phone-only account created
-      // during phone verification by attaching email + password.
-      final user = await AuthService().signUpWithEmail(
+      await AuthService().signUpWithEmail(
         email: email,
         password: password,
         name: name,
-        phone: phoneStr,
+        phone: _phoneController.text.trim(),
         phoneCountryCode: _selectedCountry.dialCode,
-        dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
-        gender: _selectedGender,
-        profileImageUrl: profileImageUrl,
+        headline: headline.isNotEmpty ? headline : '$role at $company',
+        company: company.isNotEmpty ? company : null,
+        role: role.isNotEmpty ? role : null,
+        bio: bio.isNotEmpty ? bio : null,
+        industry: industry != null && industry.isNotEmpty
+            ? industry
+            : 'Technology',
+        experience: experience.isNotEmpty ? experience : null,
+        homeBase: homeBase.isNotEmpty ? homeBase : null,
+        currentLocationName: currentLocationName.isNotEmpty
+            ? currentLocationName
+            : null,
+        travelFrequency: travelFrequency,
+        profileImageUrl: profileImageUrl.isNotEmpty ? profileImageUrl : null,
+        expertise: _selectedExpertise,
+        intents: _selectedInterests,
+        skills: _selectedExpertise,
+        interests: _selectedInterests,
+        expertiseWithLevel: _selectedExpertise.map((e) => {
+          'name': e,
+          'level': _expertiseLevels[e] ?? 'Intermediate',
+          'endorsements': 0,
+        }).toList(),
+        interestsWithPriority: _selectedInterests.map((i) => {
+          'name': i,
+          'priority': _interestsPriorities[i] ?? 'Medium',
+        }).toList(),
+        careerTimeline: _careerTimeline,
+        educationTimeline: _educationTimeline,
+        linkedinProfileUrl: _linkedinUrlController.text.trim().isNotEmpty
+            ? _linkedinUrlController.text.trim()
+            : null,
       );
-
-      await AppStateManager().syncSignedInUser(user);
-
-      if (user.emailVerified != true) {
-        try {
-          await user.sendEmailVerification();
-        } catch (e) {
-          debugPrint('Error sending email verification link: $e');
-        }
+      final user = FirebaseAuth.instance.currentUser;
+      AppStateManager().isRegistering = false;
+      if (user != null) {
+        await AppStateManager().syncSignedInUser(user);
       }
 
-      if (navigateToNextStep && mounted) {
-        setState(() {
-          if (user.emailVerified == true) {
-            _currentView = OnboardingView.signUpStep2;
-          } else {
-            _currentView = OnboardingView.verifyEmail;
-          }
-        });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully! Welcome!'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
       }
-      return true;
     } on FirebaseAuthException catch (e) {
+      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -741,8 +683,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         );
       }
-      return false;
     } catch (e) {
+      AppStateManager().isRegistering = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -751,186 +693,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         );
       }
-      return false;
     } finally {
-      AppStateManager().isRegistering = false;
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
     }
-  }
-
-  /// Verifies the phone number entered in Step 1 via the OTP dialog.
-  ///
-  /// Verification is completely independent of the rest of the form — only a
-  /// valid phone number is needed; no other fields are required. If no user is
-  /// signed in yet, the OTP dialog signs in with the phone credential (creating
-  /// a phone-only account) which is upgraded with email/password when the user
-  /// taps "Next". The verified state persists for the rest of the sign-up.
-  Future<void> _verifyPhoneInStep1() async {
-    if (_isLoading) return;
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty || phone.length < 7) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid phone number first'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return;
-    }
-
-    final fullPhone = '${_selectedCountry.dialCode}$phone';
-    // Keep the app on the onboarding flow while the OTP sign-in completes.
-    AppStateManager().isRegistering = true;
-    try {
-      final verified = await ensurePhoneVerified(context, fullPhone);
-      if (!mounted) return;
-      // Only mark the badge verified when the number is actually linked to a
-      // signed-in account. (If the OTP belongs to another account Firebase
-      // reports credential-already-in-use and no user is signed in.)
-      final linkedToAccount = FirebaseAuth.instance.currentUser != null;
-      setState(() {
-        _phoneVerified = verified && linkedToAccount;
-      });
-      if (!verified) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Phone number not verified. Please try again.'),
-            backgroundColor: Color(0xFF7A432D),
-          ),
-        );
-      }
-    } finally {
-      AppStateManager().isRegistering = false;
-    }
-  }
-
-  Future<void> _verifyEmailInStep1() async {
-    // Deprecated: Email verification is now handled inline by EmailVerificationSection
-  }
-
-  Widget _buildVerifyEmail(double screenHeight, double screenWidth) {
-    final userEmail = _emailController.text.trim().isNotEmpty
-        ? _emailController.text.trim()
-        : (FirebaseAuth.instance.currentUser?.email ?? '');
-
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.mark_email_unread_outlined,
-              size: 80,
-              color: Color(0xFF7A432D),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Verify your email',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF3E1F11),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'A verification link has been sent to $userEmail.\n\nPlease open your email app, tap the verification link from Firebase, and then click below to continue.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Color(0xFF8C736B),
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7A432D),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(26),
-                  ),
-                ),
-                onPressed: () async {
-                  setState(() => _isLoading = true);
-                  await FirebaseAuth.instance.currentUser?.reload();
-                  final user = FirebaseAuth.instance.currentUser;
-                  setState(() => _isLoading = false);
-
-                  if (user?.emailVerified == true) {
-                    if (mounted) {
-                      setState(() => _currentView = OnboardingView.signUpStep2);
-                    }
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Email not yet verified. Please open Gmail/Mail and tap the verification link.',
-                          ),
-                          backgroundColor: Color(0xFF7A432D),
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text(
-                        'I have verified my email',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton(
-              onPressed: () async {
-                try {
-                  await FirebaseAuth.instance.currentUser?.sendEmailVerification();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Verification link resent to your email!'),
-                        backgroundColor: Color(0xFF2E7D32),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to resend link: $e'),
-                        backgroundColor: const Color(0xFF7A432D),
-                      ),
-                    );
-                  }
-                }
-              },
-              child: const Text(
-                'Resend Verification Link',
-                style: TextStyle(
-                  color: Color(0xFF7A432D),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _handleProfileCompletion() async {
@@ -953,45 +722,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final travelFrequency = _selectedTravelFrequency;
 
     // Validate fields before complete
-    final bioError = validateBio(bio);
     if (role.isEmpty ||
         company.isEmpty ||
         experience.isEmpty ||
-        bioError != null ||
+        bio.isEmpty ||
         _selectedExpertise.isEmpty ||
         _selectedIndustry == null ||
         _selectedInterests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            bioError ??
-                'Please complete all professional details, experience, select a sector, and choose at least one expertise area and interest.',
+            'Please complete all professional details, experience, bio, select a sector, and choose at least one expertise area and interest.',
           ),
-          backgroundColor: const Color(0xFF7A432D),
+          backgroundColor: Color(0xFF7A432D),
         ),
       );
       return;
-    }
-
-    // Verify the phone number via OTP before completing the profile, unless it
-    // has already been verified on this Firebase account.
-    final phone = _phoneController.text.trim();
-    if (phone.isNotEmpty) {
-      final fullPhone = '${_selectedCountry.dialCode}$phone';
-      final verified = await ensurePhoneVerified(context, fullPhone);
-      if (!verified) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Please verify your phone number to complete your profile.',
-              ),
-              backgroundColor: Color(0xFF7A432D),
-            ),
-          );
-        }
-        return;
-      }
     }
 
     setState(() {
@@ -1016,16 +762,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ? currentLocationName
               : null,
           travelFrequency: travelFrequency,
-          phone: _phoneController.text.trim(),
-          phoneCountryCode: _selectedCountry.dialCode,
-          dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
-          gender: _selectedGender,
-          onboardingCompleted: true,
           expertise: _selectedExpertise,
           intents: _selectedInterests,
           skills: _selectedExpertise,
           interests: _selectedInterests,
-          businessConnect: _selectedBusinessConnect,
           expertiseWithLevel: _selectedExpertise.map((e) => {
             'name': e,
             'level': _expertiseLevels[e] ?? 'Intermediate',
@@ -1042,6 +782,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               : null,
         );
         await AppStateManager().syncSignedInUser(user);
+        AppStateManager().currentScreen = AppScreen.hub;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1050,8 +791,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           );
         }
-
-        AppStateManager().currentScreen = AppScreen.hub;
       }
     } catch (e) {
       if (mounted) {
@@ -1077,18 +816,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
-  /// Resets the Step-1 email "Verified" badge whenever the address changes.
   void _onEmailChanged() {
-    if (_emailVerified && mounted) {
-      setState(() => _emailVerified = false);
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      _emailErrorText = '';
+    } else if (!_isValidEmail(email)) {
+      _emailErrorText = 'Please enter a valid email address';
+    } else {
+      _emailErrorText = '';
     }
-  }
-
-  /// Resets the Step-1 phone "Verified" badge whenever the number changes.
-  void _onPhoneChanged() {
-    if (_phoneVerified && mounted) {
-      setState(() => _phoneVerified = false);
-    }
+    if (mounted) setState(() {});
   }
 
   bool _isPasswordValid(String p) {
@@ -1143,12 +880,104 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void _onPasswordChanged() {
     final password = _passwordController.text;
     _passwordReqs = _checkPasswordReqs(password);
+    if (password.isEmpty) {
+      _passwordErrorText = '';
+    } else if (!_isPasswordValid(password)) {
+      _passwordErrorText = 'Password does not meet all requirements';
+    } else {
+      _passwordErrorText = '';
+    }
     if (mounted) setState(() {});
+  }
+
+  double _calculateCompletionPercentage() {
+    int total = 0;
+    int completed = 0;
+
+    // 1. Name
+    total++;
+    if (_nameController.text.trim().isNotEmpty) completed++;
+
+    // 2. Email
+    total++;
+    if (_emailController.text.trim().isNotEmpty) completed++;
+
+    // 3. Profile Image
+    total++;
+    if (_profileImageUrlController.text.trim().isNotEmpty) completed++;
+
+    // 4. Role
+    total++;
+    if (_roleController.text.trim().isNotEmpty) completed++;
+
+    // 5. Company
+    total++;
+    if (_companyController.text.trim().isNotEmpty) completed++;
+
+    // 6. Headline
+    total++;
+    if (_headlineController.text.trim().isNotEmpty) completed++;
+
+    // 7. Expertise / Skills
+    total++;
+    if (_selectedExpertise.isNotEmpty) completed++;
+
+    // 8. Industry
+    total++;
+    if (_selectedIndustry != null &&
+        _selectedIndustry!.isNotEmpty &&
+        _selectedIndustry != 'Select Industry') {
+      if (_selectedIndustry == 'Other') {
+        if (_industryController.text.trim().isNotEmpty) {
+          completed++;
+        }
+      } else {
+        completed++;
+      }
+    }
+
+    // 9. Experience Years
+    total++;
+    if (_experienceController.text.trim().isNotEmpty) completed++;
+
+    // 10. Bio
+    total++;
+    if (_bioController.text.trim().isNotEmpty) completed++;
+
+    // 11. Primary Interest
+    total++;
+    if (_selectedInterests.isNotEmpty) completed++;
+
+    // 12. Travel Frequency
+    total++;
+    if (_selectedTravelFrequency != null &&
+        _selectedTravelFrequency!.isNotEmpty &&
+        _selectedTravelFrequency != 'Select Frequency') {
+      completed++;
+    }
+
+    // 13. Home Base
+    total++;
+    if (_homeBaseController.text.trim().isNotEmpty) completed++;
+
+    // 14. Current Location
+    total++;
+    if (_currentLocationCountry.isNotEmpty || _currentLocationCity.isNotEmpty) completed++;
+
+    // 15. Work Experience (Optional)
+    total++;
+    if (_careerTimeline.isNotEmpty) completed++;
+
+    // 16. Education (Optional)
+    total++;
+    if (_educationTimeline.isNotEmpty) completed++;
+
+    return total == 0 ? 0.0 : (completed / total) * 100.0;
   }
 
   Widget _buildStepIndicator(int step) {
     return Row(
-      children: List.generate(4, (index) {
+      children: List.generate(2, (index) {
         final currentStep = index + 1;
         final isActive = currentStep <= step;
         return Expanded(
@@ -1178,19 +1007,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     VoidCallback? onTap,
     bool isPassword = false,
     bool isRequired = false,
-    int? maxLength,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
       maxLines: maxLines,
-      maxLength: maxLength,
       readOnly: readOnly,
       onTap: onTap,
       decoration: InputDecoration(
-        // Hide Flutter's built-in counter - our validation label shows it.
-        counterText: maxLength == null ? null : '',
         label: isRequired
             ? Text.rich(
                 TextSpan(
@@ -1437,7 +1262,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _buildStepIndicator(1),
           const SizedBox(height: 20),
           const Text(
-            'Step 1: Basic Info',
+            'Create Account',
             style: TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 32,
@@ -1447,7 +1272,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Set up your photo, identity, and account security.',
+            'Let\'s set up your profile picture and credentials first.',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontSize: 14,
@@ -1455,6 +1280,57 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
+          _buildTextField(
+            controller: _nameController,
+            labelText: 'Full Name',
+            hintText: 'e.g. Rohan Mehta',
+            isRequired: true,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _emailController,
+            labelText: 'Email Address',
+            hintText: 'e.g. rohan@example.com',
+            keyboardType: TextInputType.emailAddress,
+            isRequired: true,
+          ),
+          if (_emailErrorText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                _emailErrorText,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFC62828),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          CountryPhoneInput(
+            controller: _phoneController,
+            label: 'Phone Number',
+            isRequired: true,
+            initialCountry: _selectedCountry,
+            onCountryChanged: (c) => setState(() => _selectedCountry = c),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: _passwordController,
+            labelText: 'Password',
+            hintText: 'Create a strong password',
+            obscureText: _obscurePassword,
+            isPassword: true,
+            isRequired: true,
+          ),
+          if (_passwordReqs.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: _buildPasswordReqs(_passwordReqs),
+            ),
+          const SizedBox(height: 24),
+
+          // Profile Image Picker Section
           const Text.rich(
             TextSpan(
               text: 'Profile Image',
@@ -1529,126 +1405,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _buildTextField(
-            controller: _nameController,
-            labelText: 'Full Name',
-            hintText: 'e.g. Rohan Mehta',
-            isRequired: true,
-          ),
-          const SizedBox(height: 16),
-          EmailVerificationSection(
-            emailController: _emailController,
-            initialVerified: _emailVerified,
-            errorText: _emailErrorText,
-            onVerificationChanged: (isVerified) {
-              setState(() {
-                _emailVerified = isVerified;
-              });
-            },
-          ),
-          if (_emailErrorText.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 4),
-              child: Text(
-                _emailErrorText,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 12,
-                  color: Color(0xFFC62828),
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: CountryPhoneInput(
-                  controller: _phoneController,
-                  label: 'Phone Number',
-                  isRequired: true,
-                  initialCountry: _selectedCountry,
-                  onCountryChanged: (c) => setState(() => _selectedCountry = c),
-                ),
-              ),
-              const SizedBox(width: 10),
-              PhoneVerifyButton(
-                verified: _phoneVerified,
-                isLoading: _isLoading,
-                onPressed: _verifyPhoneInStep1,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _passwordController,
-            labelText: 'Password',
-            hintText: 'Create a strong password',
-            obscureText: _obscurePassword,
-            isPassword: true,
-            isRequired: true,
-          ),
-          if (_passwordReqs.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6, left: 4),
-              child: _buildPasswordReqs(_passwordReqs),
-            ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _confirmPasswordController,
-            obscureText: _obscureConfirmPassword,
-            decoration: InputDecoration(
-              label: const Text.rich(
-                TextSpan(
-                  text: 'Confirm Password',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 14,
-                    color: Color(0xFF5C473E),
-                  ),
-                  children: [
-                    TextSpan(
-                      text: ' *',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              hintText: 'Re-enter your password',
-              hintStyle: const TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 14,
-                color: Color(0xFFA89993),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF9F8F6),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                  color: const Color(0xFF8C736B),
-                ),
-                onPressed: () {
-                  setState(() {
-                    _obscureConfirmPassword = !_obscureConfirmPassword;
-                  });
-                },
-              ),
-            ),
-          ),
+
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
@@ -1660,15 +1417,141 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: _isLoading ? null : _createAccountStep1,
-              child: _isLoading 
-                  ? const SizedBox(
-                      width: 24, 
-                      height: 24, 
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                    )
-                  : const Text(
-                'Next: Professional Details ->',
+              onPressed: () async {
+                final name = _nameController.text.trim();
+                final email = _emailController.text.trim();
+                final phone = _phoneController.text.trim();
+                final password = _passwordController.text;
+
+                if (name.isEmpty || email.isEmpty || password.isEmpty || phone.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please fill in all credential and contact fields'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (!_isValidEmail(email)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid email address'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (phone.length != 10) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Phone number must be exactly 10 digits'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (!_isPasswordValid(password)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+                if (_profileImageUrlController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Please upload a profile photo or paste a URL',
+                      ),
+                      backgroundColor: Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                }
+
+                // Create the Firebase account before collecting profile details.
+                setState(() => _isLoading = true);
+                User? user = FirebaseAuth.instance.currentUser;
+                try {
+                  if (user == null || user.email != email) {
+                    try {
+                      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                      user = cred.user;
+                    } on FirebaseAuthException catch (e) {
+                      if (e.code == 'email-already-in-use') {
+                        try {
+                          final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+                            email: email,
+                            password: password,
+                          );
+                          user = cred.user;
+                        } on FirebaseAuthException {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('This email is already registered. Incorrect password for existing account.'),
+                              backgroundColor: Color(0xFF7A432D),
+                            ),
+                          );
+                          setState(() => _isLoading = false);
+                          return;
+                        }
+                      } else {
+                        rethrow;
+                      }
+                    }
+                  }
+
+                  if (user != null) {
+                    if (name.isNotEmpty) {
+                      try {
+                        await user.updateDisplayName(name);
+                      } catch (e) {
+                        debugPrint('Auth displayName update skipped: $e');
+                      }
+                    }
+                    final imgUrl = _profileImageUrlController.text.trim();
+                    if (imgUrl.isNotEmpty && imgUrl.length < 2000 && !imgUrl.startsWith('data:')) {
+                      try {
+                        await user.updatePhotoURL(imgUrl);
+                      } catch (e) {
+                        debugPrint('Auth photoURL update skipped: $e');
+                      }
+                    }
+
+                    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                      'uid': user.uid,
+                      'name': name,
+                      'email': email,
+                      'phone': phone,
+                      if (imgUrl.isNotEmpty) 'profileImageUrl': imgUrl,
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true));
+                  }
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not create account: $e'),
+                      backgroundColor: const Color(0xFF7A432D),
+                    ),
+                  );
+                  return;
+                } finally {
+                  if (mounted) setState(() => _isLoading = false);
+                }
+
+                setState(() {
+                  _currentView = OnboardingView.signUpStep2;
+                });
+              },
+              child: const Text(
+                'Next: Professional Details',
                 style: TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
@@ -1678,7 +1561,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
         ],
       ),
     );
@@ -1689,23 +1571,49 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: Color(0xFF3E1F11),
+          if (!widget.completionMode)
+            IconButton(
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: Color(0xFF3E1F11),
+              ),
+              onPressed: () {
+                setState(() {
+                  _currentView = OnboardingView.signUpStep1;
+                });
+              },
+            )
+          else ...[
+            Align(
+              alignment: Alignment.topRight,
+              child: TextButton.icon(
+                icon: const Icon(
+                  Icons.logout,
+                  size: 16,
+                  color: Color(0xFF7A432D),
+                ),
+                label: const Text(
+                  'Cancel / Logout',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    color: Color(0xFF7A432D),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onPressed: () {
+                  AppStateManager().logOut();
+                },
+              ),
             ),
-            onPressed: () {
-              setState(() {
-                _currentView = OnboardingView.signUpStep1;
-              });
-            },
-          ),
+          ],
           const SizedBox(height: 12),
           _buildStepIndicator(2),
           const SizedBox(height: 20),
-          const Text(
-            'Step 2: Professional Details',
-            style: TextStyle(
+          Text(
+            widget.completionMode
+                ? 'Complete Your Profile'
+                : 'Professional Profile',
+            style: const TextStyle(
               fontFamily: 'PlayfairDisplay',
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -1714,7 +1622,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Tell us about your career, company, role, and industry.',
+            'Complete your professional details, skills, and networking interests.',
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
               fontSize: 14,
@@ -1722,53 +1630,106 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          _buildTextField(
-            controller: _dobController,
-            labelText: 'Date of Birth',
-            hintText: 'YYYY-MM-DD',
-            readOnly: true,
-            isRequired: true,
-            onTap: () async {
-              final initialDate = _selectedDob ?? DateTime(2000, 1, 1);
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: initialDate,
-                firstDate: DateTime(1940),
-                lastDate: DateTime.now(),
-                builder: (context, child) {
-                  return Theme(
-                    data: Theme.of(context).copyWith(
-                      colorScheme: const ColorScheme.light(
-                        primary: Color(0xFF7A432D),
-                        onPrimary: Colors.white,
-                        onSurface: Color(0xFF3E1F11),
+
+          // Profile Completeness Widget
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _pickProfileImage,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: CircularProgressIndicator(
+                        value: _calculateCompletionPercentage() / 100.0,
+                        strokeWidth: 4,
+                        backgroundColor: const Color(0xFFE8E2DD),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
                       ),
                     ),
-                    child: child!,
-                  );
-                },
-              );
-              if (picked != null) {
-                setState(() {
-                  _selectedDob = picked;
-                  _dobController.text =
-                      "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-                });
-              }
-            },
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFE8E2DD),
+                      ),
+                      child: ClipOval(
+                        child: _isLoading
+                            ? const Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                ),
+                              )
+                            : buildProfileImage(
+                                _profileImageUrlController.text,
+                                width: 68,
+                                height: 68,
+                                fit: BoxFit.cover,
+                                fallback: const Icon(
+                                  Icons.person,
+                                  size: 34,
+                                  color: Color(0xFF7A432D),
+                                ),
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF7A432D),
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 10,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Profile Completeness: ${_calculateCompletionPercentage().toInt()}%',
+                      style: const TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap photo to upload or change picture.',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        color: Color(0xFF8C736B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          _buildDropdownField(
-            label: 'Gender',
-            currentValue: _selectedGender,
-            items: _genders,
-            hintText: 'Select gender',
-            isRequired: true,
-            onChanged: (val) {
-              setState(() => _selectedGender = val);
-            },
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
+
+          // Section 1: Professional Role
+          _buildSectionHeader('Professional Role'),
+          const SizedBox(height: 12),
           _buildDropdownField(
             label: 'Occupation',
             currentValue: _selectedOccupation,
@@ -1789,51 +1750,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           _buildTextField(
-            controller: _professionController,
-            labelText: 'Profession',
-            hintText: 'e.g. Mobile Developer / AI Specialist',
-            isRequired: true,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
             controller: _companyController,
             labelText: 'Company / Organization',
-            hintText: 'e.g. Stripe, Google, Lumen Tech',
-            isRequired: true,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _roleController,
-            labelText: 'Designation / Role',
-            hintText: 'e.g. Lead Software Engineer',
-            isRequired: true,
-          ),
-          SearchableMultiSelectField(
-            label: 'Industry / Sectors',
-            placeholder: 'Select industry (searchable)',
-            options: kIndustryOptions,
-            selectedValues: _selectedIndustries,
-            isRequired: true,
-            onChanged: (newList) {
-              setState(() {
-                _selectedIndustries = newList;
-                _selectedIndustry = newList.isNotEmpty ? newList.join(', ') : null;
-              });
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _experienceController,
-            labelText: 'Experience (Years)',
-            hintText: 'e.g. 5',
-            keyboardType: TextInputType.number,
+            hintText: 'e.g. Stripe, Lumen Ventures, SME Credit',
             isRequired: true,
           ),
           const SizedBox(height: 16),
           _buildTextField(
             controller: _headlineController,
             labelText: 'Professional Headline',
-            hintText: 'e.g. Building scalable cloud solutions',
+            hintText: 'e.g. Scaling payments infra, Investing in Fintech',
           ),
           if (!_isLinkedInUser) ...[
             const SizedBox(height: 16),
@@ -1843,253 +1769,123 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               hintText: 'e.g. https://linkedin.com/in/username',
             ),
           ],
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () {
-                final occupation = _selectedOccupation == 'Other'
-                    ? _customOccupationController.text.trim()
-                    : (_selectedOccupation ?? '');
-                final profession = _professionController.text.trim();
-                final company = _companyController.text.trim();
-                final designation = _roleController.text.trim();
-                final experience = _experienceController.text.trim();
-                final dob = _dobController.text.trim();
-
-                if (dob.isEmpty || _selectedGender == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please fill in your date of birth and gender'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                
-                if (occupation.isEmpty ||
-                    profession.isEmpty ||
-                    company.isEmpty ||
-                    designation.isEmpty ||
-                    _selectedIndustry == null ||
-                    experience.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please fill in all professional details'),
-                      backgroundColor: Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                setState(() {
-                  _currentView = OnboardingView.signUpStep3;
-                });
-              },
-              child: const Text(
-                'Next: Networking Profile ->',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
           const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildSignUpStep3(double screenHeight, double screenWidth) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: Color(0xFF3E1F11),
-            ),
-            onPressed: () {
-              setState(() {
-                _currentView = OnboardingView.signUpStep2;
-              });
-            },
-          ),
+          // Section 2: Expertise & Experience
+          _buildSectionHeader('Expertise & Experience'),
           const SizedBox(height: 12),
-          _buildStepIndicator(3),
-          const SizedBox(height: 20),
-          const Text(
-            'Step 3: Networking Profile',
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+          const Text.rich(
+            TextSpan(
+              text: 'Expertise Areas (What can you share?):',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
+              ),
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Share your bio, key expertise, and areas of interest.',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF5C473E),
-            ),
+          _buildMultiSelectDropdown(
+            options: _expertiseOptions,
+            selectedList: _selectedExpertise,
+            onListChanged: _onFieldChanged,
+            isExpertise: true,
+            levelsMap: _expertiseLevels,
+            placeholder: 'Select expertise area',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _buildDropdownField(
+                  label: 'Industry / Sector',
+                  currentValue: _selectedIndustry,
+                  items: _industries,
+                  hintText: 'Select industry',
+                  isRequired: true,
+                  onChanged: (val) {
+                    setState(() => _selectedIndustry = val);
+                  },
+                  secondaryField: _selectedIndustry == 'Other'
+                      ? _buildTextField(
+                          controller: _industryController,
+                          labelText: 'Custom Industry',
+                          hintText: 'e.g. BioTech',
+                          isRequired: true,
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  controller: _experienceController,
+                  labelText: 'Experience (Years)',
+                  hintText: 'e.g. 5',
+                  keyboardType: TextInputType.number,
+                  isRequired: true,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
+
+          // Section 3: Biography & Interests
+          _buildSectionHeader('Biography & Interests'),
+          const SizedBox(height: 12),
           _buildTextField(
             controller: _bioController,
             labelText: 'Short Biography',
             hintText: 'Describe what you do and who you want to meet...',
             maxLines: 3,
             isRequired: true,
-            maxLength: kBioMaxChars,
           ),
-          const SizedBox(height: 6),
-          BioValidationLabel(text: _bioController.text),
-          const SizedBox(height: 20),
-          SearchableMultiSelectField(
-            label: 'Expertise Areas (What can you share?)',
-            placeholder: 'Select expertise area (searchable)',
-            options: kExpertiseOptions,
-            selectedValues: _selectedExpertise,
-            isRequired: true,
-            onChanged: (newList) {
-              setState(() {
-                _selectedExpertise = newList;
-                _expertiseLevels.removeWhere((key, value) => !newList.contains(key));
-                for (final item in newList) {
-                  _expertiseLevels.putIfAbsent(item, () => 'Intermediate');
-                }
-              });
-              _onFieldChanged();
-            },
-          ),
-          const SizedBox(height: 20),
-          SearchableMultiSelectField(
-            label: 'Interests (What are you looking for / want to learn?)',
-            placeholder: 'Select interests (searchable)',
-            options: kInterestOptions,
-            selectedValues: _selectedInterests,
-            isRequired: true,
-            prioritiesMap: _interestsPriorities,
-            onChanged: (newList) {
-              setState(() {
-                _selectedInterests = newList;
-              });
-              _onFieldChanged();
-            },
-          ),
-          const SizedBox(height: 20),
-          SearchableMultiSelectField(
-            label: 'Business Forums',
-            placeholder: 'Select business forums (searchable)',
-            options: kBusinessConnectOptions,
-            selectedValues: _selectedBusinessConnect,
-            onChanged: (newList) {
-              setState(() {
-                _selectedBusinessConnect = newList;
-              });
-              _onFieldChanged();
-            },
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF7A432D),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
+          const SizedBox(height: 16),
+          const Text.rich(
+            TextSpan(
+              text: 'Interests (What are you looking for / want to learn?):',
+              style: TextStyle(
+                fontFamily: 'PlusJakartaSans',
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF3E1F11),
               ),
-              onPressed: () {
-                final bio = _bioController.text.trim();
-                final bioError = validateBio(bio);
-                if (bioError != null ||
-                    _selectedExpertise.isEmpty ||
-                    _selectedInterests.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        bioError ??
-                            'Please select at least one expertise area and interest',
-                      ),
-                      backgroundColor: const Color(0xFF7A432D),
-                    ),
-                  );
-                  return;
-                }
-                setState(() {
-                  _currentView = OnboardingView.signUpStep4;
-                });
-              },
-              child: const Text(
-                'Next: Location & Work Experience ->',
-                style: TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSignUpStep4(double screenHeight, double screenWidth) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-              color: Color(0xFF3E1F11),
-            ),
-            onPressed: () {
-              setState(() {
-                _currentView = OnboardingView.signUpStep3;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildStepIndicator(4),
-          const SizedBox(height: 20),
-          const Text(
-            'Step 4: Location & Work Experience',
-            style: TextStyle(
-              fontFamily: 'PlayfairDisplay',
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF3E1F11),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Set your location, travel preferences, and add past experience.',
-            style: TextStyle(
-              fontFamily: 'PlusJakartaSans',
-              fontSize: 14,
-              color: Color(0xFF5C473E),
-            ),
+          _buildMultiSelectDropdown(
+            options: _interestOptions,
+            selectedList: _selectedInterests,
+            onListChanged: _onFieldChanged,
+            isExpertise: false,
+            prioritiesMap: _interestsPriorities,
+            placeholder: 'Select interest area',
           ),
           const SizedBox(height: 24),
+
+          // Section 4: Location & Travel
+          _buildSectionHeader('Location & Travel'),
+          const SizedBox(height: 12),
           _buildDropdownField(
             label: 'Travel Frequency',
             currentValue: _selectedTravelFrequency,
@@ -2127,6 +1923,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           const SizedBox(height: 6),
           _buildAutoLocationWidget(),
           const SizedBox(height: 24),
+
+          // Section 5: Work Experience (Career Timeline)
           _buildSectionHeader('Work Experience (Optional)'),
           const SizedBox(height: 12),
           if (_careerTimeline.isNotEmpty) ...[
@@ -2137,8 +1935,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 if ((item['startDate'] ?? '').toString().isNotEmpty ||
                     (item['endDate'] ?? '').toString().isNotEmpty)
                   '${item['startDate'] ?? ''} to ${item['endDate'] ?? ''}',
+                if ((item['employmentType'] ?? '').toString().isNotEmpty)
+                  item['employmentType'],
+                if ((item['location'] ?? '').toString().isNotEmpty)
+                  item['location'],
               ];
-              final subtitleLine = subtitleParts.where((s) => s.isNotEmpty).join(' \u00B7 ');
+              final subtitleLine = subtitleParts
+                  .where((s) => s.isNotEmpty)
+                  .join(' \u00B7 ');
               return Card(
                 color: Colors.white,
                 margin: const EdgeInsets.only(bottom: 8),
@@ -2147,29 +1951,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   side: const BorderSide(color: Color(0xFFE8E2DD)),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  leading: const Icon(Icons.work_outline, color: Color(0xFF7A432D)),
                   title: Text(
-                    '${item['role'] ?? 'Role'} at ${item['company'] ?? 'Company'}',
+                    '${item['role']} at ${item['company']}',
                     style: const TextStyle(
                       fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
                       color: Color(0xFF3E1F11),
                     ),
                   ),
-                  subtitle: subtitleLine.isNotEmpty
-                      ? Text(
-                          subtitleLine,
-                          style: const TextStyle(
-                            fontFamily: 'PlusJakartaSans',
-                            fontSize: 12,
-                            color: Color(0xFF8C736B),
-                          ),
-                        )
-                      : null,
+                  subtitle: Text(
+                    subtitleLine +
+                        ((item['description'] ?? '').toString().isNotEmpty
+                            ? '\n${item['description']}'
+                            : ''),
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      color: Color(0xFF8C736B),
+                    ),
+                  ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Color(0xFFC62828), size: 20),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
                     onPressed: () {
                       setState(() {
                         _careerTimeline.removeAt(idx);
@@ -2179,27 +1986,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               );
             }),
+            const SizedBox(height: 12),
           ],
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF9F8F6),
-              borderRadius: BorderRadius.circular(10),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE8E2DD)),
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTextField(
-                  controller: _workRoleController,
-                  labelText: 'Role / Job Title',
-                  hintText: 'e.g. Software Engineer',
-                  isRequired: true,
+                const Text(
+                  'Add Work Experience',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 _buildTextField(
                   controller: _workCompanyController,
-                  labelText: 'Company / Organization',
-                  hintText: 'e.g. Acme Corp',
+                  labelText: 'Company',
+                  hintText: 'e.g. Google',
+                  isRequired: true,
+                ),
+                const SizedBox(height: 8),
+                _buildTextField(
+                  controller: _workRoleController,
+                  labelText: 'Role / Job Title',
+                  hintText: 'e.g. Software Engineer',
                   isRequired: true,
                 ),
                 const SizedBox(height: 8),
@@ -2471,16 +2290,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: _isLoading ? null : _handleProfileCompletion,
-              child: _isLoading 
-                  ? const SizedBox(
-                      width: 24, 
-                      height: 24, 
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-                    )
-                  : const Text(
-                'Complete Profile',
-                style: TextStyle(
+              onPressed: widget.completionMode
+                  ? _handleProfileCompletion
+                  : _handleEmailSignUp,
+              child: Text(
+                widget.completionMode
+                    ? 'Complete Profile'
+                    : 'Complete & Create Account',
+                style: const TextStyle(
                   fontFamily: 'PlusJakartaSans',
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -2643,6 +2460,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  Widget _buildMultiSelectDropdown({
+    required List<String> options,
+    required List<String> selectedList,
+    required VoidCallback onListChanged,
+    bool isExpertise = false,
+    Map<String, String>? levelsMap,
+    Map<String, String>? prioritiesMap,
+    required String placeholder,
+  }) {
+    return _MultiSelectDropdownWidget(
+      options: options,
+      selectedList: selectedList,
+      onListChanged: onListChanged,
+      isExpertise: isExpertise,
+      levelsMap: levelsMap,
+      prioritiesMap: prioritiesMap,
+      placeholder: placeholder,
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2662,6 +2499,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ],
     );
   }
+
+
 
   Widget _buildDropdownField({
     required String label,
@@ -2755,105 +2594,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _pickProfileImage() async {
-    // Pick a photo from the gallery and let the user crop / adjust it first.
-    final Uint8List? bytes = await pickAndCropProfileImage(context);
-    if (bytes == null) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
     try {
-      final isValidFace =
-          await FaceDetectionService.isValidProfilePicture(bytes);
-      if (!isValidFace) {
-        setState(() {
-          _isLoading = false;
-        });
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.face_retouching_off, color: Color(0xFFC62828)),
-                  SizedBox(width: 10),
-                  Text('Invalid Profile Photo'),
-                ],
-              ),
-              content: const Text(
-                'Please upload a selfie or a clear face photo. Landmark face detection did not find any clear facial features in the uploaded image.',
-                style: TextStyle(fontFamily: 'PlusJakartaSans'),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'OK',
-                    style: TextStyle(color: Color(0xFF7A432D)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-        return;
-      }
+      final ImagePicker picker = ImagePicker();
+      final XFile? pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 200,
+        maxHeight: 200,
+        imageQuality: 60,
+      );
 
-      // Show the cropped photo instantly so the user sees it right away.
-      // The base64 preview renders without any network / CORS dependency, so
-      // it is also the final stored image on web. On native platforms the
-      // full-resolution Firebase Storage URL swaps in once the upload
-      // finishes. The image state is always maintained while the form is
-      // filled in.
-      final previewBytes = downscaleForFirestore(bytes);
-      final previewDataUri =
-          'data:image/jpeg;base64,${base64Encode(previewBytes)}';
+      if (pickedFile == null) return;
+
       setState(() {
-        _profileImageUrlController.text = previewDataUri;
+        _isLoading = true;
       });
 
-      if (kIsWeb) {
-        // Web: Firebase Storage URLs only render when the bucket has CORS
-        // configured, and third-party proxies are unreliable — the base64
-        // preview is guaranteed to display everywhere.
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      } else {
-        // Upload the full-resolution crop to Firebase Storage so the original
-        // sharpness is preserved. (Storing the image as base64 inside the
-        // Firestore profile doc would force a ~512px cap to stay under the
-        // document size limit — the very reason Discovery photos looked
-        // blurry.)
-        try {
-          final storageRef = FirebaseStorage.instance
-              .ref()
-              .child('profile_images')
-              .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-          final uploadTask = storageRef.putData(
-            bytes,
-            SettableMetadata(contentType: 'image/jpeg'),
-          );
-          final snapshot = await uploadTask;
-          final downloadUrl = await snapshot.ref.getDownloadURL();
-          if (!mounted) return;
-          setState(() {
-            _profileImageUrlController.text = downloadUrl;
-            _isLoading = false;
-          });
-        } catch (e) {
-          debugPrint('Storage upload failed, keeping base64 preview: $e');
-          // The preview data URI is already in the field — just clear the
-          // loading state.
-          if (!mounted) return;
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
+      final bytes = await pickedFile.readAsBytes();
+      final base64String = base64Encode(bytes);
+      final dataUri = 'data:image/jpeg;base64,$base64String';
+
+      setState(() {
+        _profileImageUrlController.text = dataUri;
+        _isLoading = false;
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2873,13 +2636,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildFormView(double screenHeight, double screenWidth) {
-    if (_currentView == OnboardingView.signIn) return _buildSignInScreen(screenHeight, screenWidth);
-    if (_currentView == OnboardingView.signUpStep1) return _buildSignUpStep1(screenHeight, screenWidth);
-    if (_currentView == OnboardingView.verifyEmail) return _buildVerifyEmail(screenHeight, screenWidth);
-    if (_currentView == OnboardingView.signUpStep2) return _buildSignUpStep2(screenHeight, screenWidth);
-    if (_currentView == OnboardingView.signUpStep3) return _buildSignUpStep3(screenHeight, screenWidth);
-    if (_currentView == OnboardingView.signUpStep4) return _buildSignUpStep4(screenHeight, screenWidth);
-    return const SizedBox();
+    switch (_currentView) {
+      case OnboardingView.signIn:
+        return _buildSignInScreen(screenHeight, screenWidth);
+      case OnboardingView.signUpStep1:
+        return _buildSignUpStep1(screenHeight, screenWidth);
+      case OnboardingView.signUpStep2:
+        return _buildSignUpStep2(screenHeight, screenWidth);
+      default:
+        return const SizedBox();
+    }
   }
 
   @override
@@ -2890,9 +2656,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: const Color(0xFFF7EFE9),
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
+          // Subtle warm gradient background
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white,
+                    Colors.white,
+                    Color(0xFFF1F3F4),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             child: Padding(
               padding: EdgeInsets.symmetric(
@@ -2904,7 +2687,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Header logo
-                        const AppLogo(size: 44),
+                        const AppLogo(size: 26),
                         SizedBox(height: isSmallScreen ? screenHeight * 0.01 : screenHeight * 0.015),
 
                         // PageView for onboarding slides
@@ -2954,14 +2737,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 (index) => AnimatedContainer(
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeInOut,
-                                  margin: const EdgeInsets.only(right: 8),
-                                  height: 8,
-                                  width: _currentIndex == index ? 20 : 8,
+                                  margin: const EdgeInsets.only(right: 5),
+                                  height: 6,
+                                  width: _currentIndex == index ? 20 : 6,
                                   decoration: BoxDecoration(
                                     color: _currentIndex == index
-                                        ? const Color(0xFF593625)
-                                        : const Color(0xFFD2C4BB),
-                                    borderRadius: BorderRadius.circular(4),
+                                        ? const Color(0xFF7A432D)
+                                        : const Color(0xFFD5C4BB),
+                                    borderRadius: BorderRadius.circular(3),
                                   ),
                                 ),
                               ),
@@ -2983,14 +2766,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                         'Skip',
                                         style: TextStyle(
                                           fontFamily: 'PlusJakartaSans',
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
                                           color: Color(0xFF8C736B),
                                         ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
+                                  const SizedBox(width: 10),
                                   GestureDetector(
                                     onTap: () {
                                       _pageController.nextPage(
@@ -3000,12 +2783,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 14,
+                                        horizontal: 20,
+                                        vertical: 12,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF593625),
+                                        color: const Color(0xFF7A432D),
                                         borderRadius: BorderRadius.circular(28),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF7A432D).withValues(alpha: 0.30),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -3023,7 +2813,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                           Icon(
                                             Icons.arrow_forward_rounded,
                                             color: Colors.white,
-                                            size: 18,
+                                            size: 16,
                                           ),
                                         ],
                                       ),
@@ -3117,32 +2907,47 @@ class OnboardingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isSmallScreen = screenHeight < 700;
     final double titleSize = screenHeight < 640
-        ? 30.0
+        ? 26.0
         : screenHeight < 700
-            ? 34.0
-            : 40.0;
-    final double imageRatio = isSmallScreen ? 0.35 : 0.40;
+            ? 30.0
+            : 36.0;
+    final double imageRatio = isSmallScreen ? 0.27 : 0.32;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Illustration image painted onto the background
+          // Illustration image with subtle drop shadow card
           Container(
             height: screenHeight * imageRatio,
-            margin: EdgeInsets.only(bottom: screenHeight * 0.015),
-            child: Center(
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
-                color: const Color(0xFFF7EFE9),
-                colorBlendMode: BlendMode.darken,
+            margin: EdgeInsets.only(bottom: screenHeight * 0.025),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Image.asset(
+                    imagePath,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
             ),
           ),
 
-          // Title Header — responsive font size
+          // Title Header ΓÇö responsive font size
           Text(
             title,
             style: TextStyle(
@@ -3161,16 +2966,16 @@ class OnboardingPage extends StatelessWidget {
             subtitle,
             style: TextStyle(
               fontFamily: 'PlusJakartaSans',
-              fontSize: isSmallScreen ? 15 : 16,
-              color: const Color(0xFF8C736B),
-              height: 1.5,
-              fontWeight: FontWeight.w500,
+              fontSize: isSmallScreen ? 14 : 15,
+              color: const Color(0xFF6B5148),
+              height: 1.6,
+              fontWeight: FontWeight.w400,
             ),
           ),
 
           // Final Page Sign In/Up options
           if (isFinalPage) ...[
-            SizedBox(height: isSmallScreen ? screenHeight * 0.05 : screenHeight * 0.08),
+            SizedBox(height: isSmallScreen ? screenHeight * 0.025 : screenHeight * 0.035),
             _buildLinkedInButton(),
             const SizedBox(height: 14),
             Row(
@@ -3348,194 +3153,412 @@ String getCountryForPicker(String? countryName) {
   if (countryName.contains('   ')) return countryName;
   
   final Map<String, String> countryToEmoji = {
-    'Afghanistan': 'ðŸ‡¦ðŸ‡«   Afghanistan',
-    'Albania': 'ðŸ‡¦ðŸ‡±   Albania',
-    'Algeria': 'ðŸ‡©ðŸ‡¿   Algeria',
-    'Andorra': 'ðŸ‡¦ðŸ‡©   Andorra',
-    'Angola': 'ðŸ‡¦ðŸ‡´   Angola',
-    'Argentina': 'ðŸ‡¦ðŸ‡·   Argentina',
-    'Armenia': 'ðŸ‡¦ðŸ‡²   Armenia',
-    'Australia': 'ðŸ‡¦ðŸ‡º   Australia',
-    'Austria': 'ðŸ‡¦ðŸ‡¹   Austria',
-    'Azerbaijan': 'ðŸ‡¦ðŸ‡¿   Azerbaijan',
-    'Bahamas': 'ðŸ‡§ðŸ‡¸   Bahamas',
-    'Bahrain': 'ðŸ‡§ðŸ‡­   Bahrain',
-    'Bangladesh': 'ðŸ‡§ðŸ‡©   Bangladesh',
-    'Barbados': 'ðŸ‡§ðŸ‡§   Barbados',
-    'Belarus': 'ðŸ‡§ðŸ‡¾   Belarus',
-    'Belgium': 'ðŸ‡§ðŸ‡ª   Belgium',
-    'Belize': 'ðŸ‡§ðŸ‡¿   Belize',
-    'Benin': 'ðŸ‡§ðŸ‡¯   Benin',
-    'Bhutan': 'ðŸ‡§ðŸ‡¹   Bhutan',
-    'Bolivia': 'ðŸ‡§ðŸ‡´   Bolivia',
-    'Bosnia and Herzegovina': 'ðŸ‡§ðŸ‡¦   Bosnia and Herzegovina',
-    'Botswana': 'ðŸ‡§ðŸ‡¼   Botswana',
-    'Brazil': 'ðŸ‡§ðŸ‡·   Brazil',
-    'Brunei': 'ðŸ‡§ðŸ‡³   Brunei',
-    'Bulgaria': 'ðŸ‡§ðŸ‡¬   Bulgaria',
-    'Burkina Faso': 'ðŸ‡§ðŸ‡«   Burkina Faso',
-    'Burundi': 'ðŸ‡§ðŸ‡®   Burundi',
-    'Cambodia': 'ðŸ‡°ðŸ‡­   Cambodia',
-    'Cameroon': 'ðŸ‡¨ðŸ‡²   Cameroon',
-    'Canada': 'ðŸ‡¨ðŸ‡¦   Canada',
-    'Cape Verde': 'ðŸ‡¨ðŸ‡»   Cape Verde',
-    'Central African Republic': 'ðŸ‡¨ðŸ‡«   Central African Republic',
-    'Chad': 'ðŸ‡¹ðŸ‡©   Chad',
-    'Chile': 'ðŸ‡¨ðŸ‡±   Chile',
-    'China': 'ðŸ‡¨ðŸ‡³   China',
-    'Colombia': 'ðŸ‡¨ðŸ‡´   Colombia',
-    'Comoros': 'ðŸ‡°ðŸ‡²   Comoros',
-    'Congo': 'ðŸ‡¨ðŸ‡¬   Congo',
-    'Costa Rica': 'ðŸ‡¨ðŸ‡·   Costa Rica',
-    'Croatia': 'ðŸ‡­ðŸ‡·   Croatia',
-    'Cuba': 'ðŸ‡¨ðŸ‡º   Cuba',
-    'Cyprus': 'ðŸ‡¨ðŸ‡¾   Cyprus',
-    'Czech Republic': 'ðŸ‡¨ðŸ‡¿   Czech Republic',
-    'Denmark': 'ðŸ‡©ðŸ‡°   Denmark',
-    'Djibouti': 'ðŸ‡©ðŸ‡¯   Djibouti',
-    'Dominica': 'ðŸ‡©ðŸ‡²   Dominica',
-    'Dominican Republic': 'ðŸ‡©ðŸ‡´   Dominican Republic',
-    'Ecuador': 'ðŸ‡ªðŸ‡¨   Ecuador',
-    'Egypt': 'ðŸ‡ªðŸ‡¬   Egypt',
-    'El Salvador': 'ðŸ‡¸ðŸ‡»   El Salvador',
-    'Equatorial Guinea': 'ðŸ‡¬ðŸ‡¶   Equatorial Guinea',
-    'Eritrea': 'ðŸ‡ªðŸ‡·   Eritrea',
-    'Estonia': 'ðŸ‡ªðŸ‡ª   Estonia',
-    'Ethiopia': 'ðŸ‡ªðŸ‡¹   Ethiopia',
-    'Fiji': 'ðŸ‡«ðŸ‡¯   Fiji',
-    'Finland': 'ðŸ‡«ðŸ‡®   Finland',
-    'France': 'ðŸ‡«ðŸ‡·   France',
-    'Gabon': 'ðŸ‡¬ðŸ‡¦   Gabon',
-    'Gambia': 'ðŸ‡¬ðŸ‡²   Gambia',
-    'Georgia': 'ðŸ‡¬ðŸ‡ª   Georgia',
-    'Germany': 'ðŸ‡©ðŸ‡ª   Germany',
-    'Ghana': 'ðŸ‡¬ðŸ‡­   Ghana',
-    'Greece': 'ðŸ‡¬ðŸ‡·   Greece',
-    'Grenada': 'ðŸ‡¬ðŸ‡©   Grenada',
-    'Guatemala': 'ðŸ‡¬ðŸ‡¹   Guatemala',
-    'Guinea': 'ðŸ‡¬ðŸ‡³   Guinea',
-    'Guinea-Bissau': 'ðŸ‡¬ðŸ‡¼   Guinea-Bissau',
-    'Guyana': 'ðŸ‡¬ðŸ‡¾   Guyana',
-    'Haiti': 'ðŸ‡­ðŸ‡¹   Haiti',
-    'Honduras': 'ðŸ‡­ðŸ‡³   Honduras',
-    'Hungary': 'ðŸ‡­ðŸ‡º   Hungary',
-    'Iceland': 'ðŸ‡®ðŸ‡¸   Iceland',
-    'India': 'ðŸ‡®ðŸ‡³   India',
-    'Indonesia': 'ðŸ‡®ðŸ‡©   Indonesia',
-    'Iran': 'ðŸ‡®ðŸ‡·   Iran',
-    'Iraq': 'ðŸ‡®ðŸ‡¶   Iraq',
-    'Ireland': 'ðŸ‡®ðŸ‡ª   Ireland',
-    'Israel': 'ðŸ‡®ðŸ‡±   Israel',
-    'Italy': 'ðŸ‡®ðŸ‡¹   Italy',
-    'Jamaica': 'ðŸ‡¯ðŸ‡²   Jamaica',
-    'Japan': 'ðŸ‡¯ðŸ‡µ   Japan',
-    'Jordan': 'ðŸ‡¯ðŸ‡´   Jordan',
-    'Kazakhstan': 'ðŸ‡°ðŸ‡¿   Kazakhstan',
-    'Kenya': 'ðŸ‡°ðŸ‡ª   Kenya',
-    'Kiribati': 'ðŸ‡°ðŸ‡®   Kiribati',
-    'Kuwait': 'ðŸ‡°ðŸ‡¼   Kuwait',
-    'Kyrgyzstan': 'ðŸ‡°ðŸ‡¬   Kyrgyzstan',
-    'Laos': 'ðŸ‡±ðŸ‡¦   Laos',
-    'Latvia': 'ðŸ‡±ðŸ‡»   Latvia',
-    'Lebanon': 'ðŸ‡±ðŸ‡§   Lebanon',
-    'Lesotho': 'ðŸ‡±ðŸ‡¸   Lesotho',
-    'Liberia': 'ðŸ‡±ðŸ‡·   Liberia',
-    'Libya': 'ðŸ‡±ðŸ‡¾   Libya',
-    'Liechtenstein': 'ðŸ‡±ðŸ‡®   Liechtenstein',
-    'Lithuania': 'ðŸ‡±ðŸ‡¹   Lithuania',
-    'Luxembourg': 'ðŸ‡±ðŸ‡º   Luxembourg',
-    'Macedonia': 'ðŸ‡²ðŸ‡°   Macedonia',
-    'Madagascar': 'ðŸ‡²ðŸ‡¬   Madagascar',
-    'Malawi': 'ðŸ‡²ðŸ‡¼   Malawi',
-    'Malaysia': 'ðŸ‡²ðŸ‡¾   Malaysia',
-    'Maldives': 'ðŸ‡²ðŸ‡»   Maldives',
-    'Mali': 'ðŸ‡²ðŸ‡±   Mali',
-    'Malta': 'ðŸ‡²ðŸ‡¹   Malta',
-    'Marshall Islands': 'ðŸ‡²ðŸ‡­   Marshall Islands',
-    'Mauritania': 'ðŸ‡²ðŸ‡·   Mauritania',
-    'Mauritius': 'ðŸ‡²ðŸ‡º   Mauritius',
-    'Mexico': 'ðŸ‡²ðŸ‡½   Mexico',
-    'Micronesia': 'ðŸ‡«ðŸ‡²   Micronesia',
-    'Moldova': 'ðŸ‡²ðŸ‡©   Moldova',
-    'Monaco': 'ðŸ‡²ðŸ‡¨   Monaco',
-    'Mongolia': 'ðŸ‡²ðŸ‡³   Mongolia',
-    'Montenegro': 'ðŸ‡²ðŸ‡ª   Montenegro',
-    'Morocco': 'ðŸ‡²ðŸ‡¦   Morocco',
-    'Mozambique': 'ðŸ‡²ðŸ‡¿   Mozambique',
-    'Myanmar': 'ðŸ‡²ðŸ‡²   Myanmar',
-    'Namibia': 'ðŸ‡³ðŸ‡¦   Namibia',
-    'Nauru': 'ðŸ‡³ðŸ‡·   Nauru',
-    'Nepal': 'ðŸ‡³ðŸ‡µ   Nepal',
-    'Netherlands': 'ðŸ‡³ðŸ‡±   Netherlands',
-    'New Zealand': 'ðŸ‡³ðŸ‡¿   New Zealand',
-    'Nicaragua': 'ðŸ‡³ðŸ‡®   Nicaragua',
-    'Niger': 'ðŸ‡³ðŸ‡ª   Niger',
-    'Nigeria': 'ðŸ‡³ðŸ‡¬   Nigeria',
-    'North Korea': 'ðŸ‡°ðŸ‡µ   North Korea',
-    'Norway': 'ðŸ‡³ðŸ‡´   Norway',
-    'Oman': 'ðŸ‡´ðŸ‡²   Oman',
-    'Pakistan': 'ðŸ‡µðŸ‡°   Pakistan',
-    'Palau': 'ðŸ‡µðŸ‡¼   Palau',
-    'Panama': 'ðŸ‡µðŸ‡¦   Panama',
-    'Papua New Guinea': 'ðŸ‡µðŸ‡¬   Papua New Guinea',
-    'Paraguay': 'ðŸ‡µðŸ‡¾   Paraguay',
-    'Peru': 'ðŸ‡µðŸ‡ª   Peru',
-    'Philippines': 'ðŸ‡µðŸ‡­   Philippines',
-    'Poland': 'ðŸ‡µðŸ‡±   Poland',
-    'Portugal': 'ðŸ‡µðŸ‡¹   Portugal',
-    'Qatar': 'ðŸ‡¶ðŸ‡¦   Qatar',
-    'Romania': 'ðŸ‡·ðŸ‡´   Romania',
-    'Russia': 'ðŸ‡·ðŸ‡º   Russia',
-    'Rwanda': 'ðŸ‡·ðŸ‡¼   Rwanda',
-    'Samoa': 'ðŸ‡¼ðŸ‡¸   Samoa',
-    'San Marino': 'ðŸ‡¸ðŸ‡²   San Marino',
-    'Saudi Arabia': 'ðŸ‡¸ðŸ‡¦   Saudi Arabia',
-    'Senegal': 'ðŸ‡¸ðŸ‡³   Senegal',
-    'Serbia': 'ðŸ‡·ðŸ‡¸   Serbia',
-    'Seychelles': 'ðŸ‡¸ðŸ‡¨   Seychelles',
-    'Sierra Leone': 'ðŸ‡¸ðŸ‡±   Sierra Leone',
-    'Singapore': 'ðŸ‡¸ðŸ‡¬   Singapore',
-    'Slovakia': 'ðŸ‡¸ðŸ‡°   Slovakia',
-    'Slovenia': 'ðŸ‡¸ðŸ‡®   Slovenia',
-    'Solomon Islands': 'ðŸ‡¸ðŸ‡§   Solomon Islands',
-    'Somalia': 'ðŸ‡¸ðŸ‡´   Somalia',
-    'South Africa': 'ðŸ‡¿ðŸ‡¦   South Africa',
-    'South Korea': 'ðŸ‡°ðŸ‡·   South Korea',
-    'South Sudan': 'ðŸ‡¸ðŸ‡¸   South Sudan',
-    'Spain': 'ðŸ‡ªðŸ‡¸   Spain',
-    'Sri Lanka': 'ðŸ‡±ðŸ‡°   Sri Lanka',
-    'Sudan': 'ðŸ‡¸ðŸ‡©   Sudan',
-    'Suriname': 'ðŸ‡¸ðŸ‡·   Suriname',
-    'Swaziland': 'ðŸ‡¸ðŸ‡¿   Swaziland',
-    'Sweden': 'ðŸ‡¸ðŸ‡ª   Sweden',
-    'Switzerland': 'ðŸ‡¨ðŸ‡­   Switzerland',
-    'Syria': 'ðŸ‡¸ðŸ‡¾   Syria',
-    'Taiwan': 'ðŸ‡¹ðŸ‡¼   Taiwan',
-    'Tajikistan': 'ðŸ‡¹ðŸ‡¯   Tajikistan',
-    'Tanzania': 'ðŸ‡¹ðŸ‡¿   Tanzania',
-    'Thailand': 'ðŸ‡¹ðŸ‡­   Thailand',
-    'Togo': 'ðŸ‡¹ðŸ‡¬   Togo',
-    'Tonga': 'ðŸ‡¹ðŸ‡´   Tonga',
-    'Trinidad and Tobago': 'ðŸ‡¹ðŸ‡¹   Trinidad and Tobago',
-    'Tunisia': 'ðŸ‡¹ðŸ‡³   Tunisia',
-    'Turkey': 'ðŸ‡¹ðŸ‡·   Turkey',
-    'Turkmenistan': 'ðŸ‡¹ðŸ‡²   Turkmenistan',
-    'Tuvalu': 'ðŸ‡¹ðŸ‡»   Tuvalu',
-    'Uganda': 'ðŸ‡ºðŸ‡¬   Uganda',
-    'Ukraine': 'ðŸ‡ºðŸ‡¦   Ukraine',
-    'United Arab Emirates': 'ðŸ‡¦ðŸ‡ª   United Arab Emirates',
-    'United Kingdom': 'ðŸ‡¬ðŸ‡§   United Kingdom',
-    'United States': 'ðŸ‡ºðŸ‡¸   United States',
-    'Uruguay': 'ðŸ‡ºðŸ‡¾   Uruguay',
-    'Uzbekistan': 'ðŸ‡ºðŸ‡¿   Uzbekistan',
-    'Vanuatu': 'ðŸ‡»ðŸ‡º   Vanuatu',
-    'Vatican City': 'ðŸ‡»ðŸ‡¦   Vatican City',
-    'Venezuela': 'ðŸ‡»ðŸ‡ª   Venezuela',
-    'Vietnam': 'ðŸ‡»ðŸ‡³   Vietnam',
-    'Yemen': 'ðŸ‡¾ðŸ‡ª   Yemen',
-    'Zambia': 'ðŸ‡¿ðŸ‡²   Zambia',
-    'Zimbabwe': 'ðŸ‡¿ðŸ‡¼   Zimbabwe',
+    'Afghanistan': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬½   Afghanistan',
+    'Albania': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬▒   Albania',
+    'Algeria': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬┐   Algeria',
+    'Andorra': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬⌐   Andorra',
+    'Angola': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬┤   Angola',
+    'Argentina': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬╖   Argentina',
+    'Armenia': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬▓   Armenia',
+    'Australia': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬║   Australia',
+    'Austria': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬╣   Austria',
+    'Azerbaijan': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬┐   Azerbaijan',
+    'Bahamas': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬╕   Bahamas',
+    'Bahrain': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬¡   Bahrain',
+    'Bangladesh': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬⌐   Bangladesh',
+    'Barbados': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬º   Barbados',
+    'Belarus': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬╛   Belarus',
+    'Belgium': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬¬   Belgium',
+    'Belize': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬┐   Belize',
+    'Benin': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬»   Benin',
+    'Bhutan': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬╣   Bhutan',
+    'Bolivia': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬┤   Bolivia',
+    'Bosnia and Herzegovina': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬ª   Bosnia and Herzegovina',
+    'Botswana': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬╝   Botswana',
+    'Brazil': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬╖   Brazil',
+    'Brunei': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬│   Brunei',
+    'Bulgaria': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬¼   Bulgaria',
+    'Burkina Faso': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬½   Burkina Faso',
+    'Burundi': '├░┼╕ΓÇí┬º├░┼╕ΓÇí┬«   Burundi',
+    'Cambodia': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬¡   Cambodia',
+    'Cameroon': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬▓   Cameroon',
+    'Canada': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬ª   Canada',
+    'Cape Verde': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬╗   Cape Verde',
+    'Central African Republic': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬½   Central African Republic',
+    'Chad': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬⌐   Chad',
+    'Chile': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬▒   Chile',
+    'China': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬│   China',
+    'Colombia': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬┤   Colombia',
+    'Comoros': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬▓   Comoros',
+    'Congo': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬¼   Congo',
+    'Costa Rica': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬╖   Costa Rica',
+    'Croatia': '├░┼╕ΓÇí┬¡├░┼╕ΓÇí┬╖   Croatia',
+    'Cuba': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬║   Cuba',
+    'Cyprus': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬╛   Cyprus',
+    'Czech Republic': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬┐   Czech Republic',
+    'Denmark': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬░   Denmark',
+    'Djibouti': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬»   Djibouti',
+    'Dominica': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬▓   Dominica',
+    'Dominican Republic': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬┤   Dominican Republic',
+    'Ecuador': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬¿   Ecuador',
+    'Egypt': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬¼   Egypt',
+    'El Salvador': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬╗   El Salvador',
+    'Equatorial Guinea': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬╢   Equatorial Guinea',
+    'Eritrea': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬╖   Eritrea',
+    'Estonia': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬¬   Estonia',
+    'Ethiopia': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬╣   Ethiopia',
+    'Fiji': '├░┼╕ΓÇí┬½├░┼╕ΓÇí┬»   Fiji',
+    'Finland': '├░┼╕ΓÇí┬½├░┼╕ΓÇí┬«   Finland',
+    'France': '├░┼╕ΓÇí┬½├░┼╕ΓÇí┬╖   France',
+    'Gabon': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬ª   Gabon',
+    'Gambia': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬▓   Gambia',
+    'Georgia': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬¬   Georgia',
+    'Germany': '├░┼╕ΓÇí┬⌐├░┼╕ΓÇí┬¬   Germany',
+    'Ghana': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬¡   Ghana',
+    'Greece': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬╖   Greece',
+    'Grenada': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬⌐   Grenada',
+    'Guatemala': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬╣   Guatemala',
+    'Guinea': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬│   Guinea',
+    'Guinea-Bissau': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬╝   Guinea-Bissau',
+    'Guyana': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬╛   Guyana',
+    'Haiti': '├░┼╕ΓÇí┬¡├░┼╕ΓÇí┬╣   Haiti',
+    'Honduras': '├░┼╕ΓÇí┬¡├░┼╕ΓÇí┬│   Honduras',
+    'Hungary': '├░┼╕ΓÇí┬¡├░┼╕ΓÇí┬║   Hungary',
+    'Iceland': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬╕   Iceland',
+    'India': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬│   India',
+    'Indonesia': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬⌐   Indonesia',
+    'Iran': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬╖   Iran',
+    'Iraq': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬╢   Iraq',
+    'Ireland': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬¬   Ireland',
+    'Israel': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬▒   Israel',
+    'Italy': '├░┼╕ΓÇí┬«├░┼╕ΓÇí┬╣   Italy',
+    'Jamaica': '├░┼╕ΓÇí┬»├░┼╕ΓÇí┬▓   Jamaica',
+    'Japan': '├░┼╕ΓÇí┬»├░┼╕ΓÇí┬╡   Japan',
+    'Jordan': '├░┼╕ΓÇí┬»├░┼╕ΓÇí┬┤   Jordan',
+    'Kazakhstan': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬┐   Kazakhstan',
+    'Kenya': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬¬   Kenya',
+    'Kiribati': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬«   Kiribati',
+    'Kuwait': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬╝   Kuwait',
+    'Kyrgyzstan': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬¼   Kyrgyzstan',
+    'Laos': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬ª   Laos',
+    'Latvia': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬╗   Latvia',
+    'Lebanon': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬º   Lebanon',
+    'Lesotho': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬╕   Lesotho',
+    'Liberia': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬╖   Liberia',
+    'Libya': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬╛   Libya',
+    'Liechtenstein': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬«   Liechtenstein',
+    'Lithuania': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬╣   Lithuania',
+    'Luxembourg': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬║   Luxembourg',
+    'Macedonia': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬░   Macedonia',
+    'Madagascar': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬¼   Madagascar',
+    'Malawi': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╝   Malawi',
+    'Malaysia': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╛   Malaysia',
+    'Maldives': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╗   Maldives',
+    'Mali': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬▒   Mali',
+    'Malta': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╣   Malta',
+    'Marshall Islands': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬¡   Marshall Islands',
+    'Mauritania': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╖   Mauritania',
+    'Mauritius': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬║   Mauritius',
+    'Mexico': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬╜   Mexico',
+    'Micronesia': '├░┼╕ΓÇí┬½├░┼╕ΓÇí┬▓   Micronesia',
+    'Moldova': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬⌐   Moldova',
+    'Monaco': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬¿   Monaco',
+    'Mongolia': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬│   Mongolia',
+    'Montenegro': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬¬   Montenegro',
+    'Morocco': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬ª   Morocco',
+    'Mozambique': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬┐   Mozambique',
+    'Myanmar': '├░┼╕ΓÇí┬▓├░┼╕ΓÇí┬▓   Myanmar',
+    'Namibia': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬ª   Namibia',
+    'Nauru': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬╖   Nauru',
+    'Nepal': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬╡   Nepal',
+    'Netherlands': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬▒   Netherlands',
+    'New Zealand': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬┐   New Zealand',
+    'Nicaragua': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬«   Nicaragua',
+    'Niger': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬¬   Niger',
+    'Nigeria': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬¼   Nigeria',
+    'North Korea': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬╡   North Korea',
+    'Norway': '├░┼╕ΓÇí┬│├░┼╕ΓÇí┬┤   Norway',
+    'Oman': '├░┼╕ΓÇí┬┤├░┼╕ΓÇí┬▓   Oman',
+    'Pakistan': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬░   Pakistan',
+    'Palau': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬╝   Palau',
+    'Panama': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬ª   Panama',
+    'Papua New Guinea': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬¼   Papua New Guinea',
+    'Paraguay': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬╛   Paraguay',
+    'Peru': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬¬   Peru',
+    'Philippines': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬¡   Philippines',
+    'Poland': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬▒   Poland',
+    'Portugal': '├░┼╕ΓÇí┬╡├░┼╕ΓÇí┬╣   Portugal',
+    'Qatar': '├░┼╕ΓÇí┬╢├░┼╕ΓÇí┬ª   Qatar',
+    'Romania': '├░┼╕ΓÇí┬╖├░┼╕ΓÇí┬┤   Romania',
+    'Russia': '├░┼╕ΓÇí┬╖├░┼╕ΓÇí┬║   Russia',
+    'Rwanda': '├░┼╕ΓÇí┬╖├░┼╕ΓÇí┬╝   Rwanda',
+    'Samoa': '├░┼╕ΓÇí┬╝├░┼╕ΓÇí┬╕   Samoa',
+    'San Marino': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬▓   San Marino',
+    'Saudi Arabia': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬ª   Saudi Arabia',
+    'Senegal': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬│   Senegal',
+    'Serbia': '├░┼╕ΓÇí┬╖├░┼╕ΓÇí┬╕   Serbia',
+    'Seychelles': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬¿   Seychelles',
+    'Sierra Leone': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬▒   Sierra Leone',
+    'Singapore': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬¼   Singapore',
+    'Slovakia': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬░   Slovakia',
+    'Slovenia': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬«   Slovenia',
+    'Solomon Islands': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬º   Solomon Islands',
+    'Somalia': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬┤   Somalia',
+    'South Africa': '├░┼╕ΓÇí┬┐├░┼╕ΓÇí┬ª   South Africa',
+    'South Korea': '├░┼╕ΓÇí┬░├░┼╕ΓÇí┬╖   South Korea',
+    'South Sudan': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬╕   South Sudan',
+    'Spain': '├░┼╕ΓÇí┬¬├░┼╕ΓÇí┬╕   Spain',
+    'Sri Lanka': '├░┼╕ΓÇí┬▒├░┼╕ΓÇí┬░   Sri Lanka',
+    'Sudan': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬⌐   Sudan',
+    'Suriname': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬╖   Suriname',
+    'Swaziland': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬┐   Swaziland',
+    'Sweden': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬¬   Sweden',
+    'Switzerland': '├░┼╕ΓÇí┬¿├░┼╕ΓÇí┬¡   Switzerland',
+    'Syria': '├░┼╕ΓÇí┬╕├░┼╕ΓÇí┬╛   Syria',
+    'Taiwan': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬╝   Taiwan',
+    'Tajikistan': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬»   Tajikistan',
+    'Tanzania': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬┐   Tanzania',
+    'Thailand': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬¡   Thailand',
+    'Togo': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬¼   Togo',
+    'Tonga': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬┤   Tonga',
+    'Trinidad and Tobago': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬╣   Trinidad and Tobago',
+    'Tunisia': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬│   Tunisia',
+    'Turkey': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬╖   Turkey',
+    'Turkmenistan': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬▓   Turkmenistan',
+    'Tuvalu': '├░┼╕ΓÇí┬╣├░┼╕ΓÇí┬╗   Tuvalu',
+    'Uganda': '├░┼╕ΓÇí┬║├░┼╕ΓÇí┬¼   Uganda',
+    'Ukraine': '├░┼╕ΓÇí┬║├░┼╕ΓÇí┬ª   Ukraine',
+    'United Arab Emirates': '├░┼╕ΓÇí┬ª├░┼╕ΓÇí┬¬   United Arab Emirates',
+    'United Kingdom': '├░┼╕ΓÇí┬¼├░┼╕ΓÇí┬º   United Kingdom',
+    'United States': '├░┼╕ΓÇí┬║├░┼╕ΓÇí┬╕   United States',
+    'Uruguay': '├░┼╕ΓÇí┬║├░┼╕ΓÇí┬╛   Uruguay',
+    'Uzbekistan': '├░┼╕ΓÇí┬║├░┼╕ΓÇí┬┐   Uzbekistan',
+    'Vanuatu': '├░┼╕ΓÇí┬╗├░┼╕ΓÇí┬║   Vanuatu',
+    'Vatican City': '├░┼╕ΓÇí┬╗├░┼╕ΓÇí┬ª   Vatican City',
+    'Venezuela': '├░┼╕ΓÇí┬╗├░┼╕ΓÇí┬¬   Venezuela',
+    'Vietnam': '├░┼╕ΓÇí┬╗├░┼╕ΓÇí┬│   Vietnam',
+    'Yemen': '├░┼╕ΓÇí┬╛├░┼╕ΓÇí┬¬   Yemen',
+    'Zambia': '├░┼╕ΓÇí┬┐├░┼╕ΓÇí┬▓   Zambia',
+    'Zimbabwe': '├░┼╕ΓÇí┬┐├░┼╕ΓÇí┬╝   Zimbabwe',
   };
   return countryToEmoji[countryName] ?? countryName;
+}
+
+class _MultiSelectDropdownWidget extends StatefulWidget {
+  final List<String> options;
+  final List<String> selectedList;
+  final VoidCallback onListChanged;
+  final bool isExpertise;
+  final Map<String, String>? levelsMap;
+  final Map<String, String>? prioritiesMap;
+  final String placeholder;
+
+  const _MultiSelectDropdownWidget({
+    required this.options,
+    required this.selectedList,
+    required this.onListChanged,
+    this.isExpertise = false,
+    this.levelsMap,
+    this.prioritiesMap,
+    required this.placeholder,
+  });
+
+  @override
+  State<_MultiSelectDropdownWidget> createState() => _MultiSelectDropdownWidgetState();
+}
+
+class _MultiSelectDropdownWidgetState extends State<_MultiSelectDropdownWidget> {
+  bool _showCustomInput = false;
+  final TextEditingController _customController = TextEditingController();
+
+  @override
+  void dispose() {
+    _customController.dispose();
+    super.dispose();
+  }
+
+  void _addCustomItem(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isNotEmpty && !widget.selectedList.contains(trimmed)) {
+      setState(() {
+        widget.selectedList.add(trimmed);
+        if (widget.isExpertise && widget.levelsMap != null) {
+          widget.levelsMap![trimmed] = 'Intermediate';
+        } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+          widget.prioritiesMap![trimmed] = 'Medium';
+        }
+        _showCustomInput = false;
+        _customController.clear();
+      });
+      widget.onListChanged();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final availableOptions = widget.options
+        .where((opt) => opt == 'Other' || opt == 'Others' || !widget.selectedList.contains(opt))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: null,
+              hint: Text(
+                widget.placeholder,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 13,
+                  color: Color(0xFF8C736B),
+                ),
+              ),
+              icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF7A432D)),
+              dropdownColor: Colors.white,
+              items: availableOptions.map((String opt) {
+                final isOther = (opt == 'Other' || opt == 'Others');
+                return DropdownMenuItem<String>(
+                  value: opt,
+                  child: Text(
+                    opt,
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: isOther ? FontWeight.bold : FontWeight.normal,
+                      color: isOther ? const Color(0xFF7A432D) : const Color(0xFF3E1F11),
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? val) {
+                if (val != null) {
+                  if (val == 'Other' || val == 'Others') {
+                    setState(() {
+                      _showCustomInput = true;
+                    });
+                  } else {
+                    setState(() {
+                      widget.selectedList.add(val);
+                      if (widget.isExpertise && widget.levelsMap != null) {
+                        widget.levelsMap![val] = 'Intermediate';
+                      } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+                        widget.prioritiesMap![val] = 'Medium';
+                      }
+                    });
+                    widget.onListChanged();
+                  }
+                }
+              },
+            ),
+          ),
+        ),
+        if (_showCustomInput) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _customController,
+                  autofocus: true,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    color: Color(0xFF3E1F11),
+                  ),
+                  decoration: InputDecoration(
+                    hintText: widget.isExpertise ? 'Enter custom expertise...' : 'Enter custom interest...',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    filled: true,
+                    fillColor: Colors.white,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                    ),
+                  ),
+                  onSubmitted: _addCustomItem,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7A432D),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                onPressed: () => _addCustomItem(_customController.text),
+                child: const Text(
+                  'Add',
+                  style: TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Color(0xFF8C736B), size: 20),
+                onPressed: () {
+                  setState(() {
+                    _showCustomInput = false;
+                    _customController.clear();
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
+        if (widget.selectedList.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.selectedList.map((opt) {
+              return Chip(
+                backgroundColor: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                label: Text(
+                  opt,
+                  style: const TextStyle(
+                    fontFamily: 'PlusJakartaSans',
+                    fontSize: 12,
+                    color: Color(0xFF7A432D),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                deleteIcon: const Icon(Icons.close, size: 14, color: Color(0xFF7A432D)),
+                onDeleted: () {
+                  setState(() {
+                    widget.selectedList.remove(opt);
+                    if (widget.isExpertise && widget.levelsMap != null) {
+                      widget.levelsMap!.remove(opt);
+                    } else if (!widget.isExpertise && widget.prioritiesMap != null) {
+                      widget.prioritiesMap!.remove(opt);
+                    }
+                  });
+                  widget.onListChanged();
+                },
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
 }
 

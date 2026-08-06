@@ -12,7 +12,7 @@
 const { Resend } = require('resend');
 
 const API_KEY = process.env.RESEND_API_KEY;
-const DEFAULT_FROM = 'onboarding@resend.dev'; // Resend's sandbox sender — replace with a verified domain once added.
+const DEFAULT_FROM = 'onboarding@nexmeet.world'; // Verified domain sender
 
 if (!API_KEY) {
   // Not fatal at import time — functions may be deployed without the key.
@@ -48,6 +48,9 @@ async function sendEmail({ to, subject, html, from = DEFAULT_FROM }) {
   });
 
   if (error) {
+    if (error.name === 'validation_error') {
+      throw new Error(`Resend Validation Error: ${error.message}`);
+    }
     throw new Error(`Resend failed: ${error.message}`);
   }
 

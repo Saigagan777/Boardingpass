@@ -345,7 +345,7 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                       const SizedBox(height: 20),
                     ],
                     if (c.businessConnect.isNotEmpty) ...[
-                      _buildDetailSectionHeader('Business Connect'),
+                      _buildDetailSectionHeader('Business Forums'),
                       const SizedBox(height: 8),
                       _buildDetailCard(
                         child: Wrap(

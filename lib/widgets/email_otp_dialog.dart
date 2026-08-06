@@ -102,7 +102,10 @@ Future<bool> ensureEmailVerified(BuildContext context, String email) async {
 class EmailOtpDialog extends StatefulWidget {
   final String email;
 
-  const EmailOtpDialog({super.key, required this.email});
+  const EmailOtpDialog({
+    super.key,
+    required this.email,
+  });
 
   @override
   State<EmailOtpDialog> createState() => _EmailOtpDialogState();
@@ -149,6 +152,7 @@ class _EmailOtpDialogState extends State<EmailOtpDialog> {
     });
     try {
       final email = widget.email.trim();
+      final password = 'Temp_${DateTime.now().millisecondsSinceEpoch}_P@ss!';
       var user = FirebaseAuth.instance.currentUser;
 
       if (user == null || (user.email?.toLowerCase() != email.toLowerCase())) {
@@ -156,22 +160,15 @@ class _EmailOtpDialogState extends State<EmailOtpDialog> {
           final cred = await FirebaseAuth.instance
               .createUserWithEmailAndPassword(
             email: email,
-            password: 'TempPassword123!',
+            password: password,
           );
           user = cred.user;
         } on FirebaseAuthException catch (e) {
           if (e.code == 'email-already-in-use') {
             try {
-              await FirebaseAuth.instance.sendSignInLinkToEmail(
-                email: email,
-                actionCodeSettings: ActionCodeSettings(
-                  url: 'https://boardingpass.page.link/email-verify',
-                  handleCodeInApp: true,
-                  androidPackageName: 'com.nexmeet.world',
-                  androidInstallApp: true,
-                  androidMinimumVersion: '12',
-                ),
-              );
+              final cred = await FirebaseAuth.instance
+                  .signInWithEmailAndPassword(email: email, password: password);
+              user = cred.user;
             } catch (_) {}
           }
         } catch (_) {}
@@ -191,7 +188,7 @@ class _EmailOtpDialogState extends State<EmailOtpDialog> {
       debugPrint('Error sending verification email: $e');
       setState(() {
         _statusMessage =
-            'Verification email sent to ${widget.email}! Please check your Gmail app (Inbox or Spam folder) and tap the link.';
+            'Error sending email: ${e.toString().replaceAll(RegExp(r'\[.*?\]'), '')}. Please ensure Firebase Email Auth is enabled.';
       });
     } finally {
       if (mounted) setState(() => _sendingLink = false);

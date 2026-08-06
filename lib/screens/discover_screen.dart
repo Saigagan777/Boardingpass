@@ -1788,8 +1788,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               return _buildSearchableFilterTile(
                                 context: context,
                                 setModalState: setModalState,
-                                label: 'Business Connect',
-                                placeholder: 'Select business connect goal',
+                                label: 'Business Forums',
+                                placeholder: 'Select business forum',
                                 selectedValue: _selectedBusinessConnect,
                                 options: allBC,
                                 onChanged: (val) {
@@ -2194,7 +2194,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                             ),
                           if (_selectedBusinessConnect != null)
                             _buildFilterChip(
-                              label: 'Business Connect: $_selectedBusinessConnect',
+                              label: 'Business Forums: $_selectedBusinessConnect',
                               onClear: () {
                                 setState(() {
                                   _selectedBusinessConnect = null;

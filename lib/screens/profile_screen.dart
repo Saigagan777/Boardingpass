@@ -187,6 +187,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   _buildAboutCard(bio),
                                   const SizedBox(height: 20),
                                 ],
+                                _buildSectionLabel('Expertise', Icons.verified_outlined),
+                                const SizedBox(height: 10),
+                                _buildSkillsCard(skills, profile),
+                                if (profile.businessConnect.isNotEmpty) ...[
+                                  const SizedBox(height: 20),
+                                  _buildSectionLabel('Business Forums', Icons.business_center_outlined),
+                                  const SizedBox(height: 10),
+                                  _buildBusinessConnectCard(profile.businessConnect),
+                                ],
+                                const SizedBox(height: 20),
                                 _buildSectionLabel('Work Experience', Icons.business_center_outlined),
                                 const SizedBox(height: 10),
                                 _buildTimelineSection(
@@ -202,10 +212,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   type: 'education',
                                   emptyText: 'No education details added yet.',
                                 ),
-                                const SizedBox(height: 20),
-                                _buildSectionLabel('Expertise', Icons.verified_outlined),
-                                const SizedBox(height: 10),
-                                _buildSkillsCard(skills, profile),
                                 const SizedBox(height: 30),
                               ],
                             ),
@@ -213,19 +219,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
-                                const SizedBox(height: 10),
-                                _buildTravelCard(homeBase, currentLocation, travelFrequency),
-                                const SizedBox(height: 20),
                                 _buildSectionLabel('Interests & Looking For', Icons.explore_outlined),
                                 const SizedBox(height: 10),
                                 _buildInterestsCard(interests, profile),
-                                if (profile.businessConnect.isNotEmpty) ...[
-                                  const SizedBox(height: 20),
-                                  _buildSectionLabel('Business Connect', Icons.business_center_outlined),
-                                  const SizedBox(height: 10),
-                                  _buildBusinessConnectCard(profile.businessConnect),
-                                ],
+                                const SizedBox(height: 20),
+                                _buildSectionLabel('Travel Profile', Icons.flight_takeoff_rounded),
+                                const SizedBox(height: 10),
+                                _buildTravelCard(homeBase, currentLocation, travelFrequency),
                                 const SizedBox(height: 30),
                               ],
                             ),
@@ -1453,32 +1453,207 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSettingsMenu(BuildContext context, UserProfile profile) {
+    final fbEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+    final isLinkedInSynthetic = fbEmail.startsWith('linkedin_') && fbEmail.contains('@boardingpass.com');
+    final hasPassword = !isLinkedInSynthetic || profile.directPasswordSet;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: _buildCardContainer(
         padding: EdgeInsets.zero,
         child: Column(
           children: [
-            _buildMenuItem(Icons.settings_outlined, 'Settings', 'Account preferences', () {}),
+            // Expandable Settings row
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                childrenPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7A432D).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.settings_outlined, size: 20, color: Color(0xFF7A432D)),
+                ),
+                title: const Text('Settings', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF3E1F11))),
+                subtitle: const Text('Account preferences', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: Color(0xFF8C736B))),
+                iconColor: const Color(0xFF7A432D),
+                collapsedIconColor: const Color(0xFF8C736B),
+                shape: const Border(),
+                collapsedShape: const Border(),
+                children: [
+                  Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFAF7F5),
+                      border: Border(top: BorderSide(color: Color(0xFFF0EBE8))),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildSubMenuItem(
+                          hasPassword ? Icons.lock_reset_rounded : Icons.lock_open_rounded,
+                          hasPassword ? 'Change Password' : 'Set Password',
+                          hasPassword ? 'Update your login credentials' : 'Add a password for direct sign-in',
+                          () => _showPasswordDialogFromProfile(context, profile, !hasPassword),
+                        ),
+                        _buildSubMenuItem(Icons.email_outlined, 'Change Email', 'Update your email address', () => _showChangeEmailDialog(context, profile)),
+                        _buildSubMenuItem(Icons.phone_outlined, 'Change Phone Number', 'Update your mobile number', () => _showChangePhoneDialog(context, profile), isLast: true),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             _buildMenuItem(Icons.security_outlined, 'Privacy', 'Data & security controls', () {}),
             _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', 'FAQs & contact', () => HelpSupportSheet.show(context)),
-            Builder(builder: (_) {
-              final fbEmail = FirebaseAuth.instance.currentUser?.email ?? '';
-              final isLinkedInSynthetic = fbEmail.startsWith('linkedin_') && fbEmail.contains('@boardingpass.com');
-              final hasPassword = !isLinkedInSynthetic || profile.directPasswordSet;
-              return _buildMenuItem(
-                hasPassword ? Icons.lock_reset_rounded : Icons.lock_open_rounded,
-                hasPassword ? 'Change Password' : 'Set Password',
-                hasPassword ? 'Update your login credentials' : 'Add a password for direct sign-in',
-                () => _showPasswordDialogFromProfile(context, profile, !hasPassword),
-              );
-            }),
+            _buildMenuItem(Icons.delete_forever_rounded, 'Delete Account', 'Permanently delete your profile & data', () => _showDeleteAccountDialog(context), isLogout: true),
             _buildMenuItem(Icons.logout_rounded, 'Logout', 'Sign out of your account', () => _state.logOut(), isLogout: true),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildSubMenuItem(IconData icon, String title, String subtitle, VoidCallback onTap, {bool isLast = false, bool isDestructive = false}) {
+    final color = isDestructive ? const Color(0xFFD32F2F) : const Color(0xFF7A432D);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.only(left: 56, right: 16, top: 12, bottom: 12),
+        decoration: isLast
+            ? null
+            : const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF0EBE8)))),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 16, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, fontWeight: FontWeight.w600, color: isDestructive ? const Color(0xFFD32F2F) : const Color(0xFF3E1F11))),
+                  Text(subtitle, style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 11, color: isDestructive ? const Color(0xFFE57373) : const Color(0xFF8C736B))),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 18, color: isDestructive ? const Color(0xFFE57373) : const Color(0xFF8C736B)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeleteAccountDialog(BuildContext context) async {
+    final confirmCtrl = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    bool canDelete = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFD32F2F), size: 24),
+              SizedBox(width: 8),
+              Text('Delete Account', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, color: Color(0xFFD32F2F))),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This action is irreversible. All your profile data, connection history, and saved preferences will be permanently deleted.',
+                style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF3E1F11)),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Type DELETE to confirm:',
+                style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF8C736B)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirmCtrl,
+                style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                onChanged: (val) {
+                  setDialogState(() {
+                    canDelete = val.trim() == 'DELETE';
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'DELETE',
+                  hintStyle: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14, color: Colors.grey.shade400),
+                  filled: true,
+                  fillColor: const Color(0xFFFFEBEE),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD32F2F))),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Cancel', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B))),
+            ),
+            TextButton(
+              onPressed: canDelete
+                  ? () async {
+                      Navigator.of(dialogCtx).pop();
+                      try {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user != null) {
+                          // Delete Firestore profile doc
+                          await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+                          // Delete Auth user
+                          await user.delete();
+                        }
+                        _state.logOut();
+                        messenger.showSnackBar(const SnackBar(
+                          content: Text('Account permanently deleted.'),
+                          backgroundColor: Color(0xFFD32F2F),
+                        ));
+                      } on FirebaseAuthException catch (e) {
+                        if (e.code == 'requires-recent-login') {
+                          messenger.showSnackBar(const SnackBar(
+                            content: Text('Security check: Please log out and sign in again before deleting your account.'),
+                            backgroundColor: Color(0xFFD32F2F),
+                            duration: Duration(seconds: 5),
+                          ));
+                        } else {
+                          messenger.showSnackBar(SnackBar(content: Text('Failed to delete account: ${e.message}')));
+                        }
+                      } catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text('Error deleting account: $e')));
+                      }
+                    }
+                  : null,
+              child: Text(
+                'Permanently Delete',
+                style: TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontWeight: FontWeight.bold,
+                  color: canDelete ? const Color(0xFFD32F2F) : Colors.grey.shade400,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    confirmCtrl.dispose();
+  }
+
 
   Widget _buildMenuItem(IconData icon, String title, String subtitle, VoidCallback onTap, {bool isLogout = false}) {
     return InkWell(
@@ -1807,6 +1982,169 @@ class _ProfileScreenState extends State<ProfileScreen> {
     newPasswordCtrl.dispose();
     confirmPasswordCtrl.dispose();
   }
+
+  Future<void> _showChangeEmailDialog(BuildContext context, UserProfile profile) async {
+    final emailCtrl = TextEditingController(text: profile.email);
+    final messenger = ScaffoldMessenger.of(context);
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Change Email', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('A verification link will be sent to your new email address.', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B))),
+            const SizedBox(height: 14),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 14),
+              decoration: InputDecoration(
+                labelText: 'New Email Address',
+                labelStyle: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 13, color: Color(0xFF8C736B)),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE8E2DD))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF7A432D))),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogCtx).pop(), child: const Text('Cancel', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B)))),
+          TextButton(
+            onPressed: () async {
+              final newEmail = emailCtrl.text.trim();
+              if (newEmail.isEmpty || !newEmail.contains('@')) {
+                messenger.showSnackBar(const SnackBar(content: Text('Please enter a valid email address.')));
+                return;
+              }
+              Navigator.of(dialogCtx).pop();
+              try {
+                final firebaseUser = FirebaseAuth.instance.currentUser;
+                if (firebaseUser == null) throw Exception('Not logged in.');
+                await firebaseUser.verifyBeforeUpdateEmail(newEmail);
+                await FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).update({'email': newEmail});
+                messenger.showSnackBar(const SnackBar(
+                  content: Text('Verification email sent! Confirm it to complete the change.'),
+                  backgroundColor: Color(0xFF2E7D32),
+                  duration: Duration(seconds: 5),
+                ));
+              } on FirebaseAuthException catch (e) {
+                String msg = 'Failed to update email.';
+                if (e.code == 'requires-recent-login') msg = 'Session expired. Please log out and back in first.';
+                if (e.code == 'email-already-in-use') msg = 'That email is already in use by another account.';
+                if (e.code == 'invalid-email') msg = 'The email address is not valid.';
+                messenger.showSnackBar(SnackBar(content: Text(msg)));
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+              }
+            },
+            child: const Text('Send Verification', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, color: Color(0xFF7A432D))),
+          ),
+        ],
+      ),
+    );
+    emailCtrl.dispose();
+  }
+
+  Future<void> _showChangePhoneDialog(BuildContext context, UserProfile profile) async {
+    final messenger = ScaffoldMessenger.of(context);
+    // Resolve the initial CountryCode object from the stored dial code string
+    final storedDial = (profile.phoneCountryCode ?? '').trim();
+    CountryCode selectedCountry = storedDial.isNotEmpty
+        ? defaultCountries.firstWhere(
+            (c) => c.dialCode == storedDial,
+            orElse: () => defaultCountries.first,
+          )
+        : defaultCountries.first;
+    final phoneCtrl = TextEditingController(text: profile.phone ?? '');
+    bool phoneVerified = false;
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Change Phone Number', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: CountryPhoneInput(
+                      controller: phoneCtrl,
+                      label: 'Phone Number',
+                      initialCountry: selectedCountry,
+                      onCountryChanged: (c) => setDialogState(() => selectedCountry = c),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  PhoneVerifyButton(
+                    verified: phoneVerified,
+                    isLoading: false,
+                    onPressed: () async {
+                      final phone = phoneCtrl.text.trim();
+                      if (phone.isEmpty) {
+                        messenger.showSnackBar(const SnackBar(content: Text('Please enter a phone number first.')));
+                        return;
+                      }
+                      final verified = await showDialog<bool>(
+                        context: ctx,
+                        builder: (_) => PhoneVerificationDialog(
+                          phoneNumber: '${selectedCountry.dialCode}$phone',
+                        ),
+                      );
+                      setDialogState(() => phoneVerified = verified ?? false);
+                    },
+                  ),
+                ],
+              ),
+              if (phoneVerified)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 16),
+                    SizedBox(width: 6),
+                    Text('Phone verified', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, color: Color(0xFF2E7D32))),
+                  ]),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogCtx).pop(), child: const Text('Cancel', style: TextStyle(fontFamily: 'PlusJakartaSans', color: Color(0xFF8C736B)))),
+            TextButton(
+              onPressed: phoneVerified
+                  ? () async {
+                      Navigator.of(dialogCtx).pop();
+                      try {
+                        final firebaseUser = FirebaseAuth.instance.currentUser;
+                        if (firebaseUser == null) throw Exception('Not logged in.');
+                        await FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).update({
+                          'phone': phoneCtrl.text.trim(),
+                          'phoneCountryCode': selectedCountry.dialCode,
+                          'phoneVerified': true,
+                        });
+                        messenger.showSnackBar(const SnackBar(
+                          content: Text('Phone number updated successfully.'),
+                          backgroundColor: Color(0xFF2E7D32),
+                        ));
+                      } catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+                      }
+                    }
+                  : null,
+              child: Text('Save', style: TextStyle(fontFamily: 'PlusJakartaSans', fontWeight: FontWeight.bold, color: phoneVerified ? const Color(0xFF7A432D) : const Color(0xFFBCAAA4))),
+            ),
+          ],
+        ),
+      ),
+    );
+    phoneCtrl.dispose();
+  }
+
 
   Widget _buildDialogField(String label, TextEditingController controller, bool obscure, Function(bool) setObscure, {ValueChanged<String>? onChanged}) {
     return TextField(
@@ -2464,25 +2802,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     const SizedBox(height: 12),
                     _buildTextField('Name', _nameController, hintText: 'Enter your full name'),
                     _buildTextField('Headline', _headlineController, hintText: 'e.g. VP Engineering at Stripe'),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: CountryPhoneInput(
-                            controller: _phoneController,
-                            label: 'Phone Number',
-                            initialCountry: _selectedCountry,
-                            onCountryChanged: (c) => setState(() => _selectedCountry = c),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        PhoneVerifyButton(
-                          verified: _phoneVerifiedInEdit,
-                          isLoading: _isLoading,
-                          onPressed: _verifyPhoneInEdit,
-                        ),
-                      ],
-                    ),
+
                     _buildTextField('Bio / Description', _bioController, maxLines: 3, hintText: 'Tell us about yourself', maxLength: kBioMaxChars),
                     const SizedBox(height: 4),
                     BioValidationLabel(text: _bioController.text),
@@ -2694,11 +3014,11 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                       },
                     ),
                     const SizedBox(height: 20),
-                    _buildSectionHeader('Business Connect'),
+                    _buildSectionHeader('Business Forums'),
                     const SizedBox(height: 12),
                     SearchableMultiSelectField(
-                      label: 'Business Connect',
-                      placeholder: 'Select business connect goals (searchable)',
+                      label: 'Business Forums',
+                      placeholder: 'Select business forums (searchable)',
                       options: kBusinessConnectOptions,
                       selectedValues: _localBusinessConnect,
                       onChanged: (newList) {

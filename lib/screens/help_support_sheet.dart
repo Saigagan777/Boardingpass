@@ -41,9 +41,9 @@ class _HelpSupportSheetState extends State<HelpSupportSheet> {
           'During signup or in your profile settings, tap "Verify Email" to receive a 6-digit OTP via email. Enter the code to instantly get your verified badge.',
     },
     {
-      'question': 'What is "Business Connect"?',
+      'question': 'What is "Business Forums"?',
       'answer':
-          'Business Connect allows you to specify what you are actively seeking (e.g. Clients, Employers, Investors, Co-founders, Freelancers, Mentors). You can filter candidate profiles in Discovery by these goals.',
+          'Business Forums shows the professional networks and communities you are part of (e.g. BNI, Rotary, Startup Grind). You can filter candidate profiles in Discovery by these forums.',
     },
     {
       'question': 'How do I host or join an Event?',

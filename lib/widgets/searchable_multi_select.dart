@@ -12,18 +12,17 @@ const List<String> kInterestOptions = [
 ];
 
 const List<String> kBusinessConnectOptions = [
-  'Looking for Clients',
-  'Looking for Employees',
-  'Looking for Employers',
-  'Looking for Investors',
-  'Looking for Co-founders',
-  'Looking for Business Partners',
-  'Looking for Freelancers',
-  'Looking for Mentors',
-  'Looking for Service Providers',
-  'Looking for Networking',
-  'Not Looking Right Now',
-  'Other',
+  'BNI (Business Network International)',
+  'Corporate Connections',
+  "Entrepreneurs' Organization",
+  'Young Presidents\' Organization',
+  'Vistage Worldwide',
+  'Chief Executives Organization',
+  'The Indus Entrepreneurs',
+  'Startup Grind',
+  'Rotary International',
+  'Lions Clubs International',
+  'Others',
 ];
 
 const List<String> kIndustryOptions = [
