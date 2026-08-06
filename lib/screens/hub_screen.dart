@@ -328,6 +328,48 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
     return DateTime.now().day.isEven ? 'Hi' : 'Hello';
   }
 
+  String _getDailyQuote() {
+    final List<String> quotes = [
+      'Small steps every day lead to big results.',
+      'Success starts with showing up.',
+      'Your future is created by what you do today.',
+      'Stay consistent. Great things take time.',
+      'Believe you can and you are halfway there.',
+      'Focus on progress, not perfection.',
+      'Dream big. Start small. Act now.',
+      'Consistency is the key to breakthrough.',
+      'Every day is a fresh start.',
+      'Make today count.',
+      'Grow through what you go through.',
+      'Action is the foundational key to all success.',
+      'The secret of getting ahead is getting started.',
+      'Do what you can, with what you have, where you are.',
+      'Your only limit is you.',
+      'Great things never come from comfort zones.',
+      'Wake up with determination. Go to bed with satisfaction.',
+      'Little by little, day by day, what is meant for you will find its way.',
+      'The best way to predict the future is to create it.',
+      'Quality is not an act, it is a habit.',
+      'You do not have to be great to start, but you have to start to be great.',
+      'Productivity is being able to do things that you were never able to do before.',
+      'The only way to do great work is to love what you do.',
+      'Opportunities don\'t happen. You create them.',
+      'Don\'t count the days, make the days count.',
+      'Everything you need is already inside you.',
+      'Do something today that your future self will thank you for.',
+      'Be stronger than your excuses.',
+      'Success is the sum of small efforts, repeated day in and day out.',
+      'Focus on the step in front of you, not the whole staircase.',
+      'Keep showing up for yourself.',
+    ];
+
+    final now = DateTime.now();
+    final startOfYear = DateTime(now.year, 1, 1);
+    final dayOfYear = now.difference(startOfYear).inDays;
+    final index = dayOfYear % quotes.length;
+    return quotes[index];
+  }
+
   String _timeAgo(DateTime dateTime) {
     final diff = DateTime.now().difference(dateTime);
     if (diff.inSeconds < 60) return 'Just now';
@@ -848,6 +890,48 @@ class _HubScreenState extends State<HubScreen> with TickerProviderStateMixin {
                       fontSize: screenHeight < 650 ? 20 : 24,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF3E1F11),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: screenHeight < 650 ? 6 : 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7A432D).withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: const Color(0xFF7A432D).withValues(alpha: 0.1),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.auto_awesome_outlined,
+                            size: screenHeight < 650 ? 12 : 14,
+                            color: const Color(0xFF7A432D),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _getDailyQuote(),
+                            style: TextStyle(
+                              fontFamily: 'PlusJakartaSans',
+                              fontSize: screenHeight < 650 ? 11 : 12,
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w500,
+                              height: 1.3,
+                              color: const Color(0xFF5D4037),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
