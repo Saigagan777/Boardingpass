@@ -613,16 +613,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return false;
     }
 
-    if (!_emailVerified) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please verify your email address to continue.'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
     // Block progression until the phone number is verified — either via the
     // Step-1 "Verify" button (badge state) or because it is already linked to
     // this signed-in account. Comparison is digit-based so formatting
