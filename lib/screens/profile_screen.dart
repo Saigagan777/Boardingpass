@@ -2348,6 +2348,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late List<String> _localSkills;
   late List<String> _localInterests;
   late List<String> _localBusinessConnect;
+  List<String> _profileImages = [];
   String _selectedOccupation = 'Software Engineer';
   final TextEditingController _customOccupationController = TextEditingController();
   final List<String> _occupations = [
@@ -2442,6 +2443,9 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _experienceController = TextEditingController(text: widget.profile.experience ?? '');
     _homeBaseController = TextEditingController(text: widget.profile.homeBase ?? '');
     _profileImageUrlController = TextEditingController(text: widget.profile.profileImageUrl ?? '');
+    _profileImages = widget.profile.profileImages.isNotEmpty
+        ? List<String>.from(widget.profile.profileImages)
+        : (widget.profile.profileImageUrl?.isNotEmpty == true ? [widget.profile.profileImageUrl!] : <String>[]);
     _coverImageUrlController = TextEditingController(text: widget.profile.coverImageUrl ?? '');
     _linkedinUrlController = TextEditingController(text: widget.profile.linkedinProfileUrl ?? '');
 
@@ -2706,6 +2710,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         phone: newPhone.isNotEmpty ? newPhone : null,
         phoneCountryCode: _selectedCountry.dialCode,
         profileImageUrl: _profileImageUrlController.text.trim(),
+        profileImages: _profileImages,
         coverImageUrl: _coverImageUrlController.text.trim(),
         linkedinProfileUrl: _linkedinUrlController.text.trim(),
         skills: _localSkills,
@@ -3107,130 +3112,241 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   }
 
   Widget _buildPhotoSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E2DD)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 60,
-                          height: 60,
-                          child: CircularProgressIndicator(
-                            value: _calculateLocalCompleteness() / 100.0,
-                            strokeWidth: 3,
-                            backgroundColor: const Color(0xFFE8E2DD),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
-                          ),
-                        ),
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFE8E2DD)),
-                          child: ClipOval(
-                            child: _isProfileLoading
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D))),
-                                  )
-                                : buildProfileImage(
-                                    _profileImageUrlController.text,
-                                    width: 50,
-                                    height: 50,
-                                    fit: BoxFit.cover,
-                                    fallback: const Icon(Icons.person, size: 28, color: Color(0xFF7A432D)),
-                                  ),
-                          ),
-                        ),
-                      ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Profile Gallery (Up to 6 photos)',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3E1F11),
                     ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Profile Photo', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF3E1F11))),
-                        const SizedBox(height: 4),
-                        Text('${_calculateLocalCompleteness().toInt()}% complete', style: const TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 10, color: Color(0xFF8C736B))),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: _buildUploadButton('Upload Photo', _isProfileLoading, () => _pickImage(isProfile: true)),
-                ),
-                if (_profileImageUrlController.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: double.infinity,
-                    child: _buildOutlineUploadButton(
-                      'Re-crop Photo',
-                      _isProfileLoading,
-                      _recropProfileImage,
+                  ),
+                  Text(
+                    '${_calculateLocalCompleteness().toInt()}% complete',
+                    style: const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 11,
+                      color: Color(0xFF8C736B),
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(width: 1, height: 140, color: const Color(0xFFE8E2DD)),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Cover Photo', style: TextStyle(fontFamily: 'PlusJakartaSans', fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF3E1F11))),
-                const SizedBox(height: 4),
-                Container(
-                  width: 60,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8E2DD),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _isCoverLoading
-                        ? const Center(
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D))),
-                            ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: 6,
+                  itemBuilder: (context, index) {
+                    final bool hasImage = index < _profileImages.length;
+                    final String? imageUrl = hasImage ? _profileImages[index] : null;
+                    
+                    return Container(
+                      width: 90,
+                      margin: const EdgeInsets.only(right: 12, top: 4, bottom: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFAF7F5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: hasImage 
+                              ? (index == 0 ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD))
+                              : const Color(0xFFE8E2DD),
+                          width: hasImage && index == 0 ? 2 : 1.2,
+                        ),
+                        boxShadow: hasImage ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           )
-                        : buildProfileImage(
-                            _coverImageUrlController.text,
-                            width: 60,
-                            height: 40,
-                            fit: BoxFit.cover,
-                            fallback: Container(color: Colors.black),
-                          ),
-                  ),
+                        ] : null,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(11),
+                        child: Stack(
+                          children: [
+                            if (hasImage) ...[
+                              Positioned.fill(
+                                child: buildProfileImage(
+                                  imageUrl!,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              if (index == 0)
+                                Positioned(
+                                  left: 4,
+                                  bottom: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF7A432D),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Primary',
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _profileImages.removeAt(index);
+                                      _profileImageUrlController.text = _profileImages.isNotEmpty ? _profileImages.first : '';
+                                    });
+                                    _onFieldChanged();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
+                              if (index == _profileImages.length)
+                                Positioned.fill(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _pickImage(isProfile: true),
+                                      child: _isProfileLoading
+                                          ? const Center(
+                                              child: SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                                ),
+                                              ),
+                                            )
+                                          : const Center(
+                                              child: Icon(
+                                                Icons.add_rounded,
+                                                size: 32,
+                                                color: Color(0xFF8C736B),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                            ]
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: _buildUploadButton('Upload Cover', _isCoverLoading, () => _pickImage(isProfile: false)),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE8E2DD)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 60,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8E2DD),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: _isCoverLoading
+                      ? const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                            ),
+                          ),
+                        )
+                      : buildProfileImage(
+                          _coverImageUrlController.text,
+                          width: 60,
+                          height: 40,
+                          fit: BoxFit.cover,
+                          fallback: const Icon(Icons.image, size: 20, color: Color(0xFF7A432D)),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Cover Photo',
+                      style: TextStyle(
+                        fontFamily: 'PlusJakartaSans',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF3E1F11),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _buildUploadButton(
+                              'Upload Cover',
+                              _isCoverLoading,
+                              () => _pickImage(isProfile: false),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -3341,6 +3457,15 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     setState(() => _isProfileLoading = true);
 
     try {
+      final previewBytes = downscaleForFirestore(bytes);
+      final previewDataUri =
+          'data:image/jpeg;base64,${base64Encode(previewBytes)}';
+      setState(() {
+        _profileImages.add(previewDataUri);
+        _profileImageUrlController.text = _profileImages.first;
+        _onFieldChanged();
+      });
+
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('profile_images')
@@ -3353,34 +3478,23 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
       final downloadUrl = await snapshot.ref.getDownloadURL();
       if (!mounted) return;
       setState(() {
-        _profileImageUrlController.text = downloadUrl;
+        final idx = _profileImages.indexOf(previewDataUri);
+        if (idx != -1) {
+          _profileImages[idx] = downloadUrl;
+        } else {
+          _profileImages.add(downloadUrl);
+        }
+        _profileImageUrlController.text = _profileImages.first;
         _isProfileLoading = false;
+        _onFieldChanged();
       });
     } catch (e) {
       debugPrint('Firebase Storage upload failed: $e');
-      try {
-        // Keep the fallback small enough to fit in the Firestore profile
-        // document (1MB limit) — a full-res JPEG as base64 would exceed it.
-        final fallbackBytes = downscaleForFirestore(bytes);
-        final base64Str = base64Encode(fallbackBytes);
-        final dataUrl = 'data:image/jpeg;base64,$base64Str';
-        if (!mounted) return;
-        setState(() {
-          _profileImageUrlController.text = dataUrl;
-          _isProfileLoading = false;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage upload failed. Image saved locally as base64 fallback.')),
-          );
-        }
-      } catch (fallbackError) {
-        if (!mounted) return;
-        setState(() => _isProfileLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to upload image: $e')),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _isProfileLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Storage upload failed. Image saved locally as base64 fallback.')),
+      );
     }
   }
 

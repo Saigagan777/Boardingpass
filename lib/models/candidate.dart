@@ -14,6 +14,7 @@ class Candidate {
   final String bio;
   final String initials;
   final String? profileImageUrl;
+  final List<String> profileImages;
   final Color primaryColor;
   final List<CustomCard> customCards;
   final List<String> interests;
@@ -49,6 +50,7 @@ class Candidate {
     required this.bio,
     required this.initials,
     this.profileImageUrl,
+    this.profileImages = const [],
     required this.primaryColor,
     this.customCards = const [],
     this.interests = const [],

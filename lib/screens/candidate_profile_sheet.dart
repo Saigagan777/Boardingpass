@@ -24,6 +24,7 @@ class CandidateProfileSheet extends StatefulWidget {
 
 class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
   Future<Candidate>? _lazyCandidateFuture;
+  int _activeImageIndex = 0;
 
   @override
   void initState() {
@@ -213,47 +214,107 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
                   physics: const BouncingScrollPhysics(),
                   children: [
-                    Center(
-                      child: Container(
-                        width: 140,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF7A432D,
-                              ).withAlpha((0.15 * 255).round()),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: buildProfileImage(
-                            c.profileImageUrl ?? '',
-                            width: 140,
-                            height: 140,
-                            fit: BoxFit.cover,
-                            fallback: Container(
+                    StatefulBuilder(
+                      builder: (context, setGalleryState) {
+                        final photos = c.profileImages.isNotEmpty
+                            ? c.profileImages
+                            : (c.profileImageUrl != null && c.profileImageUrl!.isNotEmpty ? [c.profileImageUrl!] : <String>[]);
+                        if (photos.isEmpty) {
+                          return Container(
+                            height: 320,
+                            margin: const EdgeInsets.only(bottom: 20),
+                            decoration: BoxDecoration(
                               color: const Color(0xFF7A432D),
-                              child: Center(
-                                child: Text(
-                                  c.initials,
-                                  style: const TextStyle(
-                                    fontFamily: 'PlayfairDisplay',
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                c.initials,
+                                style: const TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontSize: 72,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
                             ),
+                          );
+                        }
+                        
+                        return Container(
+                          height: 320,
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF7A432D).withOpacity(0.12),
+                                blurRadius: 16,
+                                offset: const Offset(0, 6),
+                              )
+                            ],
                           ),
-                        ),
-                      ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Stack(
+                              children: [
+                                PageView.builder(
+                                  itemCount: photos.length,
+                                  onPageChanged: (index) {
+                                    setGalleryState(() {
+                                      _activeImageIndex = index;
+                                    });
+                                  },
+                                  itemBuilder: (context, index) {
+                                    return GestureDetector(
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => FullScreenImageViewer(
+                                              images: photos,
+                                              initialIndex: index,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: buildProfileImage(
+                                        photos[index],
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                      ),
+                                    );
+                                  },
+                                ),
+                                if (photos.length > 1)
+                                  Positioned(
+                                    top: 12,
+                                    left: 16,
+                                    right: 16,
+                                    child: Row(
+                                      children: List.generate(
+                                        photos.length,
+                                        (index) => Expanded(
+                                          child: Container(
+                                            height: 3,
+                                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                                            decoration: BoxDecoration(
+                                              color: _activeImageIndex == index
+                                                  ? Colors.white
+                                                  : Colors.white.withOpacity(0.4),
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 16),
                     Center(
                       child: Text(
                         c.name,
@@ -820,4 +881,102 @@ class _InterestStyle {
   final Color backgroundColor;
   final Color foregroundColor;
   const _InterestStyle(this.icon, this.backgroundColor, this.foregroundColor);
+}
+
+class FullScreenImageViewer extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const FullScreenImageViewer({
+    super.key,
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.images.length,
+            onPageChanged: (idx) {
+              setState(() {
+                _currentIndex = idx;
+              });
+            },
+            itemBuilder: (context, index) {
+              return InteractiveViewer(
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Center(
+                  child: buildProfileImage(
+                    widget.images[index],
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                ),
+              );
+            },
+          ),
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.images.length,
+                  (index) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentIndex == index
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }

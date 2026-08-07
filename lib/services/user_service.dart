@@ -145,6 +145,7 @@ class UserService {
     String? travelFrequency,
     String? cardImageUrl,
     String? profileImageUrl,
+    List<String>? profileImages,
     List<String>? cardImages,
     List<CustomCard>? customCards,
     int? connectionsCount,
@@ -194,6 +195,7 @@ class UserService {
       if (travelFrequency != null) updates['travelFrequency'] = travelFrequency;
       if (cardImageUrl != null) updates['cardImageUrl'] = cardImageUrl;
       if (profileImageUrl != null) updates['profileImageUrl'] = profileImageUrl;
+      if (profileImages != null) updates['profileImages'] = profileImages;
       if (cardImages != null) updates['cardImages'] = cardImages;
       if (customCards != null) {
         updates['customCards'] = customCards.map((c) => c.toMap()).toList();

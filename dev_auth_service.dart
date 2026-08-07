@@ -1,4 +1,4 @@
-﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -62,6 +62,7 @@ class AuthService {
     String? currentLocationName,
     String? travelFrequency,
     String? profileImageUrl,
+    List<String> profileImages = const [],
     String? phone,
     String? phoneCountryCode,
     List<String> expertise = const [],
@@ -123,6 +124,7 @@ class AuthService {
           currentLocationName: currentLocationName,
           travelFrequency: travelFrequency,
           profileImageUrl: profileImageUrl,
+          profileImages: profileImages,
           expertise: expertise,
           intents: intents,
           skills: skills,
@@ -306,17 +308,65 @@ class AuthService {
       if (credential.user != null) {
         await _ensureAccessAllowed(credential.user!);
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
-        final snapshot = await docRef.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 5));
+        
+        final lowercaseEmail = email.toLowerCase();
+        final querySnapshot = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: lowercaseEmail)
+            .get();
 
-        if (!snapshot.exists) {
+        if (querySnapshot.docs.isNotEmpty) {
+          final existingDoc = querySnapshot.docs.first;
+          final existingUid = existingDoc.id;
+          
+          if (existingUid != credential.user!.uid) {
+            final existingData = existingDoc.data();
+            existingData['uid'] = credential.user!.uid;
+            existingData['email'] = email;
+            existingData['linkedinId'] = sub;
+            existingData['linkedinSynced'] = true;
+            existingData['linkedinSyncedAt'] = FieldValue.serverTimestamp();
+            if (picture.isNotEmpty) {
+              existingData['profileImageUrl'] = picture;
+              existingData['profileImages'] = [picture];
+            }
+            if (profileUrl.isNotEmpty) {
+              existingData['linkedinProfileUrl'] = profileUrl;
+            }
+            
+            await docRef.set(existingData).timeout(const Duration(seconds: 8));
+            
+            await existingDoc.reference.update({
+              'linkedinId': sub,
+              'linkedinSynced': true,
+              'linkedinSyncedAt': FieldValue.serverTimestamp(),
+            }).timeout(const Duration(seconds: 5));
+          } else {
+            await docRef
+                .update({
+                  'lastSeen': FieldValue.serverTimestamp(),
+                  'name': name,
+                  'email': email,
+                  if (picture.isNotEmpty) 'profileImageUrl': picture,
+                  if (picture.isNotEmpty) 'profileImages': [picture],
+                  if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
+                  'linkedinId': sub,
+                  'linkedinSynced': true,
+                  'linkedinSyncedAt': FieldValue.serverTimestamp(),
+                })
+                .timeout(const Duration(seconds: 5));
+          }
+        } else {
           final profile = UserProfile(
             uid: credential.user!.uid,
             name: name,
-            email: email, // Store real email in Firestore
-            linkedinId: sub, // Store real LinkedIn sub
+            email: email,
+            linkedinId: sub,
             profileImageUrl: picture.isNotEmpty ? picture : null,
+            profileImages: picture.isNotEmpty ? [picture] : const [],
             linkedinProfileUrl: profileUrl.isNotEmpty ? profileUrl : null,
             linkedinSynced: true,
+            onboardingCompleted: false,
             createdAt: DateTime.now(),
             lastSeen: DateTime.now(),
             hasCompletedFeatureTour: false,
@@ -324,20 +374,6 @@ class AuthService {
           await docRef
               .set(profile.toFirestore())
               .timeout(const Duration(seconds: 8));
-        } else {
-          // Touch profile
-          await docRef
-              .update({
-                'lastSeen': FieldValue.serverTimestamp(),
-                'name': name,
-                'email': email,
-                if (picture.isNotEmpty) 'profileImageUrl': picture,
-                if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
-                'linkedinId': sub, // Keep linkedinId updated
-                'linkedinSynced': true,
-                'linkedinSyncedAt': FieldValue.serverTimestamp(),
-              })
-              .timeout(const Duration(seconds: 5));
         }
       }
 

@@ -927,6 +927,14 @@ class AppStateManager extends ChangeNotifier {
                     .toUpperCase()
               : 'P',
           profileImageUrl: data['profileImageUrl'],
+          profileImages: (data['profileImages'] is List)
+              ? (data['profileImages'] as List)
+                  .map((e) => e?.toString() ?? '')
+                  .where((e) => e.trim().isNotEmpty)
+                  .toList()
+              : (data['profileImageUrl'] != null && data['profileImageUrl'].toString().trim().isNotEmpty
+                  ? [data['profileImageUrl'].toString()]
+                  : <String>[]),
           primaryColor: const Color(0xFFE5A475),
           customCards: customCards,
           expertiseWithLevel: targetExpertiseMapList,
