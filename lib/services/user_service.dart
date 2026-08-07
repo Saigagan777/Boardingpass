@@ -1,11 +1,7 @@
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/user_profile.dart';
-import 'linkedin_oauth_config.dart';
-import 'linkedin_secret.dart';
 
 /// Singleton service for Firestore `users` collection operations.
 ///
@@ -370,126 +366,14 @@ class UserService {
     }
   }
 
-  /// Exchanges a LinkedIn authorization code for an access token, fetches
-  /// real profile data from LinkedIn's OpenID Connect endpoint, and updates
-  /// the user's Firestore document with ONLY the data LinkedIn actually provides.
+  /// Completes LinkedIn profile sync via the PKCE + Cloud Function flow.
+  ///
+  /// Prefer signing in with Continue with LinkedIn. This method starts the same
+  /// OAuth handshake and, after callback, the backend links/updates the profile.
   Future<void> syncLinkedInProfile(String userId, String authCode, {String? redirectUri}) async {
-    try {
-      final String clientId = LinkedInOAuthConfig.clientId;
-      final String clientSecret = linkedinClientSecret;
-      final String finalRedirectUri = redirectUri ?? LinkedInOAuthConfig.redirectUri;
-
-      // 1. Exchange authorization code for access token
-      const targetTokenUrl = 'https://www.linkedin.com/oauth/v2/accessToken';
-      final tokenResponseBody = 'grant_type=authorization_code'
-          '&code=${Uri.encodeComponent(authCode)}'
-          '&redirect_uri=${Uri.encodeComponent(finalRedirectUri)}'
-          '&client_id=${Uri.encodeComponent(clientId)}'
-          '&client_secret=${Uri.encodeComponent(clientSecret)}';
-
-      final tokenResponse = await _httpPostProxy(
-        targetTokenUrl,
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: tokenResponseBody,
-      );
-
-      if (tokenResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to exchange LinkedIn token: ${tokenResponse.body}',
-        );
-      }
-
-      final tokenData = jsonDecode(tokenResponse.body);
-      final String accessToken = tokenData['access_token'];
-
-      // 2. Fetch real user info from LinkedIn OpenID Connect endpoint
-      const targetUserInfoUrl = 'https://api.linkedin.com/v2/userinfo';
-      final userInfoResponse = await _httpGetProxy(
-        targetUserInfoUrl,
-        headers: {'Authorization': 'Bearer $accessToken'},
-      );
-
-      if (userInfoResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to fetch LinkedIn user info: ${userInfoResponse.body}',
-        );
-      }
-
-      final userInfo = jsonDecode(userInfoResponse.body);
-      final String email = userInfo['email'] ?? '';
-      final String name = userInfo['name'] ??
-          '${userInfo['given_name'] ?? ''} ${userInfo['family_name'] ?? ''}'.trim();
-      final String picture = userInfo['picture'] ?? '';
-      final String sub = userInfo['sub'] ?? '';
-      final String profileUrl = userInfo['profile'] ?? '';
-
-      // 3. Build update map with ONLY real LinkedIn data
-      final updates = <String, dynamic>{
-        'linkedinSynced': true,
-        'linkedinSyncedAt': FieldValue.serverTimestamp(),
-        'lastSeen': FieldValue.serverTimestamp(),
-      };
-
-      if (name.isNotEmpty) updates['name'] = name;
-      if (email.isNotEmpty) updates['email'] = email;
-      if (picture.isNotEmpty) updates['profileImageUrl'] = picture;
-      if (profileUrl.isNotEmpty) updates['linkedinProfileUrl'] = profileUrl;
-      if (sub.isNotEmpty) {
-        updates['linkedinId'] = sub;
-      }
-
-      // 4. Update Firestore profile with real data
-      await _usersRef.doc(userId).update(updates);
-
-      debugPrint('LinkedIn profile synced successfully for user $userId');
-    } catch (e) {
-      throw Exception('Failed to sync LinkedIn profile: $e');
-    }
-  }
-
-  Future<http.Response> _httpPostProxy(String targetUrl, {Map<String, String>? headers, Object? body}) async {
-    if (!kIsWeb) {
-      return await http.post(Uri.parse(targetUrl), headers: headers, body: body).timeout(const Duration(seconds: 15));
-    }
-    final proxies = [
-      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
-      targetUrl,
-    ];
-    Object? lastErr;
-    for (final proxy in proxies) {
-      try {
-        final res = await http
-            .post(Uri.parse(proxy), headers: headers, body: body)
-            .timeout(const Duration(seconds: 10));
-        if (res.statusCode == 200) return res;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw Exception(lastErr ?? 'Failed to complete POST to $targetUrl via proxies');
-  }
-
-  Future<http.Response> _httpGetProxy(String targetUrl, {Map<String, String>? headers}) async {
-    if (!kIsWeb) {
-      return await http.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 15));
-    }
-    final proxies = [
-      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
-      targetUrl,
-    ];
-    Object? lastErr;
-    for (final proxy in proxies) {
-      try {
-        final res = await http
-            .get(Uri.parse(proxy), headers: headers)
-            .timeout(const Duration(seconds: 10));
-        if (res.statusCode == 200) return res;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw Exception(lastErr ?? 'Failed to complete GET to $targetUrl via proxies');
+    throw UnsupportedError(
+      'Client-side LinkedIn token exchange was removed. '
+      'Use Continue with LinkedIn (PKCE + Cloud Function) instead.',
+    );
   }
 }

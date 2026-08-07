@@ -47,3 +47,10 @@ exports.syncAccountRestriction = onDocumentWritten(
 const emailOtp = require('./email-otp');
 exports.sendEmailOtp = emailOtp.sendEmailOtp;
 exports.verifyEmailOtp = emailOtp.verifyEmailOtp;
+
+// LinkedIn OAuth (PKCE) — secrets:
+//   firebase functions:secrets:set LINKEDIN_CLIENT_SECRET
+// See functions/LINKEDIN_OAUTH.md for redirect URIs and deploy steps.
+const linkedinAuth = require('./linkedin-auth');
+exports.exchangeLinkedInCode = linkedinAuth.exchangeLinkedInCode;
+exports.fullLogoutLinkedIn = linkedinAuth.fullLogoutLinkedIn;

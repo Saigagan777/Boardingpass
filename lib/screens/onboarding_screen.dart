@@ -6,8 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../services/auth_service.dart';
-import '../services/linkedin_oauth_config.dart';
-import 'linkedin_webview.dart';
+import '../features/auth/data/oauth/linkedin_oauth_manager.dart';
+import '../features/auth/domain/repositories/auth_repository.dart';
+import '../features/auth/presentation/linkedin_auth_controller.dart';
 import '../utils/image_helper.dart';
 import '../state_manager.dart';
 import '../services/user_service.dart';
@@ -356,54 +357,79 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   void _handleLinkedInSignIn() async {
-    final String redirectUri = LinkedInOAuthConfig.redirectUri;
-    final String authUrl = LinkedInOAuthConfig.authorizationUrl(
-      redirectUri: redirectUri,
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
+    final controller = LinkedInAuthController(
+      repository: LinkedInAuthRepository.instance,
     );
 
-    debugPrint('--- LinkedIn Auth Debug Info ---');
-    debugPrint('App Client ID: ${LinkedInOAuthConfig.clientId}');
-    debugPrint('Generated redirect_uri: "$redirectUri"');
-    debugPrint('Full authorizationUrl: $authUrl');
-    debugPrint('---------------------------------');
-
-    if (!mounted) return;
-    final String? authCode = await showLinkedInWebView(context, authUrl);
-
-    if (authCode == null) {
-      return;
-    }
-
-    if (authCode.startsWith('error:')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'LinkedIn login failed: ${authCode.replaceFirst('error:', '')}',
-            ),
-            backgroundColor: const Color(0xFF7A432D),
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
     try {
-      final credential = await AuthService().signInWithLinkedIn(
-        authCode,
-        redirectUri: redirectUri,
-      );
-      final user = credential?.user ?? FirebaseAuth.instance.currentUser;
+      final authUser = await controller.continueWithLinkedIn();
+
+      // Web: browser navigates away (status redirecting). Mobile: returns user.
+      if (authUser == null) {
+        if (controller.status == LinkedInAuthStatus.redirecting) {
+          // Keep loading until the page unloads.
+          return;
+        }
+        if (controller.status == LinkedInAuthStatus.cancelled) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(controller.errorMessage ?? 'Sign-in cancelled'),
+                backgroundColor: const Color(0xFF7A432D),
+                action: SnackBarAction(
+                  label: 'Retry',
+                  textColor: Colors.white,
+                  onPressed: _handleLinkedInSignIn,
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        if (controller.status == LinkedInAuthStatus.error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  controller.errorMessage ?? 'LinkedIn login failed',
+                ),
+                backgroundColor: const Color(0xFF7A432D),
+                action: SnackBarAction(
+                  label: 'Retry',
+                  textColor: Colors.white,
+                  onPressed: _handleLinkedInSignIn,
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        return;
+      }
+
+      final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await AppStateManager().syncSignedInUser(user);
       }
+    } on LinkedInOAuthException catch (e) {
+      if (e.code == 'web_redirect') return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: const Color(0xFF7A432D),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _handleLinkedInSignIn,
+            ),
+          ),
+        );
+      }
     } on LinkedInAccountConflictException catch (e) {
-      // The synthetic account for this LinkedIn profile already exists under a
-      // different profile - warn clearly instead of showing a raw Firebase error.
       if (mounted) {
         showDialog(
           context: context,
@@ -446,14 +472,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           SnackBar(
             content: Text('LinkedIn login failed: $e'),
             backgroundColor: const Color(0xFF7A432D),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _handleLinkedInSignIn,
+            ),
           ),
         );
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }

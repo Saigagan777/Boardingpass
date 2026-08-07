@@ -19,6 +19,9 @@ class LinkedInMobileOAuthException implements Exception {
   String toString() => message;
 }
 
+@Deprecated('Use LinkedInAuthRepository.signInWithLinkedIn()')
 Future<LinkedInMobileOAuthResult?> startLinkedInMobileOAuth() {
-  throw UnsupportedError('Native LinkedIn authentication is only available on mobile.');
+  throw UnsupportedError(
+    'Native LinkedIn authentication is handled by LinkedInAuthRepository.',
+  );
 }

@@ -1,37 +1,36 @@
 import 'package:flutter/foundation.dart';
-import 'linkedin_secret.dart';
 
+import '../features/auth/data/oauth/linkedin_oauth_config.dart' as feature;
+import '../features/auth/data/oauth/linkedin_oauth_manager.dart';
+
+/// Compatibility façade over [feature.LinkedInOAuthConfig].
+///
+/// New code should import the feature config / [LinkedInOAuthManager] directly.
 class LinkedInOAuthConfig {
-  static const String clientId = linkedinClientId;
-  static const String state = 'boardingpass_linkedin_oauth_state';
-  // This fallback is retained for the in-app WebView flow. Native mobile
-  // sign-in uses a temporary loopback callback instead (see
-  // linkedin_mobile_auth_io.dart), so the code is returned to the app even
-  // when the user switches to the LinkedIn app.
-  static const String mobileRedirectUri = 'https://www.google.com';
+  static const String clientId = feature.LinkedInOAuthConfig.clientId;
+  static const String mobileRedirectUri =
+      feature.LinkedInOAuthConfig.mobileRedirectUri;
   static const String nativeAuthorizationEndpoint =
-      'https://www.linkedin.com/oauth/v2/authorization';
+      feature.LinkedInOAuthConfig.authorizationEndpoint;
+
+  @Deprecated('Use PKCE random state from LinkedInOAuthManager')
+  static const String state = 'boardingpass_linkedin_oauth_state';
 
   static String get redirectUri {
     if (!kIsWeb) {
       return mobileRedirectUri;
     }
-
     final baseUri = Uri.base;
     if (baseUri.hasScheme && baseUri.hasAuthority) {
       return '${baseUri.scheme}://${baseUri.authority}';
     }
-
     return 'http://localhost:5000';
   }
 
   static String authorizationUrl({required String redirectUri}) {
-    return 'https://www.linkedin.com/oauth/v2/authorization?'
-        'response_type=code'
-        '&client_id=$clientId'
-        '&redirect_uri=${Uri.encodeComponent(redirectUri)}'
-        '&state=$state'
-        '&scope=openid%20profile%20email';
+    final session =
+        LinkedInOAuthManager().createSession(redirectUri: redirectUri);
+    return session.authorizationUrl.toString();
   }
 
   static Uri nativeAuthorizationUri({
@@ -45,7 +44,7 @@ class LinkedInOAuthConfig {
         'client_id': clientId,
         'redirect_uri': redirectUri,
         'state': state,
-        'scope': 'openid profile email',
+        'scope': feature.LinkedInOAuthConfig.scope,
         'code_challenge': codeChallenge,
         'code_challenge_method': 'S256',
       },

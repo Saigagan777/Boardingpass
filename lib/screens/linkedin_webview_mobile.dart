@@ -73,17 +73,11 @@ class _LinkedInWebViewDialogState extends State<LinkedInWebViewDialog> {
         ),
       );
 
-    // Clear cookies before loading request to ensure fresh login/account-switching support
-    WebViewCookieManager().clearCookies().then((_) {
-      if (mounted) {
-        _controller.loadRequest(Uri.parse(widget.authUrl));
-      }
-    }).catchError((e) {
-      debugPrint('Error clearing WebView cookies: $e');
-      if (mounted) {
-        _controller.loadRequest(Uri.parse(widget.authUrl));
-      }
-    });
+    // Do NOT clear cookies — clearing forced credential entry every time and
+    // broke LinkedIn session reuse (unlike Google Sign-In SSO behavior).
+    if (mounted) {
+      _controller.loadRequest(Uri.parse(widget.authUrl));
+    }
   }
 
   void _startTimer() {

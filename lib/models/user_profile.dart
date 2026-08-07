@@ -100,6 +100,11 @@ class UserProfile {
   final bool directPasswordSet;
   final bool hasCompletedFeatureTour;
 
+  /// Multi-provider map, e.g. `{ linkedin: { providerUserId, linkedAt, lastLoginAt } }`.
+  final Map<String, dynamic> authProviders;
+  final DateTime? lastLoginAt;
+  final DateTime? updatedAt;
+
   // Match score
   final int? matchScore;
 
@@ -159,6 +164,9 @@ class UserProfile {
     this.resumeParsedAt,
     this.directPasswordSet = false,
     this.hasCompletedFeatureTour = true,
+    this.authProviders = const {},
+    this.lastLoginAt,
+    this.updatedAt,
     this.matchScore,
     this.expertiseWithLevel = const [],
     this.interestsWithPriority = const [],
@@ -242,6 +250,9 @@ class UserProfile {
       directPasswordSet: data['directPasswordSet'] ?? false,
       // Existing accounts should not be interrupted by the new-user tour.
       hasCompletedFeatureTour: data['hasCompletedFeatureTour'] ?? true,
+      authProviders: Map<String, dynamic>.from(data['authProviders'] ?? {}),
+      lastLoginAt: (data['lastLoginAt'] as Timestamp?)?.toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
       matchScore: data['matchScore'] as int?,
       expertiseWithLevel: (data['expertiseWithLevel'] as List?)
               ?.map((item) => Map<String, dynamic>.from(item))
@@ -313,6 +324,9 @@ class UserProfile {
       'resumeParsedAt': resumeParsedAt != null ? Timestamp.fromDate(resumeParsedAt!) : null,
       'directPasswordSet': directPasswordSet,
       'hasCompletedFeatureTour': hasCompletedFeatureTour,
+      'authProviders': authProviders,
+      if (lastLoginAt != null) 'lastLoginAt': Timestamp.fromDate(lastLoginAt!),
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
       'matchScore': matchScore,
       'expertiseWithLevel': expertiseWithLevel,
       'interestsWithPriority': interestsWithPriority,
@@ -370,6 +384,9 @@ class UserProfile {
     DateTime? resumeParsedAt,
     bool? directPasswordSet,
     bool? hasCompletedFeatureTour,
+    Map<String, dynamic>? authProviders,
+    DateTime? lastLoginAt,
+    DateTime? updatedAt,
     int? matchScore,
     List<Map<String, dynamic>>? expertiseWithLevel,
     List<Map<String, dynamic>>? interestsWithPriority,
@@ -428,6 +445,9 @@ class UserProfile {
       directPasswordSet: directPasswordSet ?? this.directPasswordSet,
       hasCompletedFeatureTour:
           hasCompletedFeatureTour ?? this.hasCompletedFeatureTour,
+      authProviders: authProviders ?? this.authProviders,
+      lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       matchScore: matchScore ?? this.matchScore,
       expertiseWithLevel: expertiseWithLevel ?? this.expertiseWithLevel,
       interestsWithPriority: interestsWithPriority ?? this.interestsWithPriority,

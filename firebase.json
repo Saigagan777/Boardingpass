@@ -1,6 +1,6 @@
 {
   "flutter": {
-    "platfart": {
+    "platforms": {
       "projectId": "fir-p-57bdc",
       "configurations": {
         "android": "1:514349178076:android:94a46f73440a99e2ba6819",
@@ -13,5 +13,32 @@
   },
   "functions": [
     { "source": "functions", "codebase": "default" }
-  ]
+  ],
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/oauth/linkedin/callback",
+        "destination": "/oauth/linkedin/callback/index.html"
+      },
+      {
+        "source": "/api/linkedin/exchange",
+        "function": {
+          "functionId": "exchangeLinkedInCode",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/linkedin/full-logout",
+        "function": {
+          "functionId": "fullLogoutLinkedIn",
+          "region": "us-central1"
+        }
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
 }

@@ -4,14 +4,14 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:app_links/app_links.dart';
 import 'firebase_options.dart';
 import 'state_manager.dart';
 import 'services/auth_service.dart';
-import 'services/linkedin_oauth_config.dart';
-import 'services/user_service.dart';
+import 'features/auth/data/oauth/linkedin_oauth_manager.dart';
+import 'features/auth/domain/repositories/auth_repository.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/hub_screen.dart';
 import 'screens/profile_screen.dart';
@@ -25,19 +25,18 @@ import 'screens/admin_panel.dart';
 import 'screens/feature_tour_screen.dart';
 import 'utils/web_helper.dart';
 import 'services/notification_service.dart';
+import 'services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // --- Web OAuth Redirect Handling ---
-  // When LinkedIn redirects back to the app on Web, the URL contains ?code=XXX.
-  // Capture it here before anything else.
-  String? webOAuthCode;
+  // When LinkedIn redirects back to the SPA, the URL contains ?code=&state=.
+  Uri? webOAuthCallback;
   try {
     final uri = Uri.base;
-    webOAuthCode = uri.queryParameters['code'];
-    if (webOAuthCode != null && webOAuthCode.isNotEmpty && kIsWeb) {
-      // Clean up the URL so that page refreshes do not re-run OAuth with stale codes
+    if (kIsWeb && LinkedInAuthRepository.isLinkedInCallback(uri)) {
+      webOAuthCallback = uri;
       cleanUrlQueryParameters();
     }
   } catch (_) {}
@@ -54,7 +53,7 @@ void main() async {
   // Always start the app immediately — never block on network calls
   final appState = AppStateManager();
 
-  if (webOAuthCode != null && webOAuthCode.isNotEmpty) {
+  if (webOAuthCallback != null) {
     appState.beginAuthCallback();
   }
 
@@ -72,56 +71,30 @@ void main() async {
   appState.init();
   runApp(const MainApp());
 
-  // Process OAuth code AFTER the app is visible (non-blocking)
-  if (webOAuthCode != null && webOAuthCode.isNotEmpty) {
-    debugPrint('LinkedIn web OAuth code detected.');
+  // Deep links (mobile): nexmeet://oauth/linkedin?...
+  if (!kIsWeb) {
+    unawaited(_listenForLinkedInDeepLinks(appState));
+  }
+
+  // Process web OAuth code AFTER the app is visible (non-blocking)
+  if (webOAuthCallback != null) {
+    debugPrint('LinkedIn web OAuth callback detected.');
     try {
-      String? pendingSyncUid;
-      if (kIsWeb) {
-        const storage = FlutterSecureStorage();
-        pendingSyncUid = await storage.read(key: 'linkedin_sync_pending_uid');
-      }
-
-      if (pendingSyncUid != null && pendingSyncUid.isNotEmpty) {
-        await UserService().syncLinkedInProfile(
-          pendingSyncUid,
-          webOAuthCode,
-          redirectUri: LinkedInOAuthConfig.redirectUri,
-        ).timeout(const Duration(seconds: 30));
-        if (kIsWeb) {
-          const storage = FlutterSecureStorage();
-          await storage.delete(key: 'linkedin_sync_pending_uid');
-        }
-
-        final user = AuthService().currentUser;
-        if (user != null) {
-          await appState.syncSignedInUser(user);
-        } else {
-          appState.endAuthCallback();
-        }
-        debugPrint('LinkedIn web profile sync successful!');
-      } else {
-        final credential = await AuthService().signInWithLinkedIn(
-          webOAuthCode,
-          redirectUri: LinkedInOAuthConfig.redirectUri,
-        ).timeout(const Duration(seconds: 30));
-        final user = credential?.user ?? AuthService().currentUser;
-        if (user != null) {
-          await appState.syncSignedInUser(user);
-        } else {
-          appState.endAuthCallback();
-        }
+      await AuthService()
+          .completeLinkedInSignIn(webOAuthCallback)
+          .timeout(const Duration(seconds: 45));
+      final user = AuthService().currentUser;
+      if (user != null) {
+        await appState.syncSignedInUser(user);
         debugPrint('LinkedIn web OAuth sign-in successful!');
+      } else {
+        appState.endAuthCallback();
       }
     } catch (e) {
       debugPrint('LinkedIn web OAuth error: $e');
-      if (kIsWeb) {
-        try {
-          const storage = FlutterSecureStorage();
-          await storage.delete(key: 'linkedin_sync_pending_uid');
-        } catch (_) {}
-      }
-      if (e is LinkedInAccountConflictException) {
+      if (e is LinkedInOAuthException) {
+        appState.setAuthErrorMessage(e.message);
+      } else if (e is LinkedInAccountConflictException) {
         appState.setAuthErrorMessage(e.message);
       } else {
         appState.setAuthErrorMessage('LinkedIn authentication failed: $e');
@@ -129,6 +102,87 @@ void main() async {
       appState.endAuthCallback();
     }
   }
+}
+
+Future<void> _listenForLinkedInDeepLinks(AppStateManager appState) async {
+  final appLinks = AppLinks();
+  // Prevent duplicate handling when both getInitialLink and uriLinkStream fire.
+  final handledKeys = <String>{};
+  var inFlight = false;
+
+  Future<void> handle(Uri uri) async {
+    if (!LinkedInAuthRepository.isLinkedInCallback(uri)) return;
+
+    final key = uri.queryParameters['code'] ??
+        uri.queryParameters['error'] ??
+        uri.toString();
+    if (handledKeys.contains(key) || inFlight) {
+      debugPrint('LinkedIn deep link ignored (duplicate): $uri');
+      return;
+    }
+
+    inFlight = true;
+    try {
+      if (handledKeys.contains(key)) return;
+
+      // If PKCE session was already consumed (e.g. first handler succeeded), skip.
+      final hasPending =
+          await LinkedInAuthRepository.instance.hasPendingLinkedInOAuth();
+      if (!hasPending) {
+        debugPrint('LinkedIn deep link ignored (no pending PKCE): $uri');
+        return;
+      }
+
+      handledKeys.add(key);
+      debugPrint('LinkedIn deep link: $uri');
+      appState.beginAuthCallback();
+      try {
+        await AuthService()
+            .completeLinkedInSignIn(uri)
+            .timeout(const Duration(seconds: 45));
+        final user = AuthService().currentUser;
+        if (user != null) {
+          await appState.syncSignedInUser(user);
+        } else {
+          appState.endAuthCallback();
+        }
+      } catch (e) {
+        debugPrint('LinkedIn deep link error: $e');
+        handledKeys.remove(key);
+        if (e is LinkedInOAuthException) {
+          // Stale duplicate callbacks after a successful exchange.
+          if (e.code == 'no_pending_session' &&
+              AuthService().currentUser != null) {
+            return;
+          }
+          appState.setAuthErrorMessage(e.message);
+        } else {
+          appState.setAuthErrorMessage('LinkedIn authentication failed: $e');
+        }
+        appState.endAuthCallback();
+      }
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  try {
+    final initial = await appLinks.getInitialLink();
+    if (initial != null) {
+      await handle(initial);
+    }
+  } catch (e) {
+    debugPrint('Initial deep link error: $e');
+  }
+
+  appLinks.uriLinkStream.listen(
+    (uri) {
+      unawaited(handle(uri));
+    },
+    onError: (Object e) {
+      debugPrint('Deep link stream error: $e');
+    },
+  );
 }
 
 class MainApp extends StatelessWidget {

@@ -22,6 +22,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- LinkedIn / OAuth tokens (server-only, encrypted at rest) --------
+    match /oauth_tokens/{uid} {
+      allow read, write: if false;
+    }
+
     // ---- Everything else: test-mode equivalent (open) --------------------
     match /{document=**} {
       allow read, write: if true;

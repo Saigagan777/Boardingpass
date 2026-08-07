@@ -1508,8 +1508,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', 'FAQs & contact', () => HelpSupportSheet.show(context)),
             _buildMenuItem(Icons.delete_forever_rounded, 'Delete Account', 'Permanently delete your profile & data', () => _showDeleteAccountDialog(context), isLogout: true),
             _buildMenuItem(Icons.logout_rounded, 'Logout', 'Sign out of your account', () => _state.logOut(), isLogout: true),
+            _buildMenuItem(
+              Icons.no_accounts_outlined,
+              'Full Logout',
+              'Sign out and revoke LinkedIn access for next login',
+              () => _confirmFullLogout(context),
+              isLogout: true,
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmFullLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Full Logout'),
+        content: const Text(
+          'This signs you out of NexMeet and revokes LinkedIn tokens stored on our servers. '
+          'You may also be signed out of LinkedIn in the browser so the next login asks for credentials again.\n\n'
+          'Use regular Logout if you want the next Continue with LinkedIn to stay seamless.',
+          style: TextStyle(fontFamily: 'PlusJakartaSans'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF7A432D))),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _state.fullLogOut();
+            },
+            child: const Text('Full Logout', style: TextStyle(color: Color(0xFFD32F2F))),
+          ),
+        ],
       ),
     );
   }

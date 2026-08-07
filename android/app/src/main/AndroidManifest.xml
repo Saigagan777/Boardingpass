@@ -40,6 +40,26 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- LinkedIn OAuth deep link: nexmeet://oauth/linkedin -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="nexmeet"
+                    android:host="oauth"
+                    android:pathPrefix="/linkedin"/>
+            </intent-filter>
+            <!-- Optional App Link for HTTPS Hosting callback (verify later in Play Console) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="fir-p-57bdc.web.app"
+                    android:pathPrefix="/oauth/linkedin/callback"/>
+            </intent-filter>
         </activity>
         <!-- Default Notification Channel for FCM -->
         <meta-data

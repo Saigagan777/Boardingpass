@@ -1,17 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../features/auth/data/oauth/linkedin_oauth_manager.dart';
+import '../features/auth/domain/repositories/auth_repository.dart';
 import '../models/user_profile.dart';
-import 'linkedin_oauth_config.dart';
-import 'linkedin_secret.dart';
 
 /// Singleton service handling all Firebase Authentication operations.
 ///
-/// Supports email/password sign-up and sign-in, LinkedIn OIDC login,
-/// admin detection via custom claims with an email fallback for development,
-/// and automatic Firestore user-profile creation on first login.
+/// Supports email/password sign-up and sign-in, LinkedIn OIDC login
+/// (PKCE + Cloud Function custom token), admin detection via custom claims
+/// with an email fallback for development, and automatic Firestore
+/// user-profile creation on first login.
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
@@ -231,170 +230,49 @@ class AuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // LinkedIn OIDC login
+  // LinkedIn OIDC login (PKCE + Cloud Function)
   // ---------------------------------------------------------------------------
 
-  /// Signs in with LinkedIn using a real OAuth code-to-token exchange and fetches
-  /// public profile details from LinkedIn to sign in and save to Firestore.
+  /// Starts the LinkedIn OAuth flow (system browser on mobile, redirect on web).
+  ///
+  /// On mobile, waits for the deep-link callback. On web, throws
+  /// [LinkedInOAuthException] with code `web_redirect` after navigating away.
+  Future<UserCredential?> signInWithLinkedInInteractive() async {
+    final repo = LinkedInAuthRepository.instance;
+    final authUser = await repo.signInWithLinkedIn();
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('LinkedIn sign-in completed but no Firebase user is present.');
+    }
+    await _ensureAccessAllowed(user);
+    debugPrint(
+      'LinkedIn sign-in ok uid=${authUser.uid} email=${authUser.email}',
+    );
+    return null; // Session already established via custom token.
+  }
+
+  /// Completes LinkedIn OAuth after a redirect / deep link containing `code`.
+  Future<UserCredential?> completeLinkedInSignIn(Uri callbackUri) async {
+    final repo = LinkedInAuthRepository.instance;
+    await repo.completeLinkedInCallback(callbackUri);
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw Exception('LinkedIn callback completed but no Firebase user is present.');
+    }
+    await _ensureAccessAllowed(user);
+    return null;
+  }
+
+  /// @deprecated Use [signInWithLinkedInInteractive] or [completeLinkedInSignIn].
   Future<UserCredential?> signInWithLinkedIn(
     String code, {
     String? redirectUri,
     String? codeVerifier,
   }) async {
-    final String clientId = LinkedInOAuthConfig.clientId;
-    final String clientSecret = linkedinClientSecret;
-    final String finalRedirectUri =
-        redirectUri ?? LinkedInOAuthConfig.redirectUri;
-
-    try {
-      // 1. Exchange authorization code for access token
-      const targetTokenUrl = 'https://www.linkedin.com/oauth/v2/accessToken';
-      final tokenRequestBody = <String, String>{
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': finalRedirectUri,
-        'client_id': clientId,
-        if (codeVerifier == null) 'client_secret': clientSecret,
-        'code_verifier': ?codeVerifier,
-      }.entries.map((entry) {
-        return '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}';
-      }).join('&');
-
-      final tokenResponse = await _httpPostProxy(
-        targetTokenUrl,
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: tokenRequestBody,
-      );
-
-      if (tokenResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to exchange LinkedIn token: ${tokenResponse.body}',
-        );
-      }
-
-      final tokenData = jsonDecode(tokenResponse.body);
-      final String accessToken = tokenData['access_token'];
-
-      // 2. Fetch userinfo using OpenID Connect
-      const targetUserInfoUrl = 'https://api.linkedin.com/v2/userinfo';
-      final userInfoResponse = await _httpGetProxy(
-        targetUserInfoUrl,
-        headers: {'Authorization': 'Bearer $accessToken'},
-      );
-
-      if (userInfoResponse.statusCode != 200) {
-        throw Exception(
-          'Failed to fetch LinkedIn user info: ${userInfoResponse.body}',
-        );
-      }
-
-      final userInfo = jsonDecode(userInfoResponse.body);
-      final String email = userInfo['email'] ?? '';
-      final String name =
-          userInfo['name'] ??
-          '${userInfo['given_name'] ?? 'User'} ${userInfo['family_name'] ?? ''}'
-              .trim();
-      final String picture = userInfo['picture'] ?? '';
-      final String sub = userInfo['sub'] ?? ''; // LinkedIn unique user ID
-      final String profileUrl = userInfo['profile'] ?? '';
-
-      if (email.isEmpty) {
-        throw Exception('No email address returned from LinkedIn');
-      }
-
-      // 3. Authenticate with Firebase using a synthetic email address derived from LinkedIn's unique sub
-      // This prevents conflict with users who may have already registered using the same email address
-      // with a standard password, while still letting us store their real email in Firestore.
-      final String firebaseEmail = 'linkedin_$sub@boardingpass.com';
-      final String securePassword = 'linkedin_user_$sub';
-
-      UserCredential credential;
-      try {
-        credential = await _auth.signInWithEmailAndPassword(
-          email: firebaseEmail,
-          password: securePassword,
-        );
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'user-not-found' ||
-            e.code == 'invalid-credential' ||
-            e.code == 'wrong-password') {
-          try {
-            // Create Firebase User
-            credential = await _auth.createUserWithEmailAndPassword(
-              email: firebaseEmail,
-              password: securePassword,
-            );
-            await credential.user?.updateDisplayName(name);
-          } on FirebaseAuthException catch (createError) {
-            if (createError.code == 'email-already-in-use') {
-              // The synthetic account for this LinkedIn profile already exists
-              // but the derived password did not match - it was created by a
-              // different flow/profile. Creating it again would hijack that
-              // account, so fail with a clear, user-facing message instead.
-              throw const LinkedInAccountConflictException(
-                'This LinkedIn account is already linked to an existing '
-                'NexMeet profile. Please sign in with that account\'s email '
-                'and password instead.',
-              );
-            }
-            rethrow;
-          }
-        } else {
-          rethrow;
-        }
-      }
-
-      // 4. Save/Update Profile details in Firestore
-      if (credential.user != null) {
-        await _ensureAccessAllowed(credential.user!);
-        final docRef = _firestore.collection('users').doc(credential.user!.uid);
-        final snapshot = await docRef.get().timeout(const Duration(seconds: 10), onTimeout: () => docRef.get(const GetOptions(source: Source.cache)));
-
-        if (!snapshot.exists) {
-          final profile = UserProfile(
-            uid: credential.user!.uid,
-            name: name,
-            email: email, // Store real email in Firestore
-            linkedinId: sub, // Store real LinkedIn sub
-            profileImageUrl: picture.isNotEmpty ? picture : null,
-            linkedinProfileUrl: profileUrl.isNotEmpty ? profileUrl : null,
-            linkedinSynced: true,
-            onboardingCompleted: false,
-            createdAt: DateTime.now(),
-            lastSeen: DateTime.now(),
-            hasCompletedFeatureTour: false,
-          );
-          await docRef
-              .set(profile.toFirestore())
-              .timeout(const Duration(seconds: 8));
-        } else {
-          // Touch profile.
-          // Note: 'onboardingCompleted' is intentionally NOT reset here. For an
-          // existing, already-completed user this would silently mark them as
-          // incomplete again on every LinkedIn login and drop them from
-          // discoverable results (loadCandidates filters on this flag). New
-          // profiles are initialized with onboardingCompleted: false above.
-          await docRef
-              .update({
-                'lastSeen': FieldValue.serverTimestamp(),
-                'name': name,
-                'email': email,
-                if (picture.isNotEmpty) 'profileImageUrl': picture,
-                if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
-                'linkedinId': sub, // Keep linkedinId updated
-                'linkedinSynced': true,
-                'linkedinSyncedAt': FieldValue.serverTimestamp(),
-              })
-              .timeout(const Duration(seconds: 5));
-        }
-      }
-
-      return credential;
-    } on FirebaseAuthException {
-      rethrow;
-    } catch (e) {
-      throw Exception('LinkedIn authentication failed: $e');
-    }
+    throw const LinkedInOAuthException(
+      'LinkedIn sign-in must use the PKCE flow. Tap Continue with LinkedIn again.',
+      code: 'legacy_flow_disabled',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -425,12 +303,24 @@ class AuthService {
   // ---------------------------------------------------------------------------
 
   /// Signs out the current user from Firebase Auth.
+  ///
+  /// Does **not** revoke the LinkedIn browser session, so the next
+  /// Continue with LinkedIn can reuse LinkedIn SSO (like Google Sign-In).
   Future<void> signOut() async {
     try {
-      await _auth.signOut();
+      await LinkedInAuthRepository.instance.signOut();
     } catch (e) {
+      try {
+        await _auth.signOut();
+      } catch (_) {}
       throw Exception('Sign-out failed: $e');
     }
+  }
+
+  /// Full logout: revoke server-stored LinkedIn tokens (if any), clear local
+  /// session, and best-effort open LinkedIn logout in the browser.
+  Future<void> fullLogout() async {
+    await LinkedInAuthRepository.instance.fullLogout();
   }
 
   // ---------------------------------------------------------------------------
@@ -546,63 +436,9 @@ class AuthService {
       throw Exception('Failed to send password reset email: $e');
     }
   }
-
-  /// Sends an HTTP POST with CORS proxy fallback handling on Web to prevent timeouts.
-  Future<http.Response> _httpPostProxy(String targetUrl, {Map<String, String>? headers, Object? body}) async {
-    if (!kIsWeb) {
-      return await http.post(Uri.parse(targetUrl), headers: headers, body: body).timeout(const Duration(seconds: 15));
-    }
-    final proxies = [
-      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
-      targetUrl,
-    ];
-    Object? lastErr;
-    for (final proxy in proxies) {
-      try {
-        final res = await http
-            .post(Uri.parse(proxy), headers: headers, body: body)
-            .timeout(const Duration(seconds: 10));
-        if (res.statusCode == 200) return res;
-        debugPrint('[Auth Proxy POST] $proxy status ${res.statusCode}');
-      } catch (e) {
-        debugPrint('[Auth Proxy POST] $proxy failed: $e');
-        lastErr = e;
-      }
-    }
-    throw Exception(lastErr ?? 'Failed to complete POST to $targetUrl via proxies');
-  }
-
-  /// Sends an HTTP GET with CORS proxy fallback handling on Web to prevent timeouts.
-  Future<http.Response> _httpGetProxy(String targetUrl, {Map<String, String>? headers}) async {
-    if (!kIsWeb) {
-      return await http.get(Uri.parse(targetUrl), headers: headers).timeout(const Duration(seconds: 15));
-    }
-    final proxies = [
-      'https://corsproxy.io/?url=${Uri.encodeComponent(targetUrl)}',
-      'https://api.allorigins.win/raw?url=${Uri.encodeComponent(targetUrl)}',
-      targetUrl,
-    ];
-    Object? lastErr;
-    for (final proxy in proxies) {
-      try {
-        final res = await http
-            .get(Uri.parse(proxy), headers: headers)
-            .timeout(const Duration(seconds: 10));
-        if (res.statusCode == 200) return res;
-        debugPrint('[Auth Proxy GET] $proxy status ${res.statusCode}');
-      } catch (e) {
-        debugPrint('[Auth Proxy GET] $proxy failed: $e');
-        lastErr = e;
-      }
-    }
-    throw Exception(lastErr ?? 'Failed to complete GET to $targetUrl via proxies');
-  }
 }
 
-/// Thrown when a LinkedIn sign-in cannot proceed because the synthetic Firebase
-/// account for that LinkedIn profile already exists but was created by a
-/// different flow/profile, so it must not be silently re-created.
+/// Thrown when a LinkedIn sign-in cannot proceed because of an account conflict.
 class LinkedInAccountConflictException implements Exception {
   const LinkedInAccountConflictException(this.message);
 

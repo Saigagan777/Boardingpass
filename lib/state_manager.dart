@@ -180,11 +180,34 @@ class AppStateManager extends ChangeNotifier {
 
   void logOut() async {
     try {
+      // Normal logout: clears Firebase session only. LinkedIn SSO remains so
+      // the next Continue with LinkedIn can skip credential entry.
       await AuthService().signOut();
     } catch (e) {
       debugPrint('Error signing out: $e');
     }
     // Immediately clear state locally to ensure responsive UI updates.
+    _isLoggedIn = false;
+    _isAuthCallbackInProgress = false;
+    _profileData = null;
+    _isAdminView = false;
+    _activeChatContact = null;
+    _selectedCheckinType = CheckinType.event;
+    _initializeData();
+    notifyListeners();
+  }
+
+  /// Full logout: revoke server-stored LinkedIn tokens (best effort), clear
+  /// local session, and open LinkedIn logout so SSO is not reused.
+  Future<void> fullLogOut() async {
+    try {
+      await AuthService().fullLogout();
+    } catch (e) {
+      debugPrint('Error during full logout: $e');
+      try {
+        await AuthService().signOut();
+      } catch (_) {}
+    }
     _isLoggedIn = false;
     _isAuthCallbackInProgress = false;
     _profileData = null;
