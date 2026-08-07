@@ -149,6 +149,7 @@ class UserService {
     String? travelFrequency,
     String? cardImageUrl,
     String? profileImageUrl,
+    List<String>? profileImages,
     List<String>? cardImages,
     List<CustomCard>? customCards,
     int? connectionsCount,
@@ -198,6 +199,7 @@ class UserService {
       if (travelFrequency != null) updates['travelFrequency'] = travelFrequency;
       if (cardImageUrl != null) updates['cardImageUrl'] = cardImageUrl;
       if (profileImageUrl != null) updates['profileImageUrl'] = profileImageUrl;
+      if (profileImages != null) updates['profileImages'] = profileImages;
       if (cardImages != null) updates['cardImages'] = cardImages;
       if (customCards != null) {
         updates['customCards'] = customCards.map((c) => c.toMap()).toList();
@@ -432,7 +434,10 @@ class UserService {
 
       if (name.isNotEmpty) updates['name'] = name;
       if (email.isNotEmpty) updates['email'] = email;
-      if (picture.isNotEmpty) updates['profileImageUrl'] = picture;
+      if (picture.isNotEmpty) {
+        updates['profileImageUrl'] = picture;
+        updates['profileImages'] = [picture];
+      }
       if (profileUrl.isNotEmpty) updates['linkedinProfileUrl'] = profileUrl;
       if (sub.isNotEmpty) {
         updates['linkedinId'] = sub;

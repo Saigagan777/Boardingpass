@@ -49,6 +49,7 @@ class UserProfile {
   final List<CustomCard> customCards;
   final String? linkedinId;
   final String? profileImageUrl;
+  final List<String> profileImages;
   final String? headline;
   final String? company;
   final String? role;
@@ -120,6 +121,7 @@ class UserProfile {
     this.customCards = const [],
     this.linkedinId,
     this.profileImageUrl,
+    this.profileImages = const [],
     this.headline,
     this.company,
     this.role,
@@ -189,6 +191,7 @@ class UserProfile {
           [],
       linkedinId: data['linkedinId'],
       profileImageUrl: data['profileImageUrl'],
+      profileImages: List<String>.from(data['profileImages'] ?? (data['profileImageUrl'] != null ? [data['profileImageUrl']] : [])),
       headline: data['headline'],
       company: data['company'],
       role: data['role'],
@@ -274,6 +277,7 @@ class UserProfile {
       'customCards': customCards.map((c) => c.toMap()).toList(),
       'linkedinId': linkedinId,
       'profileImageUrl': profileImageUrl,
+      'profileImages': profileImages,
       'headline': headline,
       'company': company,
       'role': role,
@@ -338,6 +342,7 @@ class UserProfile {
     List<CustomCard>? customCards,
     String? linkedinId,
     String? profileImageUrl,
+    List<String>? profileImages,
     String? headline,
     String? company,
     String? role,
@@ -394,6 +399,7 @@ class UserProfile {
       customCards: customCards ?? this.customCards,
       linkedinId: linkedinId ?? this.linkedinId,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
+      profileImages: profileImages ?? this.profileImages,
       headline: headline ?? this.headline,
       company: company ?? this.company,
       role: role ?? this.role,

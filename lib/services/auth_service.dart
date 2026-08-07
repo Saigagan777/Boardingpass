@@ -62,6 +62,7 @@ class AuthService {
     String? currentLocationName,
     String? travelFrequency,
     String? profileImageUrl,
+    List<String> profileImages = const [],
     String? phone,
     String? phoneCountryCode,
     String? dob,
@@ -147,6 +148,7 @@ class AuthService {
           currentLocationName: currentLocationName,
           travelFrequency: travelFrequency,
           profileImageUrl: profileImageUrl,
+          profileImages: profileImages,
           expertise: expertise,
           intents: intents,
           skills: skills,
@@ -348,15 +350,62 @@ class AuthService {
       if (credential.user != null) {
         await _ensureAccessAllowed(credential.user!);
         final docRef = _firestore.collection('users').doc(credential.user!.uid);
-        final snapshot = await docRef.get().timeout(const Duration(seconds: 10), onTimeout: () => docRef.get(const GetOptions(source: Source.cache)));
+        
+        final lowercaseEmail = email.toLowerCase();
+        final querySnapshot = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: lowercaseEmail)
+            .get();
 
-        if (!snapshot.exists) {
+        if (querySnapshot.docs.isNotEmpty) {
+          final existingDoc = querySnapshot.docs.first;
+          final existingUid = existingDoc.id;
+          
+          if (existingUid != credential.user!.uid) {
+            final existingData = existingDoc.data();
+            existingData['uid'] = credential.user!.uid;
+            existingData['email'] = email;
+            existingData['linkedinId'] = sub;
+            existingData['linkedinSynced'] = true;
+            existingData['linkedinSyncedAt'] = FieldValue.serverTimestamp();
+            if (picture.isNotEmpty) {
+              existingData['profileImageUrl'] = picture;
+              existingData['profileImages'] = [picture];
+            }
+            if (profileUrl.isNotEmpty) {
+              existingData['linkedinProfileUrl'] = profileUrl;
+            }
+            
+            await docRef.set(existingData).timeout(const Duration(seconds: 8));
+            
+            await existingDoc.reference.update({
+              'linkedinId': sub,
+              'linkedinSynced': true,
+              'linkedinSyncedAt': FieldValue.serverTimestamp(),
+            }).timeout(const Duration(seconds: 5));
+          } else {
+            await docRef
+                .update({
+                  'lastSeen': FieldValue.serverTimestamp(),
+                  'name': name,
+                  'email': email,
+                  if (picture.isNotEmpty) 'profileImageUrl': picture,
+                  if (picture.isNotEmpty) 'profileImages': [picture],
+                  if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
+                  'linkedinId': sub,
+                  'linkedinSynced': true,
+                  'linkedinSyncedAt': FieldValue.serverTimestamp(),
+                })
+                .timeout(const Duration(seconds: 5));
+          }
+        } else {
           final profile = UserProfile(
             uid: credential.user!.uid,
             name: name,
-            email: email, // Store real email in Firestore
-            linkedinId: sub, // Store real LinkedIn sub
+            email: email,
+            linkedinId: sub,
             profileImageUrl: picture.isNotEmpty ? picture : null,
+            profileImages: picture.isNotEmpty ? [picture] : const [],
             linkedinProfileUrl: profileUrl.isNotEmpty ? profileUrl : null,
             linkedinSynced: true,
             onboardingCompleted: false,
@@ -367,25 +416,6 @@ class AuthService {
           await docRef
               .set(profile.toFirestore())
               .timeout(const Duration(seconds: 8));
-        } else {
-          // Touch profile.
-          // Note: 'onboardingCompleted' is intentionally NOT reset here. For an
-          // existing, already-completed user this would silently mark them as
-          // incomplete again on every LinkedIn login and drop them from
-          // discoverable results (loadCandidates filters on this flag). New
-          // profiles are initialized with onboardingCompleted: false above.
-          await docRef
-              .update({
-                'lastSeen': FieldValue.serverTimestamp(),
-                'name': name,
-                'email': email,
-                if (picture.isNotEmpty) 'profileImageUrl': picture,
-                if (profileUrl.isNotEmpty) 'linkedinProfileUrl': profileUrl,
-                'linkedinId': sub, // Keep linkedinId updated
-                'linkedinSynced': true,
-                'linkedinSyncedAt': FieldValue.serverTimestamp(),
-              })
-              .timeout(const Duration(seconds: 5));
         }
       }
 

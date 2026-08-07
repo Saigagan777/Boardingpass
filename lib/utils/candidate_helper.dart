@@ -151,6 +151,7 @@ class CandidateHelper {
                 .toUpperCase()
           : 'P',
       profileImageUrl: data['profileImageUrl'],
+      profileImages: List<String>.from(data['profileImages'] ?? (data['profileImageUrl'] != null ? [data['profileImageUrl']] : [])),
       primaryColor: const Color(0xFFE5A475),
       customCards: customCards,
       expertiseWithLevel: targetExpertiseMapList,

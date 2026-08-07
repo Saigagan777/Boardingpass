@@ -53,6 +53,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   double _dragDy = 0.0;
   bool _isAnimating = false;
   bool _isProfileExpanded = false;
+  final Map<String, int> _cardImageIndices = {};
   _SwipeAction? _thresholdHapticAction;
   _SwipeAction? _completionAction;
   int _completionEffectToken = 0;
@@ -2599,82 +2600,133 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 218,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  buildProfileImage(
-                    c.profileImageUrl ?? '',
-                    fit: BoxFit.cover,
-                    fallback: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            c.primaryColor,
-                            const Color(0xFFB06F4D),
-                            const Color(0xFF3E1F11),
-                          ],
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          c.initials,
-                          style: const TextStyle(
-                            fontFamily: 'PlayfairDisplay',
-                            fontSize: 56,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+            Builder(
+              builder: (cardCtx) {
+                final photos = c.profileImages.isNotEmpty
+                    ? c.profileImages
+                    : (c.profileImageUrl != null && c.profileImageUrl!.isNotEmpty ? [c.profileImageUrl!] : <String>[]);
+                final activeIndex = (photos.isNotEmpty) 
+                    ? ((_cardImageIndices[c.uid ?? ''] ?? 0) % photos.length).clamp(0, photos.length - 1)
+                    : 0;
+                final activePhoto = (photos.isNotEmpty) ? photos[activeIndex] : '';
+                
+                return GestureDetector(
+                  onTapUp: (details) {
+                    if (photos.length <= 1) return;
+                    final renderBox = cardCtx.findRenderObject() as RenderBox?;
+                    final cardWidth = renderBox != null ? renderBox.size.width : MediaQuery.of(context).size.width - 32;
+                    final tapPositionX = details.localPosition.dx;
+                    setState(() {
+                      int currentIdx = _cardImageIndices[c.uid ?? ''] ?? 0;
+                      if (tapPositionX < cardWidth / 2) {
+                        _cardImageIndices[c.uid ?? ''] = (currentIdx - 1 + photos.length) % photos.length;
+                      } else {
+                        _cardImageIndices[c.uid ?? ''] = (currentIdx + 1) % photos.length;
+                      }
+                    });
+                  },
+                  child: SizedBox(
+                    height: 218,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        buildProfileImage(
+                          activePhoto,
+                          fit: BoxFit.cover,
+                          fallback: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  c.primaryColor,
+                                  const Color(0xFFB06F4D),
+                                  const Color(0xFF3E1F11),
+                                ],
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                c.initials,
+                                style: const TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontSize: 56,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.10),
-                          Colors.black.withValues(alpha: 0.04),
-                          Colors.black.withValues(alpha: 0.42),
-                        ],
-                        stops: const [0, 0.48, 1],
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 16,
-                    bottom: 16,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildLocationPill(c),
-                        if (c.displayDistanceKm != null) ...[
-                          const SizedBox(width: 8),
-                          _buildDistancePill(c),
-                        ],
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.10),
+                                Colors.black.withOpacity(0.04),
+                                Colors.black.withOpacity(0.42),
+                              ],
+                              stops: const [0, 0.48, 1],
+                            ),
+                          ),
+                        ),
+                        if (photos.length > 1)
+                          Positioned(
+                            top: 10,
+                            left: 12,
+                            right: 12,
+                            child: Row(
+                              children: List.generate(
+                                photos.length,
+                                (idx) => Expanded(
+                                  child: Container(
+                                    height: 3,
+                                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                                    decoration: BoxDecoration(
+                                      color: idx == activeIndex 
+                                          ? Colors.white 
+                                          : Colors.white.withOpacity(0.4),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          left: 16,
+                          bottom: 16,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildLocationPill(c),
+                              if (c.displayDistanceKm != null) ...[
+                                const SizedBox(width: 8),
+                                _buildDistancePill(c),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (isTop && c.customCards.isNotEmpty)
+                          Positioned(
+                            right: 16,
+                            bottom: 16,
+                            child: GestureDetector(
+                              onTap: () => _showCustomCardsDeck(context, c),
+                              child: _buildImagePill(
+                                icon: Icons.style_rounded,
+                                label: 'Deck',
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                  if (isTop && c.customCards.isNotEmpty)
-                    Positioned(
-                      right: 16,
-                      bottom: 16,
-                      child: GestureDetector(
-                        onTap: () => _showCustomCardsDeck(context, c),
-                        child: _buildImagePill(
-                          icon: Icons.style_rounded,
-                          label: 'Deck',
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                );
+              },
             ),
             Expanded(
               child: Padding(

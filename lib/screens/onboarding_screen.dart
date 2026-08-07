@@ -87,6 +87,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _homeBaseController = TextEditingController();
   final TextEditingController _profileImageUrlController =
       TextEditingController();
+  List<String> _profileImages = [];
   final TextEditingController _linkedinUrlController = TextEditingController();
   // Kept final: email validation is disabled, so the inline error is never
   // repopulated. The display blocks below simply never render.
@@ -212,12 +213,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.initState();
     final profile = AppStateManager().currentUserProfile;
     final user = FirebaseAuth.instance.currentUser;
+    final emailVal = user?.email;
+    final isLinkedInUser = emailVal != null &&
+        emailVal.startsWith('linkedin_') &&
+        emailVal.endsWith('@boardingpass.com');
     final hasName = (profile?.name.isNotEmpty == true && profile?.name != 'User') || (user?.displayName?.isNotEmpty == true);
     final hasImage = (profile?.profileImageUrl?.isNotEmpty == true) || (user?.photoURL?.isNotEmpty == true);
+    final hasPhone = profile?.phone != null && profile!.phone!.trim().isNotEmpty;
+
     if (widget.completionMode) {
-      // Email verification is disabled (product decision) — route straight to
-      // the appropriate sign-up step.
-      if (hasName && hasImage) {
+      if (hasName && hasImage && (isLinkedInUser ? hasPhone : true)) {
         _currentView = OnboardingView.signUpStep2;
       } else {
         _currentView = OnboardingView.signUpStep1;
@@ -233,9 +238,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _emailController.text = profile.email;
         // A signed-in user already proved ownership of this email (they logged
         // in with it), so it counts as verified in the completion flow.
-        _emailVerified =
-            user?.email?.toLowerCase() == profile.email.toLowerCase();
+        _emailVerified = isLinkedInUser ||
+            (user?.email?.toLowerCase() == profile.email.toLowerCase());
         _profileImageUrlController.text = profile.profileImageUrl ?? '';
+        _profileImages = profile.profileImages.isNotEmpty
+            ? List<String>.from(profile.profileImages)
+            : (profile.profileImageUrl?.isNotEmpty == true ? [profile.profileImageUrl!] : <String>[]);
         _phoneController.text = profile.phone ?? '';
         final storedDial = (profile.phoneCountryCode ?? '').trim();
         if (storedDial.isNotEmpty) {
@@ -248,7 +256,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             (user?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
         final storedPhone =
             (profile.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-        _phoneVerified = storedPhone.isNotEmpty && storedPhone == linkedPhone;
+        _phoneVerified = isLinkedInUser
+            ? storedPhone.isNotEmpty
+            : (storedPhone.isNotEmpty && storedPhone == linkedPhone);
         _roleController.text = profile.role ?? '';
         final roleVal = profile.role ?? '';
         if (_occupations.contains(roleVal)) {
@@ -581,9 +591,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
     final phoneStr = _phoneController.text.trim();
-    final profileImageUrl = _profileImageUrlController.text.trim();
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isLinkedInUser = currentUser != null &&
+        currentUser.email != null &&
+        currentUser.email!.startsWith('linkedin_') &&
+        currentUser.email!.endsWith('@boardingpass.com');
+
+    if (name.isEmpty || email.isEmpty || (!isLinkedInUser && (password.isEmpty || confirmPassword.isEmpty))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please fill in all basic information fields'),
@@ -617,7 +632,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // Step-1 "Verify" button (badge state) or because it is already linked to
     // this signed-in account. Comparison is digit-based so formatting
     // differences don't bypass the check.
-    final currentUser = FirebaseAuth.instance.currentUser;
     final linkedPhone =
         (currentUser?.phoneNumber ?? '').replaceAll(RegExp(r'[^0-9]'), '');
     final enteredPhone = phoneStr.replaceAll(RegExp(r'[^0-9]'), '');
@@ -631,32 +645,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return false;
     }
 
+    if (!isLinkedInUser) {
+      if (!_isPasswordValid(password)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
+            backgroundColor: Color(0xFF7A432D),
+          ),
+        );
+        return false;
+      }
 
-
-    if (!_isPasswordValid(password)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Password must be at least 8 characters with uppercase, lowercase, number & special character.'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
+      if (password != confirmPassword) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Passwords do not match'),
+            backgroundColor: Color(0xFF7A432D),
+          ),
+        );
+        return false;
+      }
     }
 
-    if (password != confirmPassword) {
+    if (_profileImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Passwords do not match'),
-          backgroundColor: Color(0xFF7A432D),
-        ),
-      );
-      return false;
-    }
-
-    if (profileImageUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload a profile photo'),
+          content: Text('Please upload at least one profile photo'),
           backgroundColor: Color(0xFF7A432D),
         ),
       );
@@ -670,54 +684,60 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     try {
       AppStateManager().isRegistering = true;
 
-      // A full account is already signed in (e.g. a returning completionMode
-      // user) with a different email — never create a second account, just
-      // sync and continue.
-      final signedInUser = FirebaseAuth.instance.currentUser;
-      final isSameAccount =
-          signedInUser?.email?.toLowerCase() == email.toLowerCase();
-      if (signedInUser != null &&
-          (signedInUser.email?.isNotEmpty ?? false) &&
-          !isSameAccount) {
-        await AppStateManager().syncSignedInUser(signedInUser);
-        if (navigateToNextStep && mounted) {
-          setState(() {
-            _currentView = OnboardingView.signUpStep2;
-          });
+      final User user;
+      if (isLinkedInUser) {
+        user = currentUser!;
+        final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        await docRef.update({
+          'name': name,
+          'email': email,
+          'phone': phoneStr,
+          'phoneCountryCode': _selectedCountry.dialCode,
+          if (_dobController.text.trim().isNotEmpty) 'dob': _dobController.text.trim(),
+          if (_selectedGender != null) 'gender': _selectedGender,
+          'profileImageUrl': _profileImages.first,
+          'profileImages': _profileImages,
+          'lastSeen': FieldValue.serverTimestamp(),
+        }).timeout(const Duration(seconds: 8));
+      } else {
+        // A full account is already signed in (e.g. a returning completionMode
+        // user) with a different email — never create a second account, just
+        // sync and continue.
+        final signedInUser = FirebaseAuth.instance.currentUser;
+        final isSameAccount =
+            signedInUser?.email?.toLowerCase() == email.toLowerCase();
+        if (signedInUser != null &&
+            (signedInUser.email?.isNotEmpty ?? false) &&
+            !isSameAccount) {
+          await AppStateManager().syncSignedInUser(signedInUser);
+          if (navigateToNextStep && mounted) {
+            setState(() {
+              _currentView = OnboardingView.signUpStep2;
+            });
+          }
+          return true;
         }
-        return true;
-      }
 
-      // Creates the account, or upgrades the phone-only account created
-      // during phone verification by attaching email + password.
-      final user = await AuthService().signUpWithEmail(
-        email: email,
-        password: password,
-        name: name,
-        phone: phoneStr,
-        phoneCountryCode: _selectedCountry.dialCode,
-        dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
-        gender: _selectedGender,
-        profileImageUrl: profileImageUrl,
-      );
+        // Creates the account, or upgrades the phone-only account created
+        // during phone verification by attaching email + password.
+        user = await AuthService().signUpWithEmail(
+          email: email,
+          password: password,
+          name: name,
+          phone: phoneStr,
+          phoneCountryCode: _selectedCountry.dialCode,
+          dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
+          gender: _selectedGender,
+          profileImageUrl: _profileImages.first,
+          profileImages: _profileImages,
+        );
+      }
 
       await AppStateManager().syncSignedInUser(user);
 
-      if (user.emailVerified != true) {
-        try {
-          await user.sendEmailVerification();
-        } catch (e) {
-          debugPrint('Error sending email verification link: $e');
-        }
-      }
-
       if (navigateToNextStep && mounted) {
         setState(() {
-          if (user.emailVerified == true) {
-            _currentView = OnboardingView.signUpStep2;
-          } else {
-            _currentView = OnboardingView.verifyEmail;
-          }
+          _currentView = OnboardingView.signUpStep2;
         });
       }
       return true;
@@ -1465,59 +1485,199 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFE8E2DD),
-                  border: Border.all(
-                    color: const Color(0xFF7A432D),
-                    width: 1.5,
+          SizedBox(
+            height: 120,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 6,
+              itemBuilder: (context, index) {
+                final bool hasImage = index < _profileImages.length;
+                final String? imageUrl = hasImage ? _profileImages[index] : null;
+                
+                return Container(
+                  width: 90,
+                  margin: const EdgeInsets.only(right: 12, top: 4, bottom: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF7F5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: hasImage 
+                          ? (index == 0 ? const Color(0xFF7A432D) : const Color(0xFFE8E2DD))
+                          : const Color(0xFFE8E2DD),
+                      width: hasImage && index == 0 ? 2 : 1.2,
+                    ),
+                    boxShadow: hasImage ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      )
+                    ] : null,
                   ),
-                ),
-                child: ClipOval(
-                  child: buildProfileImage(
-                    _profileImageUrlController.text,
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                    fallback: const Icon(
-                      Icons.person,
-                      size: 36,
-                      color: Color(0xFF7A432D),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Stack(
+                      children: [
+                        if (hasImage) ...[
+                          Positioned.fill(
+                            child: buildProfileImage(
+                              imageUrl!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          if (index == 0)
+                            Positioned(
+                              left: 4,
+                              bottom: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7A432D),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Primary',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _profileImages.removeAt(index);
+                                  _profileImageUrlController.text = _profileImages.isNotEmpty ? _profileImages.first : '';
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          if (index == _profileImages.length)
+                            Positioned.fill(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _pickProfileImage,
+                                  child: _isLoading
+                                      ? const Center(
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF7A432D)),
+                                            ),
+                                          ),
+                                        )
+                                      : const Center(
+                                          child: Icon(
+                                            Icons.add_rounded,
+                                            size: 32,
+                                            color: Color(0xFF8C736B),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                        ]
+                      ],
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: _pickProfileImage,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF7A432D),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(
-                  Icons.camera_alt_outlined,
-                  size: 16,
-                  color: Colors.white,
-                ),
-                label: const Text(
-                  'Upload Photo',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
+          if (FirebaseAuth.instance.currentUser?.email == null ||
+              !FirebaseAuth.instance.currentUser!.email!.startsWith('linkedin_') ||
+              !FirebaseAuth.instance.currentUser!.email!.endsWith('@boardingpass.com')) ...[
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: _passwordController,
+              labelText: 'Password',
+              hintText: 'Create a strong password',
+              obscureText: _obscurePassword,
+              isPassword: true,
+              isRequired: true,
+            ),
+            if (_passwordReqs.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 4),
+                child: _buildPasswordReqs(_passwordReqs),
+              ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirmPassword,
+              decoration: InputDecoration(
+                label: const Text.rich(
+                  TextSpan(
+                    text: 'Confirm Password',
+                    style: TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 14,
+                      color: Color(0xFF5C473E),
+                    ),
+                    children: [
+                      TextSpan(
+                        text: ' *',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                hintText: 'Re-enter your password',
+                hintStyle: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 14,
+                  color: Color(0xFFA89993),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFF9F8F6),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
+                ),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                    color: const Color(0xFF8C736B),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _obscureConfirmPassword = !_obscureConfirmPassword;
+                    });
+                  },
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           _buildTextField(
             controller: _nameController,
@@ -2744,7 +2904,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _pickProfileImage() async {
-    // Pick a photo from the gallery and let the user crop / adjust it first.
     final Uint8List? bytes = await pickAndCropProfileImage(context);
     if (bytes == null) return;
 
@@ -2753,34 +2912,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
 
     try {
-      // Show the cropped photo instantly so the user sees it right away.
-      // The base64 preview renders without any network / CORS dependency, so
-      // it is also the final stored image on web. On native platforms the
-      // full-resolution Firebase Storage URL swaps in once the upload
-      // finishes. The image state is always maintained while the form is
-      // filled in.
       final previewBytes = downscaleForFirestore(bytes);
       final previewDataUri =
           'data:image/jpeg;base64,${base64Encode(previewBytes)}';
       setState(() {
-        _profileImageUrlController.text = previewDataUri;
+        _profileImages.add(previewDataUri);
+        _profileImageUrlController.text = _profileImages.first;
       });
 
       if (kIsWeb) {
-        // Web: Firebase Storage URLs only render when the bucket has CORS
-        // configured, and third-party proxies are unreliable — the base64
-        // preview is guaranteed to display everywhere.
         if (mounted) {
           setState(() {
             _isLoading = false;
           });
         }
       } else {
-        // Upload the full-resolution crop to Firebase Storage so the original
-        // sharpness is preserved. (Storing the image as base64 inside the
-        // Firestore profile doc would force a ~512px cap to stay under the
-        // document size limit — the very reason Discovery photos looked
-        // blurry.)
         try {
           final storageRef = FirebaseStorage.instance
               .ref()
@@ -2794,33 +2940,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           final downloadUrl = await snapshot.ref.getDownloadURL();
           if (!mounted) return;
           setState(() {
-            _profileImageUrlController.text = downloadUrl;
+            final idx = _profileImages.indexOf(previewDataUri);
+            if (idx != -1) {
+              _profileImages[idx] = downloadUrl;
+            } else {
+              _profileImages.add(downloadUrl);
+            }
+            _profileImageUrlController.text = _profileImages.first;
             _isLoading = false;
           });
         } catch (e) {
           debugPrint('Storage upload failed, keeping base64 preview: $e');
-          // The preview data URI is already in the field — just clear the
-          // loading state.
           if (!mounted) return;
           setState(() {
             _isLoading = false;
           });
         }
       }
-
+    } finally {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile image loaded successfully!')),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to load image: $e')));
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
