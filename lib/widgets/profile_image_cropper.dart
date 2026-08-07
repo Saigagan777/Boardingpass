@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
 /// Picks a photo from the gallery and immediately opens the crop screen.
@@ -251,22 +250,13 @@ class _ProfileImageCropperScreenState extends State<ProfileImageCropperScreen> {
     try {
       final outImage = await picture.toImage(outW, outH);
       final byteData =
-          await outImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+          await outImage.toByteData(format: ui.ImageByteFormat.png);
       outImage.dispose();
       if (byteData == null) return null;
-      // Encode as a high-quality (visually lossless) JPEG — profile photos
-      // don't need PNG transparency, and JPEG keeps a 2048px crop compact.
-      final encoded = img.encodeJpg(
-        img.Image.fromBytes(
-          width: outW,
-          height: outH,
-          bytes: byteData.buffer,
-          numChannels: 4,
-          order: img.ChannelOrder.rgba,
-        ),
-        quality: 92,
+      return byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
       );
-      return Uint8List.fromList(encoded);
     } finally {
       picture.dispose();
     }

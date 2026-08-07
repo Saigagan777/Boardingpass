@@ -1605,6 +1605,57 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               },
             ),
           ),
+          const SizedBox(height: 20),
+          _buildTextField(
+            controller: _nameController,
+            labelText: 'Full Name',
+            hintText: 'e.g. Rohan Mehta',
+            isRequired: true,
+          ),
+          const SizedBox(height: 16),
+          EmailVerificationSection(
+            emailController: _emailController,
+            initialVerified: _emailVerified,
+            errorText: _emailErrorText,
+            onVerificationChanged: (isVerified) {
+              setState(() {
+                _emailVerified = isVerified;
+              });
+            },
+          ),
+          if (_emailErrorText.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                _emailErrorText,
+                style: const TextStyle(
+                  fontFamily: 'PlusJakartaSans',
+                  fontSize: 12,
+                  color: Color(0xFFC62828),
+                ),
+              ),
+            ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: CountryPhoneInput(
+                  controller: _phoneController,
+                  label: 'Phone Number',
+                  isRequired: true,
+                  initialCountry: _selectedCountry,
+                  onCountryChanged: (c) => setState(() => _selectedCountry = c),
+                ),
+              ),
+              const SizedBox(width: 10),
+              PhoneVerifyButton(
+                verified: _phoneVerified,
+                isLoading: _isLoading,
+                onPressed: _verifyPhoneInStep1,
+              ),
+            ],
+          ),
           if (FirebaseAuth.instance.currentUser?.email == null ||
               !FirebaseAuth.instance.currentUser!.email!.startsWith('linkedin_') ||
               !FirebaseAuth.instance.currentUser!.email!.endsWith('@boardingpass.com')) ...[
@@ -1678,126 +1729,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          _buildTextField(
-            controller: _nameController,
-            labelText: 'Full Name',
-            hintText: 'e.g. Rohan Mehta',
-            isRequired: true,
-          ),
-          const SizedBox(height: 16),
-          EmailVerificationSection(
-            emailController: _emailController,
-            initialVerified: _emailVerified,
-            errorText: _emailErrorText,
-            onVerificationChanged: (isVerified) {
-              setState(() {
-                _emailVerified = isVerified;
-              });
-            },
-          ),
-          if (_emailErrorText.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 4),
-              child: Text(
-                _emailErrorText,
-                style: const TextStyle(
-                  fontFamily: 'PlusJakartaSans',
-                  fontSize: 12,
-                  color: Color(0xFFC62828),
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: CountryPhoneInput(
-                  controller: _phoneController,
-                  label: 'Phone Number',
-                  isRequired: true,
-                  initialCountry: _selectedCountry,
-                  onCountryChanged: (c) => setState(() => _selectedCountry = c),
-                ),
-              ),
-              const SizedBox(width: 10),
-              PhoneVerifyButton(
-                verified: _phoneVerified,
-                isLoading: _isLoading,
-                onPressed: _verifyPhoneInStep1,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _passwordController,
-            labelText: 'Password',
-            hintText: 'Create a strong password',
-            obscureText: _obscurePassword,
-            isPassword: true,
-            isRequired: true,
-          ),
-          if (_passwordReqs.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6, left: 4),
-              child: _buildPasswordReqs(_passwordReqs),
-            ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _confirmPasswordController,
-            obscureText: _obscureConfirmPassword,
-            decoration: InputDecoration(
-              label: const Text.rich(
-                TextSpan(
-                  text: 'Confirm Password',
-                  style: TextStyle(
-                    fontFamily: 'PlusJakartaSans',
-                    fontSize: 14,
-                    color: Color(0xFF5C473E),
-                  ),
-                  children: [
-                    TextSpan(
-                      text: ' *',
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              hintText: 'Re-enter your password',
-              hintStyle: const TextStyle(
-                fontFamily: 'PlusJakartaSans',
-                fontSize: 14,
-                color: Color(0xFFA89993),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF9F8F6),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE8E2DD)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF7A432D), width: 1.5),
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                  color: const Color(0xFF8C736B),
-                ),
-                onPressed: () {
-                  setState(() {
-                    _obscureConfirmPassword = !_obscureConfirmPassword;
-                  });
-                },
-              ),
-            ),
-          ),
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,

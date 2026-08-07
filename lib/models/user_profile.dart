@@ -191,7 +191,14 @@ class UserProfile {
           [],
       linkedinId: data['linkedinId'],
       profileImageUrl: data['profileImageUrl'],
-      profileImages: List<String>.from(data['profileImages'] ?? (data['profileImageUrl'] != null ? [data['profileImageUrl']] : [])),
+      profileImages: (data['profileImages'] is List)
+          ? (data['profileImages'] as List)
+              .map((e) => e?.toString() ?? '')
+              .where((e) => e.trim().isNotEmpty)
+              .toList()
+          : (data['profileImageUrl'] != null && data['profileImageUrl'].toString().trim().isNotEmpty
+              ? [data['profileImageUrl'].toString()]
+              : <String>[]),
       headline: data['headline'],
       company: data['company'],
       role: data['role'],

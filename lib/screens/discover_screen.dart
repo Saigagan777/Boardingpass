@@ -3378,6 +3378,14 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                               bio: userData['bio'] ?? '',
                               initials: initials,
                               profileImageUrl: imageUrl,
+                              profileImages: (userData['profileImages'] is List)
+                                  ? (userData['profileImages'] as List)
+                                      .map((e) => e?.toString() ?? '')
+                                      .where((e) => e.trim().isNotEmpty)
+                                      .toList()
+                                  : (userData['profileImageUrl'] != null && userData['profileImageUrl'].toString().trim().isNotEmpty
+                                      ? [userData['profileImageUrl'].toString()]
+                                      : <String>[]),
                               primaryColor: const Color(0xFFE5A475),
                               distanceKm: distanceKm,
                             );

@@ -219,7 +219,27 @@ class _CandidateProfileSheetState extends State<CandidateProfileSheet> {
                         final photos = c.profileImages.isNotEmpty
                             ? c.profileImages
                             : (c.profileImageUrl != null && c.profileImageUrl!.isNotEmpty ? [c.profileImageUrl!] : <String>[]);
-                        if (photos.isEmpty) return const SizedBox.shrink();
+                        if (photos.isEmpty) {
+                          return Container(
+                            height: 320,
+                            margin: const EdgeInsets.only(bottom: 20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF7A432D),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                c.initials,
+                                style: const TextStyle(
+                                  fontFamily: 'PlayfairDisplay',
+                                  fontSize: 72,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
                         
                         return Container(
                           height: 320,

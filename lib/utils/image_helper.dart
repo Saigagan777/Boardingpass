@@ -62,21 +62,28 @@ Widget buildNetworkAvatar({
     child: url.isEmpty
         ? (fallback ?? const Icon(Icons.person))
         : ClipOval(
-            child: CachedNetworkImage(
-              imageUrl: wrapCorsUrl(url),
-              width: diameter,
-              height: diameter,
-              fit: BoxFit.cover,
-              // CachedNetworkImage defaults to FilterQuality.low, which is the
-              // classic source of soft/blurry avatars — force high so photos
-              // stay crisp on retina / high-DPI screens.
-              filterQuality: FilterQuality.high,
-              fadeInDuration: Duration.zero,
-              placeholder: (context, url) =>
-                  fallback ?? const SizedBox.shrink(),
-              errorWidget: (context, url, error) =>
-                  fallback ?? const Icon(Icons.person),
-            ),
+            child: kIsWeb
+                ? Image.network(
+                    url,
+                    width: diameter,
+                    height: diameter,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (context, error, stackTrace) =>
+                        fallback ?? const Icon(Icons.person),
+                  )
+                : CachedNetworkImage(
+                    imageUrl: wrapCorsUrl(url),
+                    width: diameter,
+                    height: diameter,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    fadeInDuration: Duration.zero,
+                    placeholder: (context, url) =>
+                        fallback ?? const SizedBox.shrink(),
+                    errorWidget: (context, url, error) =>
+                        fallback ?? const Icon(Icons.person),
+                  ),
           ),
   );
 }
@@ -108,6 +115,17 @@ Widget buildProfileImage(
   }
 
   if (url.isNotEmpty) {
+    if (kIsWeb) {
+      return Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: fit,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (context, error, stackTrace) =>
+            fallback ?? const Icon(Icons.person),
+      );
+    }
     return CachedNetworkImage(
       imageUrl: wrapCorsUrl(url),
       width: width,

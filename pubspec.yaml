@@ -36,7 +36,6 @@ dependencies:
   cached_network_image: ^3.4.1
   image: ^4.8.0
   image_picker: ^1.1.2
-  google_mlkit_face_detection: ^0.13.2
   uuid: ^4.5.1
   webview_flutter: ^4.13.1
   http: ^1.6.0
